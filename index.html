@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản Lý Toán Mr Vy</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- Nhúng thư viện Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { dark: '#0b2447', navy: '#19376D', green: '#00a65a', accent: '#00c853' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Hiệu ứng nháy đỏ cảnh báo tới hạn ghi chú */
+    @keyframes blinkAlertRed {
+      0% { background-color: #fee2e2; border-color: #ef4444; }
+      50% { background-color: #fca5a5; border-color: #b91c1c; }
+      100% { background-color: #fee2e2; border-color: #ef4444; }
+    }
+    .note-blink-alert {
+      animation: blinkAlertRed 1.5s ease-in-out infinite;
+    }
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #0b2447; font-size: 13px; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    @media print {
+      body * { visibility: hidden; }
+      #printableReceipt, #printableReceipt * { visibility: visible; }
+      #printableReceipt { position: absolute; left: 0; top: 0; width: 100%; }
+    }
+    @media (min-width: 768px) {
+      #tab-lichday table { width: 100% !important; border-collapse: collapse; table-layout: fixed !important; }
+      #tab-lichday th, #tab-lichday td { white-space: nowrap !important; padding: 4px 2px !important; }
+      .tkb-input { box-sizing: border-box !important; width: 100% !important; display: inline-block !important; padding: 2px 1px !important; margin: 0 !important; border: none !important; }
+      .tkb-badge { display: flex !important; align-items: center; justify-content: center; padding: 2px 4px !important; border-radius: 4px; width: 100% !important; }
+    }
+    @media (max-width: 767px) {
+      #tab-lichday table { width: max-content !important; border-collapse: collapse; table-layout: fixed !important; }
+      #tab-lichday tbody tr td:first-child, 
+      #tab-lichday thead th:first-child { 
+        width: 95px !important; min-width: 95px !important; max-width: 95px !important;
+        overflow: hidden !important; white-space: nowrap !important; padding: 2px 1px !important; 
+      }
+      #tab-lichday tbody tr td:first-child input,
+      #tab-lichday tbody tr td:first-child .tkb-input {
+        width: 95px !important; max-width: 95px !important; box-sizing: border-box !important;
+        padding: 0 !important; margin: 0 !important; text-align: center !important; font-size: 11.5px !important;
+      }
+      #tab-lichday th, #tab-lichday td { padding: 1px 2px !important; min-width: 0 !important; }
+      .tkb-input { box-sizing: content-box !important; min-width: 0 !important; max-width: none; display: inline-block !important; padding: 0 1px !important; margin: 0 !important; border: none !important; }
+      .tkb-badge { display: inline-flex !important; align-items: center; justify-content: center; padding: 1px 3px !important; border-radius: 4px; width: max-content !important; }
+      aside {
+        position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
+        width: 100% !important; height: 54px !important; flex-direction: row !important;
+        border-right: none !important; border-top: 1px solid #e2e8f0 !important;
+        background: #ffffff !important; z-index: 40 !important; box-shadow: 0 -2px 10px rgba(0,0,0,0.06) !important; padding: 0 !important;
+      }
+      aside .p-3.border-b { display: none !important; }
+      aside nav { display: flex !important; flex-direction: row !important; justify-content: space-around !important; align-items: center !important; width: 100% !important; padding: 2px 4px !important; gap: 0 !important; margin: 0 !important; }
+      aside nav button { flex: 1 !important; display: flex; align-items: center !important; justify-content: center !important; padding: 4px 2px !important; border-radius: 8px !important; height: 48px !important; }
+      aside nav button.hidden { display: none !important; }
+      aside nav button i { font-size: 16px !important; margin: 0 !important; width: auto !important; }
+      aside nav button .mobile-nav-label { display: block !important; font-size: 10px !important; font-weight: 700 !important; line-height: 1.1 !important; margin-top: 2px !important; white-space: nowrap !important; }
+      main { padding: 8px 8px 65px 8px !important; width: 100% !important; }
+    }
+    @media (min-width: 768px) { .mobile-nav-label { display: none !important; } }
+    #tab-lichday thead th { position: sticky !important; top: 0 !important; z-index: 30 !important; background-color: #19376D !important; }
+    #tab-lichday tbody tr td:first-child, #tab-lichday thead th:first-child { position: sticky !important; left: 0 !important; z-index: 20 !important; }
+    #tab-lichday tbody tr td:first-child { background-color: #f8fafc !important; }
+    #tab-lichday thead th:first-child { z-index: 40 !important; }
+    .tkb-cell-editable { white-space: pre-wrap !important; word-break: break-word !important; line-height: 1.25 !important; min-height: 24px; }
+    .tkb-cell-note { color: #dc2626 !important; font-style: italic !important; font-size: inherit !important; font-weight: 700 !important; display: block; }
+    @media (max-width: 768px) {
+      [id*="toast"], [class*="toast"], [id*="snackbar"], [class*="snackbar"] {
+        top: 75px !important; bottom: auto !important; right: 10px !important; left: auto !important; transform: none !important; position: fixed !important; z-index: 999999 !important;
+      }
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none bg-[#0b2447]">
+
+  <!-- MÀN HÌNH ĐĂNG NHẬP -->
+  <div id="loginScreen" class="fixed inset-0 bg-[#0b2447] z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-[420px] p-8 flex flex-col items-center space-y-5">
+      <div class="w-24 h-24 rounded-full border-4 border-emerald-500/20 p-1 flex items-center justify-center bg-white shadow-md">
+        <img id="loginLogo" src="" alt="Toán Mr Vy" class="w-full h-full object-cover rounded-full">
+      </div>
+      <div class="text-center space-y-2">
+        <h2 class="text-3xl font-black text-[#0b2447] tracking-tight uppercase">TOÁN MR VY</h2>
+      </div>
+
+      <form onsubmit="handleLoginSubmit(event)" class="w-full space-y-4 pt-3">
+        <div>
+          <input type="text" id="loginUsername" required placeholder="Tài khoản (mã NV / mã học sinh)" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium placeholder-slate-400 bg-slate-50/50">
+        </div>
+        <div>
+          <input type="password" id="loginPassword" required placeholder="Mật khẩu" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium placeholder-slate-400 bg-slate-50/50">
+        </div>
+        <div id="loginErrorMsg" class="text-xs font-bold text-red-600 text-center hidden bg-red-50 p-3 rounded-xl border border-red-200"></div>
+        <button type="submit" id="btnLoginSubmit" class="w-full bg-[#00a65a] hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl text-base transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-95">
+          Đăng nhập
+        </button>
+        <button type="button" onclick="handleGuestLogin()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl text-sm transition border border-slate-300 flex items-center justify-center gap-2 active:scale-95 shadow-sm">
+          <i class="fa-solid fa-user-lock text-emerald-600"></i> Truy cập với tư cách Khách (Chỉ xem)
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header class="bg-[#0b2447] text-white h-12 md:h-14 px-2.5 md:px-4 flex items-center justify-between shadow-md z-30 flex-shrink-0 border-b border-slate-800">
+    <div class="flex items-center space-x-1.5 flex-shrink-0">
+      <div class="w-7 h-7 md:w-9 md:h-9 rounded-full bg-emerald-500 border border-emerald-300 overflow-hidden flex items-center justify-center flex-shrink-0 shadow">
+        <img id="headerAvatar" src="" alt="Toán Mr Vy" class="w-full h-full object-cover">
+      </div>
+      <div>
+        <h1 class="text-xs sm:text-sm md:text-lg font-black tracking-wide leading-none uppercase whitespace-nowrap">TOÁN MR VY</h1>
+        <p class="hidden md:block text-[11px] text-emerald-400 mt-0.5 font-medium">Hệ Thống Quản Lý</p>
+      </div>
+    </div>
+    <div class="flex items-center space-x-1 sm:space-x-1.5 text-xs flex-shrink-0">
+      <button type="button" onclick="toggleCalendarPopup()" title="Bấm để xem lịch tháng & đếm số buổi học" class="flex items-center gap-1.5 bg-[#19376D] hover:bg-slate-700 text-emerald-300 font-bold px-3 py-1 rounded-lg border border-slate-600 shadow-sm transition active:scale-95 text-xs cursor-pointer">
+        <i class="fa-solid fa-calendar-days text-emerald-400"></i>
+        <span id="headerCurrentDate">T4, 19/08</span>
+      </button>
+      <div class="hidden md:flex items-center gap-2 bg-slate-800/60 px-3 py-1 rounded-full border border-slate-700">
+        <i class="fa-solid fa-user-circle text-emerald-400"></i>
+        <span class="font-medium" id="headerUserName">Thầy Hoài Vy</span>
+      </div>
+      <button onclick="syncData()" id="btnSync" title="Tải dữ liệu từ hệ thống" class="w-7 h-7 sm:w-8 sm:h-8 bg-[#19376D] hover:bg-slate-700 text-white rounded-lg transition border border-slate-600 shadow-sm active:scale-95 flex items-center justify-center flex-shrink-0">
+        <i class="fa-solid fa-rotate text-emerald-400 text-xs" id="syncIcon"></i>
+      </button>
+      <button onclick="openChangePasswordModal()" title="Đổi mật khẩu" class="w-7 h-7 sm:w-8 sm:h-8 bg-amber-600/90 hover:bg-amber-700 text-white rounded-lg transition border border-amber-500 text-xs flex items-center justify-center font-bold active:scale-95 flex-shrink-0">
+        <i class="fa-solid fa-key text-[11px]"></i>
+      </button>
+      <button onclick="handleLogout()" title="Đăng xuất" class="w-7 h-7 sm:w-8 sm:h-8 bg-red-600/80 hover:bg-red-700 text-white rounded-lg transition border border-red-500 text-xs flex items-center justify-center font-bold active:scale-95 flex-shrink-0">
+        <i class="fa-solid fa-power-off text-[11px]"></i>
+      </button>
+    </div>
+  </header>
+
+  <div class="flex flex-1 h-[calc(100vh-48px)] md:h-[calc(100vh-56px)] overflow-hidden bg-slate-100 relative">
+    
+    <!-- SIDEBAR -->
+    <aside class="w-16 md:w-60 bg-white border-r border-slate-200 flex flex-col flex-shrink-0">
+      <nav class="p-2 space-y-1 text-xs md:text-sm font-semibold flex-1">
+        <button id="menu-tab-hocsinh" onclick="switchTab('tab-hocsinh')" class="tab-btn admin-only active w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-user-graduate text-base text-emerald-600 w-5"></i>
+          <span class="hidden md:inline">Học sinh</span>
+          <span class="mobile-nav-label">Học sinh</span>
+        </button>
+        <button id="menu-tab-diemdanh" onclick="switchTab('tab-diemdanh')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-clipboard-check text-base text-blue-600 w-5"></i>
+          <span class="hidden md:inline" id="navTabDiemDanhLabel">Điểm danh</span>
+          <span class="mobile-nav-label">Điểm danh</span>
+        </button>
+        <button id="menu-tab-hocphi" onclick="switchTab('tab-hocphi')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-wallet text-base text-amber-600 w-5"></i>
+          <span class="hidden md:inline" id="navTabHocPhiLabel">Học phí</span>
+          <span class="mobile-nav-label">Học phí</span>
+        </button>
+        <button id="menu-tab-hoso" onclick="switchTab('tab-hoso')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-bullhorn text-base text-purple-600 w-5"></i>
+          <span class="hidden md:inline" id="navTabHosoLabel">Hồ sơ & Tin tức</span>
+          <span class="mobile-nav-label">Tin tức</span>
+        </button>
+        <button id="menu-tab-lichday" onclick="switchTab('tab-lichday')" class="tab-btn profile-admin-only hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-calendar-days text-base text-teal-600 w-5"></i>
+          <span class="hidden md:inline">Lịch Dạy & TKB</span>
+          <span class="mobile-nav-label">Lịch dạy</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 p-2 md:p-6 overflow-y-auto custom-scrollbar">
+
+      <!-- TAB 1: HỌC SINH -->
+      <div id="tab-hocsinh" class="tab-content admin-only space-y-6">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <div class="flex items-center justify-between mb-4 pb-2 border-b">
+            <h2 class="font-bold text-brand-dark flex items-center gap-2">
+              <i class="fa-solid fa-user-plus text-emerald-600"></i> Đăng Ký Học Sinh Mới
+            </h2>
+            <span id="queueCountBadge" class="hidden bg-purple-100 text-purple-800 text-xs font-bold px-2.5 py-1 rounded-full border border-purple-200">
+              Đang đợi: 0 em
+            </span>
+          </div>
+
+          <form onsubmit="event.preventDefault(); addStudentToQueue();" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Họ và Tên (*)</label>
+                <input type="text" id="stuName" required placeholder="Nhập tên..." class="w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-emerald-500">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Khối Học (*)</label>
+                <select id="stuGrade" onchange="updateClassDropdown()" class="w-full px-3 py-2 text-sm border rounded-lg bg-white grade-select-options"></select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Lớp Chi Tiết (*)</label>
+                <select id="stuClass" class="w-full px-3 py-2 text-sm border rounded-lg bg-white"></select>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Trường Học</label>
+                <input type="text" id="stuSchool" placeholder="VD: THPT Nguyễn Trãi" class="w-full px-3 py-2 text-sm border rounded-lg">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">SĐT Học Sinh</label>
+                <input type="tel" id="stuPhone" placeholder="090..." class="w-full px-3 py-2 text-sm border rounded-lg">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">SĐT Phụ Huynh</label>
+                <input type="tel" id="stuParentPhone" placeholder="098..." class="w-full px-3 py-2 text-sm border rounded-lg">
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Ghi Chú</label>
+                <input type="text" id="stuNote" placeholder="Ghi chú thêm..." class="w-full px-3 py-2 text-sm border rounded-lg">
+              </div>
+            </div>
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-1">
+              <button type="submit" class="w-full sm:w-auto px-4 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-semibold py-2 rounded-lg text-sm transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95">
+                <i class="fa-solid fa-user-plus"></i> + Thêm vào danh sách (Điền tiếp
