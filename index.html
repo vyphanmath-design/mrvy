@@ -22,15 +22,12 @@
     }
   </script>
   <style>
-    /* Hiệu ứng nháy đỏ cảnh báo tới hạn ghi chú */
     @keyframes blinkAlertRed {
       0% { background-color: #fee2e2; border-color: #ef4444; }
       50% { background-color: #fca5a5; border-color: #b91c1c; }
       100% { background-color: #fee2e2; border-color: #ef4444; }
     }
-    .note-blink-alert {
-      animation: blinkAlertRed 1.5s ease-in-out infinite;
-    }
+    .note-blink-alert { animation: blinkAlertRed 1.5s ease-in-out infinite; }
     body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background-color: #0b2447; font-size: 13px; }
     .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -47,25 +44,12 @@
     }
     @media (max-width: 767px) {
       #tab-lichday table { width: max-content !important; border-collapse: collapse; table-layout: fixed !important; }
-      #tab-lichday tbody tr td:first-child, 
-      #tab-lichday thead th:first-child { 
-        width: 95px !important; min-width: 95px !important; max-width: 95px !important;
-        overflow: hidden !important; white-space: nowrap !important; padding: 2px 1px !important; 
-      }
-      #tab-lichday tbody tr td:first-child input,
-      #tab-lichday tbody tr td:first-child .tkb-input {
-        width: 95px !important; max-width: 95px !important; box-sizing: border-box !important;
-        padding: 0 !important; margin: 0 !important; text-align: center !important; font-size: 11.5px !important;
-      }
+      #tab-lichday tbody tr td:first-child, #tab-lichday thead th:first-child { width: 95px !important; min-width: 95px !important; max-width: 95px !important; overflow: hidden !important; white-space: nowrap !important; padding: 2px 1px !important; }
+      #tab-lichday tbody tr td:first-child input, #tab-lichday tbody tr td:first-child .tkb-input { width: 95px !important; max-width: 95px !important; box-sizing: border-box !important; padding: 0 !important; margin: 0 !important; text-align: center !important; font-size: 11.5px !important; }
       #tab-lichday th, #tab-lichday td { padding: 1px 2px !important; min-width: 0 !important; }
       .tkb-input { box-sizing: content-box !important; min-width: 0 !important; max-width: none; display: inline-block !important; padding: 0 1px !important; margin: 0 !important; border: none !important; }
       .tkb-badge { display: inline-flex !important; align-items: center; justify-content: center; padding: 1px 3px !important; border-radius: 4px; width: max-content !important; }
-      aside {
-        position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
-        width: 100% !important; height: 54px !important; flex-direction: row !important;
-        border-right: none !important; border-top: 1px solid #e2e8f0 !important;
-        background: #ffffff !important; z-index: 40 !important; box-shadow: 0 -2px 10px rgba(0,0,0,0.06) !important; padding: 0 !important;
-      }
+      aside { position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; width: 100% !important; height: 54px !important; flex-direction: row !important; border-right: none !important; border-top: 1px solid #e2e8f0 !important; background: #ffffff !important; z-index: 40 !important; box-shadow: 0 -2px 10px rgba(0,0,0,0.06) !important; padding: 0 !important; }
       aside .p-3.border-b { display: none !important; }
       aside nav { display: flex !important; flex-direction: row !important; justify-content: space-around !important; align-items: center !important; width: 100% !important; padding: 2px 4px !important; gap: 0 !important; margin: 0 !important; }
       aside nav button { flex: 1 !important; display: flex; align-items: center !important; justify-content: center !important; padding: 4px 2px !important; border-radius: 8px !important; height: 48px !important; }
@@ -112,7 +96,7 @@
           Đăng nhập
         </button>
         <button type="button" onclick="handleGuestLogin()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl text-sm transition border border-slate-300 flex items-center justify-center gap-2 active:scale-95 shadow-sm">
-          <i class="fa-solid fa-user-lock text-emerald-600"></i> Truy cập với tư cách Khách (Chỉ xem)
+          <i class="fa-solid fa-user-lock text-emerald-600"></i> Truy cập tư cách Khách (Chỉ xem)
         </button>
       </form>
     </div>
@@ -231,4 +215,607 @@
             </div>
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-1">
               <button type="submit" class="w-full sm:w-auto px-4 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-semibold py-2 rounded-lg text-sm transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95">
-                <i class="fa-solid fa-user-plus"></i> + Thêm vào danh sách (Điền tiếp
+                <i class="fa-solid fa-user-plus"></i> + Thêm vào danh sách (Điền tiếp)
+              </button>
+              <button type="button" onclick="saveQueuedStudentsOrSingle()" id="btnSaveBatchStu" class="w-full sm:w-auto px-6 bg-brand-green hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg text-sm transition shadow-md flex items-center justify-center gap-2 active:scale-95">
+                <i class="fa-solid fa-floppy-disk"></i> Lưu & Đồng Bộ Lên DB
+              </button>
+            </div>
+          </form>
+
+          <div id="queuedStudentsBox" class="hidden space-y-2 border-t pt-3 mt-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <i class="fa-solid fa-list-check text-purple-600"></i> Các học sinh đang đợi lưu:
+              </span>
+              <button type="button" onclick="clearStudentQueue()" class="text-red-500 hover:text-red-700 text-xs font-bold">
+                Xóa tất cả
+              </button>
+            </div>
+            <div id="queuedStudentsList" class="flex flex-wrap gap-2 max-h-[160px] overflow-y-auto custom-scrollbar p-1"></div>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b">
+            <div class="flex items-center gap-2">
+              <h2 class="font-bold text-brand-dark">Danh Sách Học Sinh</h2>
+              <span id="studentCountBadge" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">0 Học Sinh</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button onclick="exportStudentExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-excel"></i> Xuất Excel
+              </button>
+              <button type="button" onclick="promoteSelectedOrAllStudents()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
+                <i class="fa-solid fa-angles-up"></i> Thăng Lớp Đợi
+              </button>
+              <button type="button" id="btnBulkDelete" onclick="permanentlyDeleteSelectedStudents()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5 active:scale-95">
+                <i class="fa-solid fa-trash-xmark"></i> Xóa <span id="bulkDeleteCount">0</span> HS
+              </button>
+              <input type="text" id="searchStudent" oninput="renderStudentsTable()" placeholder="🔍 Tìm kiếm..." class="px-3 py-1.5 text-xs border rounded-lg w-40">
+              <select id="filterGrade" onchange="onGradeFilterChange()" class="px-3 py-1.5 text-xs border rounded-lg bg-white font-bold text-slate-700 grade-filter-options"></select>
+              <select id="filterClass" onchange="renderStudentsTable()" class="px-3 py-1.5 text-xs border rounded-lg bg-white font-medium">
+                <option value="ALL">Tất cả lớp</option>
+              </select>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-100/80 text-slate-600 uppercase font-semibold">
+                  <th class="p-3 rounded-l-lg whitespace-nowrap">MÃ HS</th>
+                  <th class="p-3 whitespace-nowrap">HỌ VÀ TÊN</th>
+                  <th class="p-3 whitespace-nowrap">HỌC PHÍ</th>
+                  <th class="p-3 whitespace-nowrap">LỚP</th>
+                  <th class="p-3 whitespace-nowrap">TRƯỜNG</th>
+                  <th class="p-3 whitespace-nowrap">SĐT HS</th>
+                  <th class="p-3 whitespace-nowrap">SĐT PHỤ HUYNH</th>
+                  <th class="p-3 whitespace-nowrap">GHI CHÚ</th>
+                  <th class="p-3 text-right rounded-r-lg whitespace-nowrap">THAO TÁC</th>
+                </tr>
+              </thead>
+              <tbody id="studentTableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: ĐIỂM DANH -->
+      <div id="tab-diemdanh" class="tab-content hidden space-y-6">
+        <div id="attendanceSubTabHeader" class="flex items-center gap-2 border-b pb-2">
+          <button type="button" onclick="switchAttendanceSubTab('daily')" id="subTabDaily" class="admin-only px-4 py-2 rounded-xl text-xs font-bold transition bg-emerald-600 text-white shadow-sm flex items-center gap-2">
+            <i class="fa-solid fa-user-check"></i> Điểm Danh Ngày
+          </button>
+          <button type="button" onclick="switchAttendanceSubTab('classOverview')" id="subTabOverview" class="px-4 py-2 rounded-xl text-xs font-bold transition text-slate-600 hover:bg-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-list-check"></i> Tổng Quan
+          </button>
+        </div>
+
+        <div id="attSubTabDailyPanel" class="admin-only space-y-3">
+          <div class="bg-white p-3 sm:p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pb-2.5 border-b">
+              <div>
+                <h2 class="font-bold text-brand-dark flex items-center gap-1.5 text-sm sm:text-base">
+                  <i class="fa-solid fa-clipboard-user text-emerald-600"></i> Đánh Dấu Điểm Danh Hàng Ngày
+                </h2>
+                <p class="hidden sm:block text-xs text-slate-500 mt-0.5">Tích chọn trạng thái và lưu trực tiếp lên Database</p>
+              </div>
+              <div class="flex items-center gap-1.5 sm:gap-2 flex-nowrap w-full md:w-auto">
+                <input type="date" id="attendanceDate" onchange="renderAttendanceTable()" class="flex-1 md:flex-none px-2 py-1.5 text-xs border rounded-xl font-bold text-slate-700 bg-white shadow-xs focus:ring-2 focus:ring-emerald-500 min-w-0">
+                <button onclick="markAllPresent()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-2 sm:px-2.5 py-1.5 rounded-xl text-xs transition flex items-center justify-center gap-1 whitespace-nowrap active:scale-95 shadow-xs">
+                  <i class="fa-solid fa-check-double text-xs"></i> <span>Tất cả "Có"</span>
+                </button>
+                <button onclick="saveAttendanceData()" id="btnSaveAttendance" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 sm:px-4 py-1.5 rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-1 whitespace-nowrap active:scale-95 flex-shrink-0">
+                  <i class="fa-solid fa-floppy-disk text-xs"></i> <span>Lưu</span>
+                </button>
+              </div>
+            </div>
+            <div class="flex flex-col gap-2 bg-slate-50 p-2.5 sm:p-3 rounded-xl border border-slate-200 text-xs">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-slate-700 whitespace-nowrap">Khối:</span>
+                <select id="attendanceGradeFilter" onchange="onAttendanceGradeChange()" class="flex-1 px-2.5 py-1.5 border rounded-lg bg-white font-bold text-slate-700 grade-filter-options-hide text-xs"></select>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <select id="attendanceClassFilter" onchange="renderAttendanceTable()" class="w-1/2 px-2.5 py-1.5 border rounded-lg bg-white font-medium text-xs">
+                  <option value="ALL">Tất cả lớp</option>
+                </select>
+                <input type="text" id="attendanceSearch" oninput="renderAttendanceTable()" placeholder="🔍 Tìm tên..." class="w-1/2 px-2.5 py-1.5 border rounded-lg bg-white font-medium text-xs">
+              </div>
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-200/80">
+                <div class="flex items-center gap-1.5 bg-purple-50 p-1 rounded-lg border border-purple-200">
+                  <span class="font-bold text-purple-900 text-[11px] whitespace-nowrap">
+                    <i class="fa-solid fa-user-plus text-purple-600"></i> HS bù:
+                  </span>
+                  <input type="text" id="inputHocBu" list="listAllStudents" placeholder="Gõ tên / Mã HS..." onkeydown="if(event.key==='Enter') themHocBuNhanh()" class="flex-1 px-2 py-1 text-xs border rounded-lg bg-white font-medium focus:ring-2 focus:ring-purple-500 min-w-0">
+                  <datalist id="listAllStudents"></datalist>
+                  <button type="button" onclick="themHocBuNhanh()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-2.5 py-1 rounded-lg text-xs transition shadow-xs active:scale-95 whitespace-nowrap">
+                    + Thêm
+                  </button>
+                </div>
+                <div>
+                  <span id="attendanceDateSyncStatus" class="inline-block font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border text-[11px]">Chưa điểm danh ngày này</span>
+                </div>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="bg-slate-100/90 text-slate-700 uppercase font-bold text-[11px]">
+                    <th class="p-1 text-center w-1 whitespace-nowrap">STT</th>
+                    <th class="p-2 min-w-[120px]">Họ và Tên</th>
+                    <th class="p-1 text-center w-1 whitespace-nowrap">Lớp</th>
+                    <th class="p-1 text-center whitespace-nowrap">Trạng Thái</th>
+                    <th class="p-2 min-w-[80px]">Ghi Chú</th>
+                  </tr>
+                </thead>
+                <tbody id="attendanceTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div id="attSubTabOverviewPanel" class="space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl shadow-sm border text-xs">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="font-bold text-slate-700 text-sm admin-only">Chọn xem theo Lớp:</span>
+              <select id="overviewGradeFilter" onchange="onOverviewGradeChange()" class="admin-only px-3 py-1.5 border rounded-lg bg-white font-bold text-slate-700 text-xs grade-filter-options-hide"></select>
+              <select id="overviewClassFilter" onchange="renderAttendanceOverviewClass()" class="admin-only px-3 py-1.5 border rounded-lg bg-white font-medium text-xs">
+                <option value="ALL">Tất cả Lớp</option>
+              </select>
+              <input type="text" id="overviewSearch" oninput="renderAttendanceOverviewClass()" placeholder="🔍 Tìm tên..." class="px-3 py-1.5 border rounded-lg bg-white font-medium text-xs w-48">
+              <select id="overviewMonthFilter" onchange="renderAttendanceOverviewClass()" class="px-3 py-1.5 border-2 border-emerald-600 rounded-lg bg-white font-bold text-emerald-800 text-xs shadow-sm"></select>
+              <div class="admin-only inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200 text-xs font-bold text-emerald-800 ml-2">
+                <span>Xem:</span>
+                <button type="button" onclick="switchOverviewMode('student')" id="btnViewByStudent" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white transition shadow-sm">👤 HS</button>
+                <button type="button" onclick="switchOverviewMode('date')" id="btnViewByDate" class="px-2.5 py-1 rounded-lg bg-white text-emerald-700 hover:bg-emerald-100 transition">📅 Ngày</button>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 text-xs font-bold">
+              <span class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-300">🟢 Có mặt</span>
+              <span class="bg-blue-100 text-blue-800 px-2.5 py-1 rounded-lg border border-blue-300">🔵 Báo bù</span>
+              <span class="bg-purple-100 text-purple-800 px-2.5 py-1 rounded-lg border border-purple-300">🟣 Học bù</span>
+              <span class="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-lg border border-amber-300">🟡 Vắng CP</span>
+              <span class="bg-red-100 text-red-800 px-2.5 py-1 rounded-lg border border-red-300">🔴 Vắng KP</span>
+            </div>
+          </div>
+          <div id="classOverviewContainer" class="space-y-6"></div>
+        </div>
+      </div>
+
+      <!-- TAB 3: HỌC PHÍ -->
+      <div id="tab-hocphi" class="tab-content hidden space-y-6">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b">
+            <div>
+              <h2 class="text-xl font-bold text-brand-dark flex items-center gap-2">
+                <i class="fa-solid fa-wallet text-emerald-600"></i> Quản Lý Học Phí
+              </h2>    
+            </div>
+            <div class="admin-only flex flex-wrap items-center gap-2">
+              <button onclick="openSetRateModal('grade')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5">
+                <i class="fa-solid fa-sliders text-emerald-600"></i> Học phí theo Khối
+              </button>
+              <button onclick="openSetRateModal('class')" class="bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5">
+                <i class="fa-solid fa-users-rectangle text-purple-600"></i> Học phí theo Lớp
+              </button>
+              <button onclick="openSetRateModal('student')" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5">
+                <i class="fa-solid fa-user-pen text-blue-600"></i> Học phí riêng Cá nhân
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <input type="text" id="feeSearch" oninput="renderTuitionAll()" placeholder="🔍 Tìm tên hoặc Mã HS..." class="admin-only flex-1 min-w-[200px] px-3 py-2 border rounded-xl">
+            <select id="feeGradeFilter" onchange="onFeeGradeChange()" class="admin-only px-3 py-2 border rounded-xl bg-white font-bold text-slate-700 grade-filter-options-hide"></select>
+            <select id="feeClassFilter" onchange="renderTuitionAll()" class="admin-only px-3 py-2 border rounded-xl bg-white font-medium">
+              <option value="ALL">Tất cả Lớp</option>
+            </select>
+            <select id="feeOverviewMonth" onchange="renderTuitionAll()" class="px-3 py-2 border-2 border-brand-dark rounded-xl bg-white font-bold text-brand-dark shadow-sm"></select>
+          </div>
+        </div>
+
+        <div class="admin-only grid grid-cols-2 gap-2 sm:gap-4">
+          <div class="bg-white p-2.5 sm:p-4 rounded-2xl border-2 border-brand-dark shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <div class="text-[10px] sm:text-xs font-black text-brand-dark uppercase tracking-wider flex items-center gap-1">
+                <i class="fa-solid fa-coins text-emerald-600"></i> Tổng Thu
+              </div>
+            </div>
+            <div class="text-base sm:text-xl font-black text-slate-900 font-mono my-1 truncate" id="statGrandTotal">0 đ</div>
+            <div class="flex items-center gap-1 sm:gap-2 text-[9.5px] sm:text-[11px] font-bold flex-wrap">
+              <span class="bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200" id="statGrandTM">TM 0 đ</span>
+              <span class="bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200" id="statGrandCK">CK 0 đ</span>
+            </div>
+          </div>
+          <div class="bg-white p-2.5 sm:p-4 rounded-2xl border-2 border-red-500 shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <div class="text-[10px] sm:text-xs font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
+                <i class="fa-solid fa-triangle-exclamation"></i> Nợ Tổng
+              </div>
+            </div>
+            <div class="text-base sm:text-xl font-black text-red-600 font-mono my-1 truncate" id="statTotalDebt">0 đ</div>
+            <div class="text-[10px] sm:text-[11px] font-bold text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-max" id="statDebtCount">0 HS nợ / 0 HS</div>
+          </div>
+        </div>
+
+        <div class="admin-only bg-white p-5 rounded-2xl shadow-sm border space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b">
+            <h3 class="font-bold text-slate-800 text-base flex items-center gap-2">
+              <i class="fa-solid fa-wallet text-purple-600"></i> Báo Cáo Công Nợ & Số Tiền Còn Dư
+            </h3>
+            <div class="flex flex-wrap items-center gap-2">
+              <button onclick="exportTuitionExcel()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg border transition">
+                <i class="fa-solid fa-file-excel text-emerald-600"></i> Xuất Excel công nợ
+              </button>
+            </div>
+          </div>
+          <div id="debtWarningList" class="flex flex-col gap-2"></div>
+        </div>
+
+        <div id="studentFeeNoticePanel" class="hidden bg-white p-6 rounded-2xl shadow-sm border space-y-4 text-center">
+          <h3 class="font-bold text-brand-dark text-base"><i class="fa-solid fa-bell text-amber-500"></i> Xem Thông Báo Học Phí Của Bạn</h3>
+          <p class="text-xs text-slate-500">Chọn tháng cần xem thông báo và quét mã QR chuyển khoản trực tiếp.</p>
+          <div class="flex justify-center items-center gap-3">
+            <button type="button" onclick="previewNoticeOnly()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-6 py-3 rounded-xl text-xs transition shadow-md flex items-center gap-2">
+              <i class="fa-solid fa-file-invoice-dollar text-sm"></i> Xem & Tải Thông Báo Học Phí Tháng Này
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div id="formCreateTuitionBox" class="admin-only bg-white p-5 rounded-2xl shadow-sm border">
+            <h3 class="font-bold text-brand-dark mb-4 pb-2 border-b flex items-center gap-2"><i class="fa-solid fa-receipt text-emerald-600"></i> Lập Phiếu Thu Học Phí</h3>
+            <form onsubmit="handleSaveTuition(event)" class="space-y-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Chọn Học Sinh (*)</label>
+                <input type="text" id="searchSelectStudentInput" oninput="filterFeeStudentDropdown()" placeholder="🔍 Nhập Tên hoặc Mã HS để tìm..." class="w-full px-3 py-1.5 text-xs border rounded-lg mb-2 focus:ring-2 focus:ring-emerald-500">
+                <select id="feeStudentSelect" onchange="autoFillExpectedFee()" required class="w-full px-3 py-2 text-sm border rounded-lg bg-white font-bold text-slate-800"></select>
+              </div>
+
+              <div id="studentBalanceInfo" style="display: none !important;" class="hidden p-3 rounded-xl text-xs font-bold bg-purple-50 border border-purple-200 space-y-1.5">
+                <div class="flex justify-between text-slate-600"><span>Mức phí tháng này:</span><span id="balRate" class="font-mono text-slate-800">0 đ</span></div>
+                <div class="flex justify-between text-emerald-700"><span>Tổng đã nộp tới nay:</span><span id="balPaid" class="font-mono">0 đ</span></div>
+                <div class="flex justify-between border-t pt-1.5 text-purple-800"><span>Trạng thái / Quỹ dư:</span><span id="balStatus" class="font-mono">0 đ</span></div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Số Tiền Thu (*)</label>
+                <input type="text" id="feeAmount" inputmode="numeric" oninput="formatCurrencyInput(this)" required placeholder="VD: 500.000" class="w-full px-3 py-2 text-sm border rounded-lg font-mono font-bold text-emerald-700 bg-white">
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Hình Thức (*)</label>
+                  <select id="feeMethod" class="w-full px-3 py-2 text-sm border rounded-lg bg-white font-medium">
+                    <option value="Tiền mặt">Tiền mặt</option>
+                    <option value="Chuyển khoản">Chuyển khoản</option>
+                    <option value="Quỹ còn dư">Quỹ còn dư</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Tháng Thu (*)</label>
+                  <select id="feeMonth" onchange="autoFillExpectedFee()" required class="w-full px-3 py-2 text-sm border rounded-lg bg-white font-bold text-slate-700"></select>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Ghi Chú</label>
+                <input type="text" id="feeNote" placeholder="VD: Đóng đợt 1..." class="w-full px-3 py-2 text-sm border rounded-lg">
+              </div>
+              <div class="flex gap-2 pt-2">
+                <button type="button" onclick="previewNoticeOnly()" class="w-1/2 bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 active:scale-95">
+                  <i class="fa-solid fa-bell"></i> Phiếu thông báo
+                </button>
+                <button type="submit" id="btnSaveFee" class="w-1/2 bg-brand-green hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2 active:scale-95">
+                  <i class="fa-solid fa-receipt"></i> Nhập biên lai
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="lg:col-span-3 bg-white p-5 rounded-2xl shadow-sm border space-y-4" id="tuitionHistoryContainer">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b">
+              <h3 class="font-bold text-brand-dark flex items-center gap-2 text-base"><i class="fa-solid fa-clock-rotate-left text-slate-600"></i> Lịch Sử Nộp Học Phí</h3>
+              <div class="flex flex-wrap items-center gap-2">
+                <button onclick="exportHistoryTuitionExcel()" class="admin-only bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-2.5 py-1 rounded-lg shadow-sm transition flex items-center gap-1">
+                  <i class="fa-solid fa-file-excel"></i> Xuất Excel
+                </button>
+                <select id="historyFilterGrade" onchange="onHistoryGradeChange()" class="admin-only px-2.5 py-1 text-xs border rounded-lg bg-white font-medium grade-filter-all-options"></select>
+                <select id="historyFilterClass" onchange="renderTuitionHistoryTable()" class="admin-only px-2.5 py-1 text-xs border rounded-lg bg-white font-medium">
+                  <option value="ALL">Tất cả Lớp</option>
+                </select>
+                <select id="historyFilterMonth" onchange="renderTuitionHistoryTable()" class="px-2.5 py-1 text-xs border rounded-lg bg-white font-bold text-emerald-808 shadow-sm"></select>
+                <input type="text" id="historySearchStudent" oninput="renderTuitionHistoryTable()" placeholder="🔍 Tên HS..." class="admin-only px-2.5 py-1 text-xs border rounded-lg w-28">
+              </div>
+            </div>
+
+            <div class="overflow-x-auto max-h-[220px] overflow-y-auto custom-scrollbar border rounded-xl">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="sticky top-0 z-10 bg-slate-100 shadow-sm">
+                  <tr class="text-slate-600 uppercase font-semibold">
+                    <th class="p-2.5 rounded-l-lg">Ngày Thu</th>
+                    <th class="p-2.5">Mã HS</th>
+                    <th class="p-2.5">Họ và Tên</th>
+                    <th class="p-2.5">Số Tiền</th>
+                    <th class="p-2.5">Hình Thức</th>
+                    <th class="p-2.5">Tháng</th>
+                    <th class="p-2.5">Ghi Chú</th>
+                    <th class="p-2.5 text-right rounded-r-lg">In Phiếu</th>
+                  </tr>
+                </thead>
+                <tbody id="tuitionHistoryTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: HỒ SƠ & BẢNG TIN -->
+      <div id="tab-hoso" class="tab-content hidden space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="bg-white p-6 rounded-2xl shadow-sm border space-y-6">
+            <div class="border-b pb-3">
+              <h2 class="text-lg font-bold text-brand-dark flex items-center gap-2">
+                <i class="fa-solid fa-id-card text-emerald-600"></i> Hồ Sơ Của Tôi
+              </h2>
+              <p class="text-xs text-slate-500 mt-1">Thông tin giáo viên phụ trách</p>
+            </div>
+            <div class="flex flex-col items-center gap-4 text-center">
+              <div class="w-28 h-28 rounded-full bg-slate-200 border-4 border-emerald-500/30 overflow-hidden shadow-md flex items-center justify-center">
+                <img id="profileAvatar" src="" alt="Thầy Hoài Vy" class="w-full h-full object-cover">
+              </div>
+              <input type="file" id="avatarFileInput" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+              <button type="button" onclick="triggerAvatarUpload()" class="profile-admin-only text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Tải ảnh từ thiết bị
+              </button>
+            </div>
+            <div class="space-y-3 w-full text-xs">
+              <div>
+                <label class="block font-semibold text-slate-600 mb-1">Tên Gọi</label>
+                <input type="text" value="Thầy Hoài Vy" class="w-full px-3 py-2 border rounded-lg font-bold text-slate-800 bg-slate-50" readonly>
+              </div>
+              <div>
+                <label class="block font-semibold text-slate-600 mb-1">Mô tả ngắn</label>
+                <textarea rows="4" class="w-full p-2.5 border rounded-xl bg-slate-50 text-xs font-medium leading-relaxed" readonly>• Chuyên môn: Thạc sĩ Toán giải tích
+• GV: THPT Trịnh Hoài Đức
+• Luyện thi môn Toán THPT</textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-2 space-y-6">
+            <div class="admin-only bg-white p-5 rounded-2xl shadow-sm border space-y-4">
+              <h3 class="font-bold text-brand-dark border-b pb-2 flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-emerald-600"></i> Đăng Bài Viết / Đính Kèm File PDF / Link Kiểm Tra
+              </h3>
+              <form onsubmit="handleSavePost(event)" class="space-y-3 text-xs">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div class="sm:col-span-2">
+                    <label class="block font-bold text-slate-600 mb-1">Tiêu Đề Bài Đăng (*)</label>
+                    <input type="text" id="postTitle" required placeholder="VD: Bài giảng Chương 2 - Khảo sát hàm số..." class="w-full px-3 py-2 border rounded-lg font-bold text-slate-800">
+                  </div>
+                  <div>
+                    <label class="block font-bold text-slate-600 mb-1">Loại Bài (*)</label>
+                    <select id="postType" class="w-full px-3 py-2 border rounded-lg bg-white font-bold text-emerald-700">
+                      <option value="Thông báo">📢 Thông báo mới</option>
+                      <option value="Bài tập">📄 Link Bài tập</option>
+                      <option value="Bài giảng">🎥 Link Bài giảng</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block font-bold text-slate-600 mb-1">Áp dụng cho Khối (*)</label>
+                    <select id="postGrade" class="w-full px-3 py-2 border rounded-lg bg-white font-bold text-slate-700 post-grade-options"></select>
+                  </div>
+                  <div>
+                    <label class="block font-bold text-slate-600 mb-1">Link Website / Youtube / Drive (nếu có)</label>
+                    <input type="url" id="postLink" placeholder="https://..." class="w-full px-3 py-2 border rounded-lg font-mono text-blue-600">
+                  </div>
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-600 mb-1">Đính kèm File PDF (nếu có)</label>
+                  <input type="file" id="postPdfFile" accept="application/pdf" class="w-full px-3 py-1.5 border rounded-lg bg-slate-50 text-xs font-medium cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100">
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-600 mb-1">Nội Dung / Dặn Dò (Mỗi ý xuống dòng)</label>
+                  <textarea id="postContent" rows="3" placeholder="Nhập hướng dẫn làm bài hoặc dặn dò học sinh..." class="w-full p-2.5 border rounded-xl"></textarea>
+                </div>
+                <div class="flex justify-end">
+                  <button type="submit" id="btnSavePost" class="bg-brand-green hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl transition shadow-md flex items-center gap-1.5 active:scale-95">
+                    <i class="fa-solid fa-paper-plane"></i> Đăng Bài Viết
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border space-y-4">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                <div class="flex items-center gap-2">
+                  <h3 class="font-bold text-brand-dark text-base flex items-center gap-2">
+                    <i class="fa-solid fa-bullhorn text-amber-500"></i> Bảng Tin & Bài Học
+                  </h3>
+                  <span id="postCountBadge" class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-0.5 rounded-full">0 Bài viết</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold text-slate-600 whitespace-nowrap"><i class="fa-solid fa-filter text-emerald-600"></i> Khối:</span>
+                  <select id="filterPostGrade" onchange="renderPostsList()" class="px-3 py-1.5 text-xs border rounded-lg bg-white font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500">
+                    <option value="NONE" selected>-- Chọn khối cần xem --</option>
+                    <option value="ALL">🌟 Tất cả khối</option>
+                    <option value="Khối 6">Khối 6</option>
+                    <option value="Khối 7">Khối 7</option>
+                    <option value="Khối 8">Khối 8</option>
+                    <option value="Khối 9">Khối 9</option>
+                    <option value="Khối 10">Khối 10</option>
+                    <option value="Khối 11">Khối 11</option>
+                    <option value="Khối 12">Khối 12</option>
+                  </select>
+                </div>
+              </div>
+              <div id="postsListContainer" class="space-y-6"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 5: LỊCH DẠY -->
+      <div id="tab-lichday" class="tab-content profile-admin-only hidden space-y-4">
+        <div class="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border">
+          <h2 class="text-base md:text-lg font-bold text-brand-dark flex items-center gap-2">
+            <i class="fa-solid fa-calendar-days text-emerald-600"></i> Thời Khóa Biểu
+          </h2>
+          <div class="flex gap-2">
+            <button onclick="toggleSwapMode()" id="btnSwapMode" class="bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold px-2.5 sm:px-3 py-1.5 rounded-xl text-xs border border-blue-200 shadow-sm transition flex items-center gap-1.5">
+              <i class="fa-solid fa-right-left"></i> <span class="hidden sm:inline">Đổi chỗ</span>
+            </button>
+            <button onclick="saveAllScheduleAndNotes()" id="btnSaveSchedule" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 sm:px-3 py-1.5 rounded-xl text-xs shadow-md transition flex items-center gap-1.5">
+              <i class="fa-solid fa-floppy-disk"></i> Lưu
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white p-3 md:p-5 rounded-2xl shadow-sm border space-y-3">
+          <div class="flex items-center justify-between border-b pb-2">
+            <h3 class="font-bold text-brand-dark text-sm md:text-base flex items-center gap-2">
+              <i class="fa-solid fa-clock text-amber-500"></i> Thời Khóa Biểu Tuần
+            </h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-center border-collapse text-xs">
+              <thead class="bg-[#19376D] text-white font-bold uppercase sticky top-0 z-20">
+                <tr id="tkbHeaderRow"></tr>
+              </thead>
+              <tbody id="tblFullTKBBody" class="divide-y divide-slate-200"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bg-white p-3 md:p-5 rounded-2xl shadow-sm border space-y-3">
+          <div class="flex items-center justify-between border-b pb-2">
+            <h3 class="font-bold text-brand-dark text-sm md:text-base flex items-center gap-2">
+              <i class="fa-solid fa-note-sticky text-amber-500"></i> Ghi Chú và Công Việc
+            </h3>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-3 border border-blue-100 p-3 rounded-xl bg-blue-50/30">
+              <div class="flex items-center justify-between border-b border-blue-200 pb-2">
+                <span class="font-bold text-blue-900 text-xs flex items-center gap-1.5 uppercase">
+                  <i class="fa-solid fa-school text-blue-600"></i> Ở Trường
+                </span>
+                <button type="button" onclick="addNoteRow('truong')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded-lg text-xs shadow-sm transition flex items-center gap-1">
+                  <i class="fa-solid fa-plus"></i> Thêm dòng
+                </button>
+              </div>
+              <div id="noteTruongList" class="space-y-2 max-h-[360px] overflow-y-auto custom-scrollbar pr-1"></div>
+            </div>
+            <div class="space-y-3 border border-purple-100 p-3 rounded-xl bg-purple-50/30">
+              <div class="flex items-center justify-between border-b border-purple-200 pb-2">
+                <span class="font-bold text-purple-900 text-xs flex items-center gap-1.5 uppercase">
+                  <i class="fa-solid fa-house-user text-purple-600"></i> Ở Nhà
+                </span>
+                <button type="button" onclick="addNoteRow('nha')" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-2.5 py-1 rounded-lg text-xs shadow-sm transition flex items-center gap-1">
+                  <i class="fa-solid fa-plus"></i> Thêm dòng
+                </button>
+              </div>
+              <div id="noteNhaList" class="space-y-2 max-h-[360px] overflow-y-auto custom-scrollbar pr-1"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white p-3 md:p-5 rounded-2xl shadow-sm border space-y-3">
+          <div class="flex items-center justify-between border-b pb-2">
+            <h3 class="font-bold text-brand-dark text-sm md:text-base flex items-center gap-2">
+              <i class="fa-solid fa-calculator text-emerald-600"></i> Thống Kê HS - Thu Nhập
+            </h3>
+            <button type="button" onclick="addCustomClassStatRow()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold px-2.5 py-1 rounded-xl text-xs border border-blue-200 transition flex items-center gap-1">
+              <i class="fa-solid fa-plus"></i> Thêm Lớp Mới
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-[#19376D] text-white uppercase font-bold text-[11px]">
+                  <th class="p-1.5 text-center w-7 whitespace-nowrap">STT</th>
+                  <th class="p-1.5 text-left w-20 sm:w-28 whitespace-nowrap">Tên Lớp</th>
+                  <th class="p-1.5 text-center w-12 whitespace-nowrap">Sĩ Số</th>
+                  <th class="p-1.5 text-right w-24 whitespace-nowrap">Học Phí (đ)</th>
+                  <th class="p-1.5 text-right w-28 whitespace-nowrap">Thành Tiền (đ)</th>
+                  <th class="p-1.5 text-center w-7 whitespace-nowrap">Xóa</th>
+                </tr>
+              </thead>
+              <tbody id="tblCustomClassStatBody" class="divide-y divide-slate-100"></tbody>
+              <tfoot>
+                <tr class="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300 text-xs">
+                  <td colspan="2" class="p-1.5 uppercase whitespace-nowrap">TỔNG CỘNG</td>
+                  <td id="statCustomTotalStudents" class="p-1.5 text-center font-mono text-blue-700 whitespace-nowrap">0 HS</td>
+                  <td class="p-1.5"></td>
+                  <td id="statCustomTotalMoney" class="p-1.5 text-right font-mono text-red-600 text-xs sm:text-sm whitespace-nowrap">0 đ</td>
+                  <td class="p-1.5"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- MODAL BIÊN LAI -->
+  <div id="receiptModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl border w-full max-w-lg overflow-hidden flex flex-col max-h-[95vh]">
+      <div id="printableReceipt" class="p-6 space-y-4 font-sans bg-white overflow-y-auto w-full">
+        <div class="flex items-center justify-between border-b pb-3">
+          <div>
+            <h2 class="text-xl font-black text-[#0b2447] tracking-tight uppercase">TOÁN MR VY</h2>
+            <p class="text-xs text-emerald-600 font-bold mt-0.5" id="recSubHeader">SĐT: 0981864442</p>
+          </div>
+          <div class="text-right">
+            <span id="recTitleBadge" class="text-xs font-bold bg-emerald-100 text-emerald-808 px-3 py-1 rounded-full uppercase whitespace-nowrap">BIÊN LAI THU HỌC PHÍ</span>
+            <p id="recDate" class="text-[11px] text-slate-500 mt-1"></p>
+          </div>
+        </div>
+        <div class="space-y-2.5 text-xs text-slate-700">
+          <div class="flex justify-between border-b pb-1.5">
+            <span class="font-semibold text-slate-600">Học Sinh:</span>
+            <b id="recStuNameCombined" class="text-slate-900 font-bold text-sm"></b>
+          </div>
+          <div class="flex justify-between border-b pb-1.5 gap-2">
+            <span class="font-semibold text-slate-600 whitespace-nowrap">Chuyên Cần:</span>
+            <b id="recStuAttendance" class="text-blue-800 font-bold text-right"></b>
+          </div>
+          <div id="recMonthRow" class="hidden flex justify-between border-b pb-1.5">
+            <span class="font-semibold text-slate-600">Tháng Thu Học Phí:</span>
+            <b id="recMonth" class="text-slate-800 font-bold"></b>
+          </div>
+          <div id="recMethodBox" class="flex justify-between border-b pb-1.5">
+            <span class="font-semibold text-slate-600">Hình Thức Nộp:</span>
+            <b id="recMethod" class="text-purple-700 font-bold"></b>
+          </div>
+          <div class="flex justify-between border-b pb-1.5 gap-2">
+            <span class="font-semibold text-slate-600 whitespace-nowrap">Chi Tiết Học Phí:</span>
+            <b id="recNote" class="text-slate-800 font-bold text-right"></b>
+          </div>
+          <div class="flex justify-between border-t border-slate-300 pt-2 text-sm">
+            <span class="font-bold" id="recAmountLabel">Số Tiền Thực Thu:</span>
+            <b id="recAmount" class="text-base font-black text-emerald-700 font-mono"></b>
+          </div>
+        </div>
+        <div id="recQrContainer" class="hidden border-2 border-red-200 rounded-2xl p-3 bg-red-50/50 flex flex-col items-center space-y-2">
+          <div class="text-center">
+            <p class="text-xs font-black text-red-700 uppercase">Thông Tin Chuyển Khoản Ngân Hàng</p>
+            <p class="text-[11px] font-bold text-slate-700 mt-0.5">STK: <span class="font-mono text-blue-700">0981864442</span> - MB Bank (PHAN HOAI VY)</p>
+          </div>
+          <img id="recQrImage" src="" crossOrigin="anonymous" alt="Mã QR Chuyển Khoản" class="w-48 h-48 object-contain rounded-xl border border-slate-200 shadow-md">
+          <p class="text-[10px] text-slate-500 italic text-center">Quét mã QR bằng App Ngân Hàng hoặc Zalo để chuyển khoản tự động chính xác số tiền & nội dung</p>
+        </div>
+        <div id="recFooterSign" class="flex justify-between pt-4 text-center text-xs">
+          <div>
+            <p class="font-bold text-slate-700">Người Nộp Tiền</p>
+            <p class="text-[10px] text-slate-400 italic mt-8">(Ký & ghi rõ họ tên)</p>
+          </div>
+          <div>
+            <p class="font-bold text-slate-700">Giáo Viên Phụ Trách</p>
+            <p class="font-bold text-emerald-700 mt-6 mb-0">Thầy Hoài Vy</p>
+            <p class="text-[10px] text-emerald-600 italic font-bold">(Đã nhận)</p>
+          </div>
+        </div>
+      </div>
+      <div class="bg-slate-100 px-4 py-3 flex items-center justify-
