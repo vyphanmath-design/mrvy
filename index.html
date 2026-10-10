@@ -1100,11 +1100,22 @@
   <!-- =============================== SCRIPT GIAO DIỆN & SUPABASE =============================== -->
   <script>
     // ----------------------------------------------------
-    // CẤU HÌNH SUPABASE
+    // CẤU HÌNH SUPABASE (LAZY INIT - KHỞI TẠO TRỄ)
     // ----------------------------------------------------
     const SUPABASE_URL = 'https://sflozzrvmthxaojxqboo.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbG96enJ2bXRoeGFvanhxYm9vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDU5NDQsImV4cCI6MjEwNzIyMTk0NH0.MH2lghOcl4zglGbbZdKTnYrC1-1T0ftYMEruVAHhkTs';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    let _supabaseClient = null;
+
+    // HÀM LẤY CLIENT: Tránh sập toàn bộ Javascript nếu mạng chặn Supabase CDN
+    function getSupabase() {
+      if (!_supabaseClient) {
+        if (typeof window.supabase === 'undefined') {
+          throw new Error("Không thể kết nối với máy chủ dữ liệu (Supabase CDN bị chặn hoặc mạng có vấn đề).");
+        }
+        _supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      }
+      return _supabaseClient;
+    }
 
     var appData = { 
       students: [], attendance: [], tuition: [], avatarUrl: '', customRates: [], dismissedKeys: [], posts: [], scheduleNote: { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] }
@@ -1128,7 +1139,7 @@
 
     // ----------------------------------------------------
     // MAPPING DATA: DB <-> Frontend JS 
-    // Hỗ trợ cả tên cột tiếng Việt (như cũ) và tiếng Anh
+    // Hỗ trợ cả tên cột tiếng Việt và tiếng Anh
     // ----------------------------------------------------
     function mapStudentDB(row) {
       return { 
@@ -1147,7 +1158,6 @@
       };
     }
     function mapStudentJStoDB(obj) {
-      // Để đồng bộ ngược lên Supabase, ưu tiên theo chuẩn tiếng Anh
       return { id: obj.id, date: obj.date, name: obj.name, grade: obj.grade, class_name: obj.className, phone: obj.phone, parent_phone: obj.parentPhone, school: obj.school, note: obj.note, status_nghi: obj.statusNghi, start_month: obj.startMonth };
     }
     function mapAttendanceDB(row) {
@@ -1170,16 +1180,17 @@
       var icon = document.getElementById('syncIcon');
       if (icon) icon.classList.add('fa-spin');
       try {
+        const db = getSupabase();
         const [
           { data: dbStudents }, { data: dbAttendance }, { data: dbTuition },
           { data: dbConfig }, { data: dbPosts }, { data: dbSchedule }
         ] = await Promise.all([
-          supabase.from('hoc_sinh').select('*'),
-          supabase.from('diem_danh').select('*'),
-          supabase.from('hoc_phi').select('*'),
-          supabase.from('cau_hinh').select('*'),
-          supabase.from('bai_viet').select('*'),
-          supabase.from('lich_day').select('*')
+          db.from('hoc_sinh').select('*'),
+          db.from('diem_danh').select('*'),
+          db.from('hoc_phi').select('*'),
+          db.from('cau_hinh').select('*'),
+          db.from('bai_viet').select('*'),
+          db.from('lich_day').select('*')
         ]);
 
         let avatarUrl = '';
@@ -1216,14 +1227,13 @@
         if (avatarUrl && avatarUrl.length > 20) localStorage.setItem('teacherAvatar', avatarUrl);
         setAllAvatars(avatarUrl);
         
-        // Tránh lỗi null khi gọi dữ liệu
         if(typeof initAttendanceState === 'function') initAttendanceState(getActiveStudents());
         if(typeof renderAllViews === 'function') renderAllViews();
         
         showToast('Đã đồng bộ dữ liệu với máy chủ!');
       } catch (err) {
         console.error(err);
-        showToast('Lỗi đồng bộ dữ liệu: Không thể kết nối hoặc thiếu cấu trúc bảng.', true);
+        showToast('Lỗi đồng bộ dữ liệu: ' + err.message, true);
       } finally {
         if (icon) icon.classList.remove('fa-spin');
       }
@@ -1241,11 +1251,10 @@
       if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang đăng nhập...';
 
       try {
+        const db = getSupabase();
         let userObj = null;
 
-        // 1. Kiểm tra bảng TÀI KHOẢN (Cho Admin & Trợ giảng)
-        // Lấy tất cả để filter thủ công, tránh lỗi "column not found" nếu db đặt tên theo kiểu Việt/Anh
-        const { data: accData, error: accErr } = await supabase.from('tai_khoan').select('*');
+        const { data: accData } = await db.from('tai_khoan').select('*');
         if (accData && accData.length > 0) {
           const matchedAcc = accData.find(a => 
             (a.tai_khoan && String(a.tai_khoan).trim() === u) || 
@@ -1258,7 +1267,7 @@
               userObj = { 
                 username: matchedAcc.tai_khoan || matchedAcc.username, 
                 name: matchedAcc.ho_ten || matchedAcc.name, 
-                role: String(matchedAcc.phan_quyen || matchedAcc.role).toUpperCase() 
+                role: String(matchedAcc.phan_quyen || matchedAcc.role || 'ASSISTANT').toUpperCase() 
               };
             } else {
               throw new Error('Mật khẩu không chính xác!');
@@ -1266,16 +1275,12 @@
           }
         }
 
-        // 2. Kiểm tra bảng HỌC SINH (Nếu không tìm thấy bên bảng tai_khoan)
         if (!userObj) {
-          const { data: stuData } = await supabase.from('hoc_sinh').select('*');
+          const { data: stuData } = await db.from('hoc_sinh').select('*');
           if (stuData && stuData.length > 0) {
              const stu = stuData.find(s => 
-               String(s.id) === u || 
-               formatStudentId(s.id) === formatStudentId(u) ||
-               String(s.ma_hs) === u
+               String(s.id) === u || formatStudentId(s.id) === formatStudentId(u) || String(s.ma_hs) === u
              );
-
              if (stu) {
                let stuIdStr = String(stu.id || stu.ma_hs);
                if (p === stuIdStr || p === formatStudentId(stuIdStr)) {
@@ -1287,7 +1292,6 @@
           }
         }
 
-        // Xử lý xác thực thành công hoặc thất bại
         if (userObj) {
           const token = 'TOKEN_' + new Date().getTime();
           sessionStorage.setItem('sessionToken', token);
@@ -1347,8 +1351,7 @@
         if (document.getElementById('headerUserName')) document.getElementById('headerUserName').innerText = 'Khách';
         
         applyRolePermissions();
-        // Gọi syncData, nếu bị lỗi cấu trúc DB vẫn không ảnh hưởng tới UI
-        syncData(); 
+        syncData(); // An toàn vì đã bọc try-catch bên trong syncData
         
         showToast('Đang xem ở chế độ Khách (Chỉ xem)');
       } catch(err) {
@@ -1372,7 +1375,8 @@
       if (btn) btn.innerText = 'Đang lưu...';
 
       try {
-        const { data: accData } = await supabase.from('tai_khoan').select('*');
+        const db = getSupabase();
+        const { data: accData } = await db.from('tai_khoan').select('*');
         if (accData && accData.length > 0) {
           const matchedAcc = accData.find(a => 
             (a.tai_khoan && a.tai_khoan === currentUser.username) || 
@@ -1385,7 +1389,7 @@
               const updateObj = matchedAcc.tai_khoan !== undefined ? { mat_khau: newP } : { password: newP };
               const matchCol = matchedAcc.tai_khoan !== undefined ? 'tai_khoan' : 'username';
               
-              await supabase.from('tai_khoan').update(updateObj).eq(matchCol, currentUser.username);
+              await db.from('tai_khoan').update(updateObj).eq(matchCol, currentUser.username);
               closeChangePasswordModal();
               showToast('Đổi mật khẩu thành công!');
             } else {
@@ -1431,10 +1435,11 @@
       if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...';
 
       try {
+        const db = getSupabase();
         const todayStr = new Date().toISOString().split('T')[0];
         let insertData = studentQueue.map(s => {
           let sid = generateStudentId();
-          appData.students.push({id: sid}); // Để sid kế tiếp tăng lên đúng
+          appData.students.push({id: sid});
           return {
             id: sid, date: todayStr, name: s.name, grade: s.grade,
             class_name: s.className, phone: s.phone, parent_phone: s.parentPhone,
@@ -1442,7 +1447,7 @@
           };
         });
 
-        await supabase.from('hoc_sinh').insert(insertData);
+        await db.from('hoc_sinh').insert(insertData);
         studentQueue = [];
         document.getElementById('stuName').value = '';
         renderStudentQueue();
@@ -1463,7 +1468,6 @@
 
       try {
         const payload = {
-          id: document.getElementById('editStuId').value,
           name: document.getElementById('editStuName').value.trim(),
           grade: document.getElementById('editStuGrade').value,
           class_name: document.getElementById('editStuClass').value,
@@ -1472,7 +1476,7 @@
           parent_phone: document.getElementById('editStuParentPhone').value.trim(),
           note: document.getElementById('editStuNote').value.trim()
         };
-        await supabase.from('hoc_sinh').update(payload).eq('id', payload.id);
+        await getSupabase().from('hoc_sinh').update(payload).eq('id', document.getElementById('editStuId').value);
         closeEditStudentModal();
         await syncData();
         showToast('Đã cập nhật thành công!');
@@ -1492,7 +1496,7 @@
       if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
 
       try {
-        await supabase.from('hoc_sinh').update({ class_name: newClass }).eq('id', id);
+        await getSupabase().from('hoc_sinh').update({ class_name: newClass }).eq('id', id);
         closeMoveClassModal();
         await syncData();
         showToast('Đã chuyển học sinh sang lớp ' + newClass + '!');
@@ -1507,11 +1511,11 @@
       if (confirm('Xác nhận đưa học sinh "' + name + '" vào danh sách nghỉ học?')) {
         showToast('Đang xử lý...');
         try {
-          await supabase.from('hoc_sinh').update({ status_nghi: 'ĐÃ NGHỈ HỌC' }).eq('id', id);
-          // Auto dọn rác
-          await supabase.from('diem_danh').delete().eq('student_id', id);
-          await supabase.from('hoc_phi').delete().eq('student_id', id);
-          await supabase.from('cau_hinh').delete().eq('type', 'STUDENT').eq('key', id);
+          const db = getSupabase();
+          await db.from('hoc_sinh').update({ status_nghi: 'ĐÃ NGHỈ HỌC' }).eq('id', id);
+          await db.from('diem_danh').delete().eq('student_id', id);
+          await db.from('hoc_phi').delete().eq('student_id', id);
+          await db.from('cau_hinh').delete().eq('type', 'STUDENT').eq('key', id);
           await syncData();
           showToast('Đã đánh dấu nghỉ học!');
         } catch(err) { showToast('Lỗi: ' + err.message, true); }
@@ -1529,14 +1533,14 @@
         btnBulk.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
         btnBulk.disabled = true;
         try {
-          // Lưu vào hoc_sinh_nghi
+          const db = getSupabase();
           const studentsToMove = appData.students.filter(s => ids.includes(s.id)).map(mapStudentJStoDB);
-          if (studentsToMove.length > 0) await supabase.from('hoc_sinh_nghi').insert(studentsToMove);
-          await supabase.from('hoc_sinh').delete().in('id', ids);
+          if (studentsToMove.length > 0) await db.from('hoc_sinh_nghi').insert(studentsToMove);
+          await db.from('hoc_sinh').delete().in('id', ids);
           
           for(let id of ids) {
-             await supabase.from('diem_danh').delete().eq('student_id', id);
-             await supabase.from('hoc_phi').delete().eq('student_id', id);
+             await db.from('diem_danh').delete().eq('student_id', id);
+             await db.from('hoc_phi').delete().eq('student_id', id);
           }
           await syncData();
           showToast('Đã xóa vĩnh viễn thành công!');
@@ -1548,9 +1552,10 @@
     async function permanentlyDeleteStudent(id, name) {
       if (confirm('Xác nhận XÓA VĨNH VIỄN học sinh "' + name + '"?')) {
         try {
+          const db = getSupabase();
           const student = appData.students.find(s => s.id === id);
-          if(student) await supabase.from('hoc_sinh_nghi').insert([mapStudentJStoDB(student)]);
-          await supabase.from('hoc_sinh').delete().eq('id', id);
+          if(student) await db.from('hoc_sinh_nghi').insert([mapStudentJStoDB(student)]);
+          await db.from('hoc_sinh').delete().eq('id', id);
           await syncData();
           showToast('Đã xóa vĩnh viễn!');
         } catch(err) { showToast('Lỗi: ' + err.message, true); }
@@ -1567,7 +1572,7 @@
       var newGrade = m ? ('Khối ' + m[0]) : s.grade;
 
       try {
-        await supabase.from('hoc_sinh').update({ grade: newGrade, class_name: newClass, status_nghi: '' }).eq('id', id);
+        await getSupabase().from('hoc_sinh').update({ grade: newGrade, class_name: newClass, status_nghi: '' }).eq('id', id);
         await syncData();
         showToast('Đã thêm học sinh quay lại lớp!');
       } catch(err) { showToast('Lỗi: ' + err.message, true); }
@@ -1586,13 +1591,14 @@
       if (studentsToProcess.length === 0) return showToast('Không tìm thấy HS!', true);
 
       try {
+        const db = getSupabase();
         for(let s of studentsToProcess) {
           var num = parseInt(String(s.grade || '').replace(/\D/g, ''), 10);
           if (num >= 12 || String(s.grade).toUpperCase().includes('12')) {
-            await supabase.from('hoc_sinh').update({ status_nghi: 'ĐÃ NGHỈ HỌC' }).eq('id', s.id);
+            await db.from('hoc_sinh').update({ status_nghi: 'ĐÃ NGHỈ HỌC' }).eq('id', s.id);
           } else if (!isNaN(num)) {
             var nextNum = num + 1;
-            await supabase.from('hoc_sinh').update({ grade: 'Khối ' + nextNum, class_name: nextNum + ' Đợi' }).eq('id', s.id);
+            await db.from('hoc_sinh').update({ grade: 'Khối ' + nextNum, class_name: nextNum + ' Đợi' }).eq('id', s.id);
           }
         }
         await syncData();
@@ -1618,8 +1624,9 @@
           date: r.date, grade: r.grade, status: r.status, note: r.note, student_id: r.studentId, student_name: r.studentName
         }));
 
-        await supabase.from('diem_danh').delete().eq('date', dateVal);
-        await supabase.from('diem_danh').insert(inserts);
+        const db = getSupabase();
+        await db.from('diem_danh').delete().eq('date', dateVal);
+        await db.from('diem_danh').insert(inserts);
         
         await syncData();
       } catch(err) {
@@ -1631,11 +1638,12 @@
 
     async function executeUpdateAttendance(studentId, dateStr, newStatus) {
       try {
-        const { data } = await supabase.from('diem_danh').select('id').eq('student_id', studentId).eq('date', dateStr);
+        const db = getSupabase();
+        const { data } = await db.from('diem_danh').select('id').eq('student_id', studentId).eq('date', dateStr);
         if (data && data.length > 0) {
-           await supabase.from('diem_danh').update({ status: newStatus }).eq('id', data[0].id);
+           await db.from('diem_danh').update({ status: newStatus }).eq('id', data[0].id);
         } else {
-           await supabase.from('diem_danh').insert([{ date: dateStr, student_id: studentId, status: newStatus }]);
+           await db.from('diem_danh').insert([{ date: dateStr, student_id: studentId, status: newStatus }]);
         }
         await syncData();
         showToast('✓ Cập nhật thành công!');
@@ -1644,7 +1652,7 @@
 
     async function executeDeleteAttendance(studentId, dateStr) {
       try {
-        await supabase.from('diem_danh').delete().eq('student_id', studentId).eq('date', dateStr);
+        await getSupabase().from('diem_danh').delete().eq('student_id', studentId).eq('date', dateStr);
         await syncData();
         showToast('✓ Đã xóa thành công!');
       } catch(err) { showToast('Lỗi: ' + err.message, true); }
@@ -1657,7 +1665,7 @@
       closeQuickAddAttModal();
       
       try {
-        await supabase.from('diem_danh').insert([{ 
+        await getSupabase().from('diem_danh').insert([{ 
            date: dateStr, student_id: addAttContext.studentId, student_name: addAttContext.studentName,
            grade: addAttContext.className, status: newStatus 
         }]);
@@ -1682,7 +1690,7 @@
 
       try {
         var student = appData.students.find(s => String(s.id) === String(studentId));
-        await supabase.from('hoc_phi').insert([{
+        await getSupabase().from('hoc_phi').insert([{
            student_id: studentId, class_name: student ? student.className : '', amount: amount,
            method: method, month: month, note: note || (method === 'Quỹ còn dư' ? 'Trừ từ quỹ tiền dư' : ''),
            date: new Date().toISOString().split('T')[0]
@@ -1701,9 +1709,10 @@
       var amount = Number(String(document.getElementById('rateClassAmount').value).replace(/\D/g, '')) || 0;
       if (!className || amount <= 0) return;
       try {
-        const { data } = await supabase.from('cau_hinh').select('id').eq('type', 'CLASS').eq('key', className).eq('month', month);
-        if (data && data.length > 0) await supabase.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
-        else await supabase.from('cau_hinh').insert([{type: 'CLASS', key: className, month: month, amount: amount}]);
+        const db = getSupabase();
+        const { data } = await db.from('cau_hinh').select('id').eq('type', 'CLASS').eq('key', className).eq('month', month);
+        if (data && data.length > 0) await db.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
+        else await db.from('cau_hinh').insert([{type: 'CLASS', key: className, month: month, amount: amount}]);
         closeSetRateModal(); await syncData();
       } catch(e) { showToast('Lỗi: ' + e.message, true); }
     }
@@ -1714,9 +1723,10 @@
       var month = document.getElementById('rateGradeMonth').value;
       var amount = Number(String(document.getElementById('rateGradeAmount').value).replace(/\D/g, '')) || 0;
       try {
-        const { data } = await supabase.from('cau_hinh').select('id').eq('type', 'GRADE').eq('key', grade).eq('month', month);
-        if (data && data.length > 0) await supabase.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
-        else await supabase.from('cau_hinh').insert([{type: 'GRADE', key: grade, month: month, amount: amount}]);
+        const db = getSupabase();
+        const { data } = await db.from('cau_hinh').select('id').eq('type', 'GRADE').eq('key', grade).eq('month', month);
+        if (data && data.length > 0) await db.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
+        else await db.from('cau_hinh').insert([{type: 'GRADE', key: grade, month: month, amount: amount}]);
         closeSetRateModal(); await syncData();
       } catch(e) { showToast('Lỗi: ' + e.message, true); }
     }
@@ -1727,9 +1737,10 @@
       var month = document.getElementById('rateStudentMonth').value;
       var amount = Number(String(document.getElementById('rateStudentAmount').value).replace(/\D/g, '')) || 0;
       try {
-        const { data } = await supabase.from('cau_hinh').select('id').eq('type', 'STUDENT').eq('key', id).eq('month', month);
-        if (data && data.length > 0) await supabase.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
-        else await supabase.from('cau_hinh').insert([{type: 'STUDENT', key: id, month: month, amount: amount}]);
+        const db = getSupabase();
+        const { data } = await db.from('cau_hinh').select('id').eq('type', 'STUDENT').eq('key', id).eq('month', month);
+        if (data && data.length > 0) await db.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
+        else await db.from('cau_hinh').insert([{type: 'STUDENT', key: id, month: month, amount: amount}]);
         closeSetRateModal(); await syncData();
       } catch(e) { showToast('Lỗi: ' + e.message, true); }
     }
@@ -1747,9 +1758,10 @@
           var b64 = canvas.toDataURL('image/jpeg', 0.82);
           setAllAvatars(b64);
           try {
-             const {data} = await supabase.from('cau_hinh').select('id').eq('type', 'AVATARURL');
-             if(data && data.length > 0) await supabase.from('cau_hinh').update({key: b64}).eq('id', data[0].id);
-             else await supabase.from('cau_hinh').insert([{type: 'AVATARURL', key: b64}]);
+             const db = getSupabase();
+             const {data} = await db.from('cau_hinh').select('id').eq('type', 'AVATARURL');
+             if(data && data.length > 0) await db.from('cau_hinh').update({key: b64}).eq('id', data[0].id);
+             else await db.from('cau_hinh').insert([{type: 'AVATARURL', key: b64}]);
           } catch(e){}
         };
         img.src = evt.target.result;
@@ -1773,7 +1785,7 @@
            base64pdf = await new Promise(r => { let reader = new FileReader(); reader.onload = e => r(e.target.result); reader.readAsDataURL(file); });
         }
         
-        await supabase.from('bai_viet').insert([{
+        await getSupabase().from('bai_viet').insert([{
            id: 'POST_' + new Date().getTime(),
            date: new Date().toISOString().split('T')[0],
            title: document.getElementById('postTitle').value,
@@ -1795,7 +1807,7 @@
 
     async function handleDeletePost(id, title) {
       if(confirm('Xóa bài đăng: ' + title + '?')) {
-        try { await supabase.from('bai_viet').delete().eq('id', id); await syncData(); } catch(e){}
+        try { await getSupabase().from('bai_viet').delete().eq('id', id); await syncData(); } catch(e){}
       }
     }
 
@@ -1813,8 +1825,9 @@
           if (val) tkbData['label_' + tx.getAttribute('data-label-r')] = val;
         });
         
-        await supabase.from('lich_day').delete().neq('key_type', 'X'); 
-        await supabase.from('lich_day').insert([
+        const db = getSupabase();
+        await db.from('lich_day').delete().neq('key_type', 'X'); 
+        await db.from('lich_day').insert([
           { key_type: 'TKB_DATA', content_json: JSON.stringify(tkbData) },
           { key_type: 'NOTE_TRUONG', content_json: JSON.stringify(noteTruongData) },
           { key_type: 'NOTE_NHA', content_json: JSON.stringify(noteNhaData) },
@@ -1826,9 +1839,8 @@
       finally { if (btn) btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Lưu'; }
     }
 
-
     // ----------------------------------------------------
-    // INIT SYSTEM VÀ CÁC HÀM UI PHỤ (Giữ nguyên gốc để tương thích giao diện)
+    // INIT SYSTEM VÀ CÁC HÀM UI PHỤ 
     // ----------------------------------------------------
     function updateHeaderDateDisplay() {
       var now = new Date();
