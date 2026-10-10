@@ -1097,29 +1097,23 @@
   </div>
 
 
-  <!-- =============================== SCRIPT GIAO DIỆN & SUPABASE =============================== -->
-  <script>
-    // ----------------------------------------------------
-    // CẤU HÌNH SUPABASE (LAZY INIT - KHỞI TẠO TRỄ)
-    // ----------------------------------------------------
+<script>
+    // ==========================================
+    // 1. CẤU HÌNH SUPABASE & KHỞI TẠO
+    // ==========================================
     const SUPABASE_URL = 'https://sflozzrvmthxaojxqboo.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbG96enJ2bXRoeGFvanhxYm9vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NDU5NDQsImV4cCI6MjEwNzIyMTk0NH0.MH2lghOcl4zglGbbZdKTnYrC1-1T0ftYMEruVAHhkTs';
     let _supabaseClient = null;
 
-    // HÀM LẤY CLIENT: Tránh sập toàn bộ Javascript nếu mạng chặn Supabase CDN
     function getSupabase() {
       if (!_supabaseClient) {
-        if (typeof window.supabase === 'undefined') {
-          throw new Error("Không thể kết nối với máy chủ dữ liệu (Supabase CDN bị chặn hoặc mạng có vấn đề).");
-        }
+        if (typeof window.supabase === 'undefined') throw new Error("Không thể kết nối với máy chủ dữ liệu.");
         _supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       }
       return _supabaseClient;
     }
 
-    var appData = { 
-      students: [], attendance: [], tuition: [], avatarUrl: '', customRates: [], dismissedKeys: [], posts: [], scheduleNote: { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] }
-    };
+    var appData = { students: [], attendance: [], tuition: [], avatarUrl: '', customRates: [], dismissedKeys: [], posts: [], scheduleNote: { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] } };
     var currentUser = null;
     var DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2319376D'/><circle cx='50' cy='38' r='20' fill='%23ffffff'/><path d='M20 88 C 20 62, 80 62, 80 88 Z' fill='%23ffffff'/></svg>";
     var ALL_CLASSES = ['6A', '6B', '6C', '6 Đợi', '7A', '7B', '7C', '7 Đợi', '8A', '8B', '8C', '8 Đợi', '9A', '9B', '9C', '9 Đợi', '10A', '10B', '10C', '10 Đợi', '11A', '11B', '11C', '11 Đợi', '12A', '12B', '12C', '12 Đợi'];
@@ -1133,49 +1127,19 @@
       if (m) return [m[0] + 'A', m[0] + 'B', m[0] + 'C', m[0] + ' Đợi'];
       return ALL_CLASSES;
     }
-    function getClassesForGradeExcludingTam(grade) {
-      return getClassesForGrade(grade).filter(function(c) { return !String(c).toUpperCase().includes('ĐỢI'); });
-    }
+    function getClassesForGradeExcludingTam(grade) { return getClassesForGrade(grade).filter(function(c) { return !String(c).toUpperCase().includes('ĐỢI'); }); }
 
-    // ----------------------------------------------------
-    // MAPPING DATA: DB <-> Frontend JS 
-    // Hỗ trợ cả tên cột tiếng Việt và tiếng Anh
-    // ----------------------------------------------------
-    function mapStudentDB(row) {
-      return { 
-        id: row.id || row.ma_hs, 
-        date: row.date || row.thoi_gian || row.ngay, 
-        name: row.name || row.ho_ten || row.ho_va_ten, 
-        grade: row.grade || row.khoi || row.truong_khoi, 
-        className: row.class_name || row.lop, 
-        phone: row.phone || row.sdt_hs, 
-        parentPhone: row.parent_phone || row.sdt_phu_huynh || row.sdt_ph, 
-        school: row.school || row.truong, 
-        note: row.note || row.ghi_chu, 
-        statusNghi: row.status_nghi || row.trang_thai, 
-        startMonth: row.start_month || row.thang_bat_dau, 
-        active: row.active !== false 
-      };
-    }
-    function mapStudentJStoDB(obj) {
-      return { id: obj.id, date: obj.date, name: obj.name, grade: obj.grade, class_name: obj.className, phone: obj.phone, parent_phone: obj.parentPhone, school: obj.school, note: obj.note, status_nghi: obj.statusNghi, start_month: obj.startMonth };
-    }
-    function mapAttendanceDB(row) {
-      return { id: row.id, date: row.date || row.ngay, grade: row.grade || row.lop_khoi, status: row.status || row.trang_thai, note: row.note || row.ghi_chu, studentId: row.student_id || row.ma_hs, studentName: row.student_name || row.ho_ten };
-    }
-    function mapTuitionDB(row) {
-      return { id: row.id, date: row.date || row.ngay_thu, amount: row.amount || row.so_tien, method: row.method || row.hinh_thuc, month: row.month || row.thang, className: row.class_name || row.lop, note: row.note || row.ghi_chu, studentId: row.student_id || row.ma_hs };
-    }
-    function mapConfigDB(row) {
-      return { type: row.type || row.loai, key: row.key, month: row.month || row.thang, amount: row.amount || row.muc_gia };
-    }
-    function mapPostDB(row) {
-      return { id: row.id || row.ma_bai, date: row.date || row.ngay_dang, title: row.title || row.tieu_de, type: row.type || row.loai, content: row.content || row.noi_dung, link: row.link, author: row.author || row.nguoi_dang, grade: row.grade || row.khoi, pdfData: row.pdf_data || row.file_pdf_data };
-    }
+    // MAPPING DATA
+    function mapStudentDB(row) { return { id: row.id || row.ma_hs, date: row.date || row.thoi_gian, name: row.name || row.ho_ten, grade: row.grade || row.khoi, className: row.class_name || row.lop, phone: row.phone || row.sdt_hs, parentPhone: row.parent_phone || row.sdt_ph, school: row.school || row.truong, note: row.note || row.ghi_chu, statusNghi: row.status_nghi || row.trang_thai, startMonth: row.start_month || row.thang_bat_dau, active: row.active !== false }; }
+    function mapStudentJStoDB(obj) { return { id: obj.id, date: obj.date, name: obj.name, grade: obj.grade, class_name: obj.className, phone: obj.phone, parent_phone: obj.parentPhone, school: obj.school, note: obj.note, status_nghi: obj.statusNghi, start_month: obj.startMonth }; }
+    function mapAttendanceDB(row) { return { id: row.id, date: row.date || row.ngay, grade: row.grade || row.lop_khoi, status: row.status || row.trang_thai, note: row.note || row.ghi_chu, studentId: row.student_id || row.ma_hs, studentName: row.student_name || row.ho_ten }; }
+    function mapTuitionDB(row) { return { id: row.id, date: row.date || row.ngay_thu, amount: row.amount || row.so_tien, method: row.method || row.hinh_thuc, month: row.month || row.thang, className: row.class_name || row.lop, note: row.note || row.ghi_chu, studentId: row.student_id || row.ma_hs }; }
+    function mapConfigDB(row) { return { type: row.type || row.loai, key: row.key, month: row.month || row.thang, amount: row.amount || row.muc_gia }; }
+    function mapPostDB(row) { return { id: row.id || row.ma_bai, date: row.date || row.ngay_dang, title: row.title || row.tieu_de, type: row.type || row.loai, content: row.content || row.noi_dung, link: row.link, author: row.author || row.nguoi_dang, grade: row.grade || row.khoi, pdfData: row.pdf_data || row.file_pdf_data }; }
 
-    // ----------------------------------------------------
-    // SUPABASE DATA SYNC & AUTHENTICATION
-    // ----------------------------------------------------
+    // ==========================================
+    // 2. KẾT NỐI DỮ LIỆU & ĐĂNG NHẬP
+    // ==========================================
     async function syncData() {
       var icon = document.getElementById('syncIcon');
       if (icon) icon.classList.add('fa-spin');
@@ -1185,16 +1149,11 @@
           { data: dbStudents }, { data: dbAttendance }, { data: dbTuition },
           { data: dbConfig }, { data: dbPosts }, { data: dbSchedule }
         ] = await Promise.all([
-          db.from('hoc_sinh').select('*'),
-          db.from('diem_danh').select('*'),
-          db.from('hoc_phi').select('*'),
-          db.from('cau_hinh').select('*'),
-          db.from('bai_viet').select('*'),
-          db.from('lich_day').select('*')
+          db.from('hoc_sinh').select('*'), db.from('diem_danh').select('*'), db.from('hoc_phi').select('*'),
+          db.from('cau_hinh').select('*'), db.from('bai_viet').select('*'), db.from('lich_day').select('*')
         ]);
 
-        let avatarUrl = '';
-        let customRates = [];
+        let avatarUrl = ''; let customRates = [];
         (dbConfig || []).forEach(row => {
           let typeStr = String(row.type || row.loai || '').toUpperCase();
           if (typeStr === 'AVATARURL' || typeStr === 'AVATAR') avatarUrl = row.key;
@@ -1203,8 +1162,7 @@
 
         let scheduleNote = { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] };
         (dbSchedule || []).forEach(row => {
-          let keyType = row.key_type || row.keytype || '';
-          let content = row.content_json || row.contentjson || '';
+          let keyType = row.key_type || row.keytype || ''; let content = row.content_json || row.contentjson || '';
           try {
             if (keyType === 'TKB_DATA') scheduleNote.tkbData = JSON.parse(content);
             if (keyType === 'NOTE_TRUONG') scheduleNote.noteTruong = JSON.parse(content);
@@ -1217,22 +1175,16 @@
           students: (dbStudents || []).map(mapStudentDB),
           attendance: (dbAttendance || []).map(mapAttendanceDB),
           tuition: (dbTuition || []).map(mapTuitionDB),
-          avatarUrl: avatarUrl,
-          customRates: customRates,
-          dismissedKeys: [],
-          posts: (dbPosts || []).map(mapPostDB),
-          scheduleNote: scheduleNote
+          avatarUrl: avatarUrl, customRates: customRates, dismissedKeys: [],
+          posts: (dbPosts || []).map(mapPostDB), scheduleNote: scheduleNote
         };
 
         if (avatarUrl && avatarUrl.length > 20) localStorage.setItem('teacherAvatar', avatarUrl);
         setAllAvatars(avatarUrl);
-        
-        if(typeof initAttendanceState === 'function') initAttendanceState(getActiveStudents());
-        if(typeof renderAllViews === 'function') renderAllViews();
-        
+        initAttendanceState(getActiveStudents());
+        renderAllViews();
         showToast('Đã đồng bộ dữ liệu với máy chủ!');
       } catch (err) {
-        console.error(err);
         showToast('Lỗi đồng bộ dữ liệu: ' + err.message, true);
       } finally {
         if (icon) icon.classList.remove('fa-spin');
@@ -1253,57 +1205,37 @@
       try {
         const db = getSupabase();
         let userObj = null;
-
         const { data: accData } = await db.from('tai_khoan').select('*');
         if (accData && accData.length > 0) {
-          const matchedAcc = accData.find(a => 
-            (a.tai_khoan && String(a.tai_khoan).trim() === u) || 
-            (a.username && String(a.username).trim() === u)
-          );
-          
+          const matchedAcc = accData.find(a => (a.tai_khoan && String(a.tai_khoan).trim() === u) || (a.username && String(a.username).trim() === u));
           if (matchedAcc) {
             const dbPass = String(matchedAcc.mat_khau || matchedAcc.password || '');
             if (dbPass === p) {
-              userObj = { 
-                username: matchedAcc.tai_khoan || matchedAcc.username, 
-                name: matchedAcc.ho_ten || matchedAcc.name, 
-                role: String(matchedAcc.phan_quyen || matchedAcc.role || 'ASSISTANT').toUpperCase() 
-              };
-            } else {
-              throw new Error('Mật khẩu không chính xác!');
-            }
+              userObj = { username: matchedAcc.tai_khoan || matchedAcc.username, name: matchedAcc.ho_ten || matchedAcc.name, role: String(matchedAcc.phan_quyen || matchedAcc.role || 'ASSISTANT').toUpperCase() };
+            } else throw new Error('Mật khẩu không chính xác!');
           }
         }
-
         if (!userObj) {
           const { data: stuData } = await db.from('hoc_sinh').select('*');
           if (stuData && stuData.length > 0) {
-             const stu = stuData.find(s => 
-               String(s.id) === u || formatStudentId(s.id) === formatStudentId(u) || String(s.ma_hs) === u
-             );
+             const stu = stuData.find(s => String(s.id) === u || formatStudentId(s.id) === formatStudentId(u) || String(s.ma_hs) === u);
              if (stu) {
                let stuIdStr = String(stu.id || stu.ma_hs);
                if (p === stuIdStr || p === formatStudentId(stuIdStr)) {
                  userObj = { username: stuIdStr, name: stu.name || stu.ho_ten, role: 'STUDENT' };
-               } else {
-                 throw new Error('Mật khẩu của học sinh không chính xác!');
-               }
+               } else throw new Error('Mật khẩu của học sinh không chính xác!');
              }
           }
         }
-
         if (userObj) {
-          const token = 'TOKEN_' + new Date().getTime();
-          sessionStorage.setItem('sessionToken', token);
+          sessionStorage.setItem('sessionToken', 'TOKEN_' + new Date().getTime());
           currentUser = userObj;
           sessionStorage.setItem('currentUser', JSON.stringify(userObj));
           document.getElementById('loginScreen').classList.add('hidden');
           if (document.getElementById('headerUserName')) document.getElementById('headerUserName').innerText = userObj.name;
           applyRolePermissions();
           await syncData();
-        } else {
-          throw new Error('Tài khoản không tồn tại!');
-        }
+        } else throw new Error('Tài khoản không tồn tại!');
       } catch (err) {
         if (errEl) { errEl.innerText = err.message || 'Đăng nhập thất bại!'; errEl.classList.remove('hidden'); }
       } finally {
@@ -1315,683 +1247,66 @@
       var token = sessionStorage.getItem('sessionToken');
       var userStr = sessionStorage.getItem('currentUser');
       setAllAvatars(localStorage.getItem('teacherAvatar') || '');
-
-      if (!token || !userStr) {
-        currentUser = null;
-        document.getElementById('loginScreen').classList.remove('hidden');
-        return;
-      }
+      if (!token || !userStr) { currentUser = null; document.getElementById('loginScreen').classList.remove('hidden'); return; }
       try {
         currentUser = JSON.parse(userStr);
         document.getElementById('loginScreen').classList.add('hidden');
         if (document.getElementById('headerUserName')) document.getElementById('headerUserName').innerText = currentUser.name || currentUser.username;
         applyRolePermissions();
         syncData();
-      } catch(e) {
-        handleLogout();
-      }
+      } catch(e) { handleLogout(); }
     }
 
     function handleLogout() {
       if (!confirm('Bạn có chắc chắn muốn đăng xuất?')) return;
-      sessionStorage.removeItem('sessionToken');
-      sessionStorage.removeItem('currentUser');
-      currentUser = null;
-      window.location.reload();
+      sessionStorage.removeItem('sessionToken'); sessionStorage.removeItem('currentUser'); currentUser = null; window.location.reload();
     }
 
     function handleGuestLogin() {
       try {
         const guestUser = { username: "guest", name: "Khách tham quan", role: "GUEST" };
-        sessionStorage.setItem('sessionToken', 'GUEST_TOKEN');
-        sessionStorage.setItem('currentUser', JSON.stringify(guestUser));
-        currentUser = guestUser;
-        
+        sessionStorage.setItem('sessionToken', 'GUEST_TOKEN'); sessionStorage.setItem('currentUser', JSON.stringify(guestUser)); currentUser = guestUser;
         document.getElementById('loginScreen').classList.add('hidden');
         if (document.getElementById('headerUserName')) document.getElementById('headerUserName').innerText = 'Khách';
-        
         applyRolePermissions();
-        syncData(); // An toàn vì đã bọc try-catch bên trong syncData
-        
+        syncData();
         showToast('Đang xem ở chế độ Khách (Chỉ xem)');
-      } catch(err) {
-        showToast('Lỗi khi truy cập Khách: ' + err.message, true);
-      }
-    }
-
-    async function handleChangePasswordSubmit(e) {
-      e.preventDefault();
-      var oldP = document.getElementById('oldPasswordInput').value;
-      var newP = document.getElementById('newPasswordInput').value;
-      var confirmP = document.getElementById('confirmPasswordInput').value;
-      var errEl = document.getElementById('changePassErrorMsg');
-
-      if (newP !== confirmP) {
-        if (errEl) { errEl.innerText = 'Mật khẩu mới xác nhận không khớp!'; errEl.classList.remove('hidden'); }
-        return;
-      }
-
-      var btn = document.getElementById('btnSavePassword');
-      if (btn) btn.innerText = 'Đang lưu...';
-
-      try {
-        const db = getSupabase();
-        const { data: accData } = await db.from('tai_khoan').select('*');
-        if (accData && accData.length > 0) {
-          const matchedAcc = accData.find(a => 
-            (a.tai_khoan && a.tai_khoan === currentUser.username) || 
-            (a.username && a.username === currentUser.username)
-          );
-          
-          if (matchedAcc) {
-            const dbPass = String(matchedAcc.mat_khau || matchedAcc.password || '');
-            if (dbPass === oldP) {
-              const updateObj = matchedAcc.tai_khoan !== undefined ? { mat_khau: newP } : { password: newP };
-              const matchCol = matchedAcc.tai_khoan !== undefined ? 'tai_khoan' : 'username';
-              
-              await db.from('tai_khoan').update(updateObj).eq(matchCol, currentUser.username);
-              closeChangePasswordModal();
-              showToast('Đổi mật khẩu thành công!');
-            } else {
-              throw new Error('Mật khẩu cũ không chính xác!');
-            }
-          } else {
-            throw new Error('Không tìm thấy tài khoản (Học sinh đổi mật khẩu vui lòng liên hệ Thầy)!');
-          }
-        }
-      } catch(err) {
-        if (errEl) { errEl.innerText = err.message; errEl.classList.remove('hidden'); }
-      } finally {
-        if (btn) btn.innerText = 'Lưu Mật Khẩu';
-      }
-    }
-
-    // ----------------------------------------------------
-    // BỘ HÀM XỬ LÝ HỌC SINH (CRUD)
-    // ----------------------------------------------------
-    function generateStudentId() {
-      let maxId = 0;
-      appData.students.forEach(s => {
-        let num = parseInt(String(s.id).replace(/\D/g, ''), 10);
-        if (!isNaN(num) && num > maxId) maxId = num;
-      });
-      return ('000' + (maxId + 1)).slice(-3);
-    }
-
-    async function saveQueuedStudentsOrSingle() {
-      var nameCurrent = document.getElementById('stuName').value.trim();
-      if (nameCurrent) {
-        studentQueue.push({
-          name: nameCurrent, grade: document.getElementById('stuGrade').value,
-          className: document.getElementById('stuClass').value, school: document.getElementById('stuSchool').value.trim(),
-          phone: document.getElementById('stuPhone').value.trim(), parentPhone: document.getElementById('stuParentPhone').value.trim(),
-          note: document.getElementById('stuNote').value.trim()
-        });
-      }
-
-      if (studentQueue.length === 0) return showToast('Vui lòng nhập họ tên học sinh!', true);
-
-      var btn = document.getElementById('btnSaveBatchStu');
-      if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...';
-
-      try {
-        const db = getSupabase();
-        const todayStr = new Date().toISOString().split('T')[0];
-        let insertData = studentQueue.map(s => {
-          let sid = generateStudentId();
-          appData.students.push({id: sid});
-          return {
-            id: sid, date: todayStr, name: s.name, grade: s.grade,
-            class_name: s.className, phone: s.phone, parent_phone: s.parentPhone,
-            school: s.school, note: s.note, status_nghi: '', start_month: ''
-          };
-        });
-
-        await db.from('hoc_sinh').insert(insertData);
-        studentQueue = [];
-        document.getElementById('stuName').value = '';
-        renderStudentQueue();
-        await syncData();
-      } catch (err) {
-        showToast('Lỗi lưu: ' + err.message, true);
-      } finally {
-        if (btn) btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Lưu & Đồng Bộ Lên DB';
-      }
-    }
-
-    async function handleUpdateStudent(e) {
-      e.preventDefault();
-      var submitBtn = e.target.querySelector('button[type="submit"]');
-      var originalText = submitBtn.innerText;
-      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
-      submitBtn.disabled = true;
-
-      try {
-        const payload = {
-          name: document.getElementById('editStuName').value.trim(),
-          grade: document.getElementById('editStuGrade').value,
-          class_name: document.getElementById('editStuClass').value,
-          school: document.getElementById('editStuSchool').value.trim(),
-          phone: document.getElementById('editStuPhone').value.trim(),
-          parent_phone: document.getElementById('editStuParentPhone').value.trim(),
-          note: document.getElementById('editStuNote').value.trim()
-        };
-        await getSupabase().from('hoc_sinh').update(payload).eq('id', document.getElementById('editStuId').value);
-        closeEditStudentModal();
-        await syncData();
-        showToast('Đã cập nhật thành công!');
-      } catch(err) {
-        showToast('Lỗi cập nhật: ' + err.message, true);
-      } finally {
-        submitBtn.innerHTML = originalText; submitBtn.disabled = false;
-      }
-    }
-
-    async function handleMoveClass(e) {
-      e.preventDefault();
-      var id = document.getElementById('moveStuId').value;
-      var newClass = document.getElementById('moveStuTargetClass').value;
-      if (!newClass) return;
-      var btn = document.getElementById('btnConfirmMove');
-      if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
-
-      try {
-        await getSupabase().from('hoc_sinh').update({ class_name: newClass }).eq('id', id);
-        closeMoveClassModal();
-        await syncData();
-        showToast('Đã chuyển học sinh sang lớp ' + newClass + '!');
-      } catch(err) {
-        showToast('Lỗi chuyển lớp: ' + err.message, true);
-      } finally {
-        if (btn) btn.innerHTML = 'Xác Nhận';
-      }
-    }
-
-    async function handleDeleteStudent(id, name) {
-      if (confirm('Xác nhận đưa học sinh "' + name + '" vào danh sách nghỉ học?')) {
-        showToast('Đang xử lý...');
-        try {
-          const db = getSupabase();
-          await db.from('hoc_sinh').update({ status_nghi: 'ĐÃ NGHỈ HỌC' }).eq('id', id);
-          await db.from('diem_danh').delete().eq('student_id', id);
-          await db.from('hoc_phi').delete().eq('student_id', id);
-          await db.from('cau_hinh').delete().eq('type', 'STUDENT').eq('key', id);
-          await syncData();
-          showToast('Đã đánh dấu nghỉ học!');
-        } catch(err) { showToast('Lỗi: ' + err.message, true); }
-      }
-    }
-
-    async function permanentlyDeleteSelectedStudents() {
-      var checkboxes = document.querySelectorAll('.student-checkbox:checked');
-      if (checkboxes.length === 0) return;
-      var ids = Array.from(checkboxes).map(cb => cb.value);
-      
-      if (confirm('Xác nhận XÓA VĨNH VIỄN ' + ids.length + ' học sinh đã chọn?')) {
-        var btnBulk = document.getElementById('btnBulkDelete');
-        var origHtml = btnBulk.innerHTML;
-        btnBulk.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
-        btnBulk.disabled = true;
-        try {
-          const db = getSupabase();
-          const studentsToMove = appData.students.filter(s => ids.includes(s.id)).map(mapStudentJStoDB);
-          if (studentsToMove.length > 0) await db.from('hoc_sinh_nghi').insert(studentsToMove);
-          await db.from('hoc_sinh').delete().in('id', ids);
-          
-          for(let id of ids) {
-             await db.from('diem_danh').delete().eq('student_id', id);
-             await db.from('hoc_phi').delete().eq('student_id', id);
-          }
-          await syncData();
-          showToast('Đã xóa vĩnh viễn thành công!');
-        } catch(err) { showToast('Lỗi: ' + err.message, true); }
-        finally { btnBulk.innerHTML = origHtml; btnBulk.disabled = false; }
-      }
-    }
-
-    async function permanentlyDeleteStudent(id, name) {
-      if (confirm('Xác nhận XÓA VĨNH VIỄN học sinh "' + name + '"?')) {
-        try {
-          const db = getSupabase();
-          const student = appData.students.find(s => s.id === id);
-          if(student) await db.from('hoc_sinh_nghi').insert([mapStudentJStoDB(student)]);
-          await db.from('hoc_sinh').delete().eq('id', id);
-          await syncData();
-          showToast('Đã xóa vĩnh viễn!');
-        } catch(err) { showToast('Lỗi: ' + err.message, true); }
-      }
-    }
-
-    async function restoreStudentModal(id) {
-      var s = appData.students.find(x => x.id === id);
-      if (!s) return;
-      var newClass = prompt('Nhập tên lớp muốn cho học sinh "' + s.name + '" quay lại học:', s.className || '10A');
-      if (!newClass) return;
-      newClass = newClass.replace(/\s+/g, '').toUpperCase();
-      var m = newClass.match(/\d+/);
-      var newGrade = m ? ('Khối ' + m[0]) : s.grade;
-
-      try {
-        await getSupabase().from('hoc_sinh').update({ grade: newGrade, class_name: newClass, status_nghi: '' }).eq('id', id);
-        await syncData();
-        showToast('Đã thêm học sinh quay lại lớp!');
       } catch(err) { showToast('Lỗi: ' + err.message, true); }
     }
 
-    async function promoteSelectedOrAllStudents(targetStudentId) {
-      var studentsToProcess = [];
-      if (targetStudentId) {
-        var s = getActiveStudents().find(x => String(x.id) === String(targetStudentId));
-        if (s) studentsToProcess.push(s);
-      } else {
-        var gF = document.getElementById('filterGrade').value;
-        var cF = document.getElementById('filterClass').value;
-        studentsToProcess = getActiveStudents().filter(s => (gF==='ALL'||gF==='NONE'||s.grade===gF) && (cF==='ALL'||!cF||s.className===cF));
-      }
-      if (studentsToProcess.length === 0) return showToast('Không tìm thấy HS!', true);
-
-      try {
-        const db = getSupabase();
-        for(let s of studentsToProcess) {
-          var num = parseInt(String(s.grade || '').replace(/\D/g, ''), 10);
-          if (num >= 12 || String(s.grade).toUpperCase().includes('12')) {
-            await db.from('hoc_sinh').update({ status_nghi: 'ĐÃ NGHỈ HỌC' }).eq('id', s.id);
-          } else if (!isNaN(num)) {
-            var nextNum = num + 1;
-            await db.from('hoc_sinh').update({ grade: 'Khối ' + nextNum, class_name: nextNum + ' Đợi' }).eq('id', s.id);
-          }
-        }
-        await syncData();
-        showToast('Đã thăng lớp thành công!');
-      } catch(err) { showToast('Lỗi: '+err.message, true); }
-    }
-
-    // ----------------------------------------------------
-    // BỘ HÀM XỬ LÝ ĐIỂM DANH
-    // ----------------------------------------------------
-    async function saveAttendanceData() {
-      var dateVal = document.getElementById('attendanceDate').value;
-      if (!dateVal) return showToast('Vui lòng chọn ngày!', true);
-
-      var btn = document.getElementById('btnSaveAttendance');
-      if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xs"></i> <span>Lưu...</span>';
-
-      try {
-        var records = Object.values(currentAttendanceState).filter(r => !String(r.grade).toUpperCase().includes('ĐỢI'));
-        if (records.length === 0) throw new Error('Chưa có học sinh!');
-
-        let inserts = records.map(r => ({
-          date: r.date, grade: r.grade, status: r.status, note: r.note, student_id: r.studentId, student_name: r.studentName
-        }));
-
-        const db = getSupabase();
-        await db.from('diem_danh').delete().eq('date', dateVal);
-        await db.from('diem_danh').insert(inserts);
-        
-        await syncData();
-      } catch(err) {
-        showToast('Lỗi: ' + err.message, true);
-      } finally {
-        if (btn) btn.innerHTML = '<i class="fa-solid fa-floppy-disk text-xs"></i> <span>Lưu</span>';
-      }
-    }
-
-    async function executeUpdateAttendance(studentId, dateStr, newStatus) {
-      try {
-        const db = getSupabase();
-        const { data } = await db.from('diem_danh').select('id').eq('student_id', studentId).eq('date', dateStr);
-        if (data && data.length > 0) {
-           await db.from('diem_danh').update({ status: newStatus }).eq('id', data[0].id);
-        } else {
-           await db.from('diem_danh').insert([{ date: dateStr, student_id: studentId, status: newStatus }]);
-        }
-        await syncData();
-        showToast('✓ Cập nhật thành công!');
-      } catch(err) { showToast('Lỗi: ' + err.message, true); }
-    }
-
-    async function executeDeleteAttendance(studentId, dateStr) {
-      try {
-        await getSupabase().from('diem_danh').delete().eq('student_id', studentId).eq('date', dateStr);
-        await syncData();
-        showToast('✓ Đã xóa thành công!');
-      } catch(err) { showToast('Lỗi: ' + err.message, true); }
-    }
-
-    async function handleSaveAddAtt() {
-      var dateStr = document.getElementById('addAttDateInput').value;
-      var newStatus = document.getElementById('addAttNewStatus').value;
-      if (!dateStr) return showToast('Vui lòng chọn ngày!', true);
-      closeQuickAddAttModal();
-      
-      try {
-        await getSupabase().from('diem_danh').insert([{ 
-           date: dateStr, student_id: addAttContext.studentId, student_name: addAttContext.studentName,
-           grade: addAttContext.className, status: newStatus 
-        }]);
-        await syncData();
-      } catch(err) { showToast('Lỗi: ' + err.message, true); }
-    }
-
-    // ----------------------------------------------------
-    // BỘ HÀM XỬ LÝ HỌC PHÍ & CẤU HÌNH
-    // ----------------------------------------------------
-    async function handleSaveTuition(e) {
-      e.preventDefault();
-      var studentId = document.getElementById('feeStudentSelect').value;
-      var amount = Number(String(document.getElementById('feeAmount').value).replace(/\D/g, '')) || 0;
-      var method = document.getElementById('feeMethod').value;
-      var month = document.getElementById('feeMonth').value;
-      var note = document.getElementById('feeNote').value;
-      
-      if (!studentId || amount <= 0) return showToast('Vui lòng nhập số tiền!', true);
-      var btn = document.getElementById('btnSaveFee');
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...'; }
-
-      try {
-        var student = appData.students.find(s => String(s.id) === String(studentId));
-        await getSupabase().from('hoc_phi').insert([{
-           student_id: studentId, class_name: student ? student.className : '', amount: amount,
-           method: method, month: month, note: note || (method === 'Quỹ còn dư' ? 'Trừ từ quỹ tiền dư' : ''),
-           date: new Date().toISOString().split('T')[0]
-        }]);
-        document.getElementById('feeAmount').value = '';
-        await syncData();
-        renderTuitionAll();
-      } catch(err) { showToast('Lỗi: ' + err.message, true); }
-      finally { if(btn) { btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-receipt"></i> Nhập biên lai'; } }
-    }
-
-    async function handleSaveClassRate(e) {
-      e.preventDefault();
-      var className = document.getElementById('rateClassSelect').value;
-      var month = document.getElementById('rateClassMonth').value;
-      var amount = Number(String(document.getElementById('rateClassAmount').value).replace(/\D/g, '')) || 0;
-      if (!className || amount <= 0) return;
-      try {
-        const db = getSupabase();
-        const { data } = await db.from('cau_hinh').select('id').eq('type', 'CLASS').eq('key', className).eq('month', month);
-        if (data && data.length > 0) await db.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
-        else await db.from('cau_hinh').insert([{type: 'CLASS', key: className, month: month, amount: amount}]);
-        closeSetRateModal(); await syncData();
-      } catch(e) { showToast('Lỗi: ' + e.message, true); }
-    }
-
-    async function handleSaveGradeRate(e) {
-      e.preventDefault();
-      var grade = document.getElementById('rateGradeSelect').value;
-      var month = document.getElementById('rateGradeMonth').value;
-      var amount = Number(String(document.getElementById('rateGradeAmount').value).replace(/\D/g, '')) || 0;
-      try {
-        const db = getSupabase();
-        const { data } = await db.from('cau_hinh').select('id').eq('type', 'GRADE').eq('key', grade).eq('month', month);
-        if (data && data.length > 0) await db.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
-        else await db.from('cau_hinh').insert([{type: 'GRADE', key: grade, month: month, amount: amount}]);
-        closeSetRateModal(); await syncData();
-      } catch(e) { showToast('Lỗi: ' + e.message, true); }
-    }
-
-    async function handleSaveStudentRate(e) {
-      e.preventDefault();
-      var id = document.getElementById('rateStudentSelect').value;
-      var month = document.getElementById('rateStudentMonth').value;
-      var amount = Number(String(document.getElementById('rateStudentAmount').value).replace(/\D/g, '')) || 0;
-      try {
-        const db = getSupabase();
-        const { data } = await db.from('cau_hinh').select('id').eq('type', 'STUDENT').eq('key', id).eq('month', month);
-        if (data && data.length > 0) await db.from('cau_hinh').update({amount: amount}).eq('id', data[0].id);
-        else await db.from('cau_hinh').insert([{type: 'STUDENT', key: id, month: month, amount: amount}]);
-        closeSetRateModal(); await syncData();
-      } catch(e) { showToast('Lỗi: ' + e.message, true); }
-    }
-
-    async function handleFileUpload(e) {
-      var file = e.target.files[0];
-      if (!file) return;
-      var reader = new FileReader();
-      reader.onload = async function(evt) {
-        var img = new Image();
-        img.onload = async function() {
-          var canvas = document.createElement('canvas');
-          canvas.width = 160; canvas.height = 160;
-          canvas.getContext('2d').drawImage(img, 0, 0, 160, 160);
-          var b64 = canvas.toDataURL('image/jpeg', 0.82);
-          setAllAvatars(b64);
-          try {
-             const db = getSupabase();
-             const {data} = await db.from('cau_hinh').select('id').eq('type', 'AVATARURL');
-             if(data && data.length > 0) await db.from('cau_hinh').update({key: b64}).eq('id', data[0].id);
-             else await db.from('cau_hinh').insert([{type: 'AVATARURL', key: b64}]);
-          } catch(e){}
-        };
-        img.src = evt.target.result;
-      };
-      reader.readAsDataURL(file);
-    }
-
-    // ----------------------------------------------------
-    // BỘ HÀM BÀI VIẾT & LỊCH DẠY
-    // ----------------------------------------------------
-    async function handleSavePost(e) {
-      e.preventDefault();
-      var btn = document.getElementById('btnSavePost');
-      if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang tải lên...';
-      try {
-        var pdfInput = document.getElementById('postPdfFile');
-        var base64pdf = '';
-        if (pdfInput && pdfInput.files && pdfInput.files[0]) {
-           let file = pdfInput.files[0];
-           if(file.size > 2000000) throw new Error('File quá lớn (> 2MB)');
-           base64pdf = await new Promise(r => { let reader = new FileReader(); reader.onload = e => r(e.target.result); reader.readAsDataURL(file); });
-        }
-        
-        await getSupabase().from('bai_viet').insert([{
-           id: 'POST_' + new Date().getTime(),
-           date: new Date().toISOString().split('T')[0],
-           title: document.getElementById('postTitle').value,
-           type: document.getElementById('postType').value,
-           grade: document.getElementById('postGrade').value,
-           content: document.getElementById('postContent').value,
-           link: document.getElementById('postLink').value,
-           author: currentUser ? currentUser.name : 'Admin',
-           pdf_data: base64pdf
-        }]);
-        document.getElementById('postTitle').value = '';
-        await syncData();
-      } catch(err) {
-        showToast('Lỗi đăng bài: ' + err.message, true);
-      } finally {
-        if(btn) btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Đăng Bài Viết';
-      }
-    }
-
-    async function handleDeletePost(id, title) {
-      if(confirm('Xóa bài đăng: ' + title + '?')) {
-        try { await getSupabase().from('bai_viet').delete().eq('id', id); await syncData(); } catch(e){}
-      }
-    }
-
-    async function saveAllScheduleAndNotes() {
-      var btn = document.getElementById('btnSaveSchedule');
-      if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu...';
-      try {
-        var tkbData = {};
-        document.querySelectorAll('div[data-r][data-c]').forEach(el => {
-          let val = (el.getAttribute('data-val') || el.innerText || '').trim();
-          if (val) tkbData[el.getAttribute('data-r') + '_' + el.getAttribute('data-c')] = val;
-        });
-        document.querySelectorAll('input[data-label-r]').forEach(tx => {
-          let val = tx.value.trim();
-          if (val) tkbData['label_' + tx.getAttribute('data-label-r')] = val;
-        });
-        
-        const db = getSupabase();
-        await db.from('lich_day').delete().neq('key_type', 'X'); 
-        await db.from('lich_day').insert([
-          { key_type: 'TKB_DATA', content_json: JSON.stringify(tkbData) },
-          { key_type: 'NOTE_TRUONG', content_json: JSON.stringify(noteTruongData) },
-          { key_type: 'NOTE_NHA', content_json: JSON.stringify(noteNhaData) },
-          { key_type: 'CUSTOM_STATS', content_json: JSON.stringify(customStatsData) }
-        ]);
-        await syncData();
-        showToast('Đã lưu Thời Khóa Biểu & Ghi chú!');
-      } catch(err) { showToast('Lỗi: ' + err.message, true); }
-      finally { if (btn) btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Lưu'; }
-    }
-
-    // ----------------------------------------------------
-    // INIT SYSTEM VÀ CÁC HÀM UI PHỤ 
-    // ----------------------------------------------------
-    function updateHeaderDateDisplay() {
-      var now = new Date();
-      var days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-      var el = document.getElementById('headerCurrentDate');
-      if (el) el.innerText = days[now.getDay()] + ', ' + ('0' + now.getDate()).slice(-2) + '/' + ('0' + (now.getMonth() + 1)).slice(-2);
-    }
-
-    window.onload = function() {
-      updateHeaderDateDisplay();
-      var dateInput = document.getElementById('attendanceDate');
-      if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
-      initAllDropdowns();
-      checkSessionOnLoad();
-    };
-
-    function initDynamicGradeDropdowns() {
-      var grades = ['Khối 6', 'Khối 7', 'Khối 8', 'Khối 9', 'Khối 10', 'Khối 11', 'Khối 12'];
-      var optionsBasic = grades.map(function(g) { return '<option value="' + g + '">' + g + '</option>'; }).join('');
-      document.querySelectorAll('.grade-select-options').forEach(function(el) { el.innerHTML = optionsBasic; });
-      var filterHide = '<option value="NONE" selected>-- Chưa chọn Khối --</option><option value="ALL">Tất cả Khối</option>' + optionsBasic;
-      document.querySelectorAll('.grade-filter-options-hide').forEach(function(el) { el.innerHTML = filterHide; });
-      var filterAll = '<option value="ALL">Tất cả Khối</option>' + optionsBasic;
-      document.querySelectorAll('.grade-filter-all-options').forEach(function(el) { el.innerHTML = filterAll; });
-      var filterStu = '<option value="NONE" selected>-- Khối --</option><option value="ALL">Tất cả</option>' + optionsBasic + '<option value="DISABLED">🚫 Học sinh đã nghỉ</option>';
-      document.querySelectorAll('.grade-filter-options').forEach(function(el) { el.innerHTML = filterStu; });
-      var postGrade = '<option value="Tất cả khối">🌟 Tất cả khối</option>' + optionsBasic;
-      document.querySelectorAll('.post-grade-options').forEach(function(el) { el.innerHTML = postGrade; });
-    }
-
-    function updateClassDropdown() {
-      var grade = document.getElementById('stuGrade') ? document.getElementById('stuGrade').value : 'Khối 6';
-      var classSelect = document.getElementById('stuClass');
-      if (!classSelect) return;
-      var classes = getClassesForGrade(grade);
-      classSelect.innerHTML = classes.map(function(c) { return '<option value="' + c + '">' + c + '</option>'; }).join('');
-    }
-
-    function initMonthDropdown() {
-      var now = new Date(); var curYear = now.getFullYear(); var curMonth = now.getMonth() + 1;
-      var currentMonthStr = 'Tháng ' + curMonth + '/' + curYear;
-      var html = '';
-      for (var y = curYear - 1; y <= curYear + 2; y++) {
-        for (var m = 1; m <= 12; m++) {
-          var val = 'Tháng ' + m + '/' + y;
-          var isSelected = (m === curMonth && y === curYear);
-          html += '<option value="' + val + '" ' + (isSelected ? 'selected' : '') + '>' + val + '</option>';
-        }
-      }
-      ['feeMonth', 'feeOverviewMonth', 'rateGradeMonth', 'rateClassMonth', 'rateStudentMonth', 'overviewMonthFilter', 'historyFilterMonth'].forEach(function(id) {
-        var el = document.getElementById(id); if (el) { el.innerHTML = html; el.value = currentMonthStr; }
-      });
-    }
-
-    function initAllDropdowns() {
-      initDynamicGradeDropdowns(); updateClassDropdown(); initMonthDropdown();
-    }
-
-    function applyRolePermissions() {
-      if (!currentUser) return;
-      var role = String(currentUser.role || '').toUpperCase();
-      var isStudent = role === 'STUDENT'; var isGuest = role === 'GUEST'; var isAdmin = role === 'ADMIN';
-      var isStaff = !isStudent && !isGuest;
-
-      var tabHocSinh = document.getElementById('menu-tab-hocsinh');
-      var tabLichDay = document.getElementById('menu-tab-lichday');
-      var tabDiemDanh = document.getElementById('menu-tab-diemdanh');
-      var tabHocPhi = document.getElementById('menu-tab-hocphi');
-      var tabHoSo = document.getElementById('menu-tab-hoso');
-
-      if (tabHocSinh) tabHocSinh.classList.toggle('hidden', !isStaff);
-      if (tabLichDay) tabLichDay.classList.toggle('hidden', !isAdmin);
-      if (tabDiemDanh) tabDiemDanh.classList.remove('hidden');
-      if (tabHocPhi) tabHocPhi.classList.toggle('hidden', !isAdmin);
-      if (tabHoSo) tabHoSo.classList.remove('hidden');
-
-      document.querySelectorAll('.profile-admin-only').forEach(el => isAdmin ? el.classList.remove('hidden') : el.classList.add('hidden'));
-      document.querySelectorAll('.admin-only').forEach(el => isStaff ? el.classList.remove('hidden') : el.classList.add('hidden'));
-
-      if (isGuest || isStudent) switchTab('tab-diemdanh');
-      else if (isAdmin) switchTab('tab-lichday');
-      else switchTab('tab-hocsinh');
-    }
-
-    function switchTab(id) {
-      document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
-      var targetEl = document.getElementById(id); if (targetEl) targetEl.classList.remove('hidden');
-      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active', 'bg-emerald-50', 'text-emerald-700'); });
-      var activeBtn = document.getElementById('menu-' + id); if (activeBtn) activeBtn.classList.add('active', 'bg-emerald-50', 'text-emerald-700');
-    }
-
-    function showToast(msg, isError) {
-      var isMobile = window.innerWidth < 768;
-      var positionClass = isMobile ? 'top-20 right-4' : 'bottom-5 right-5';
-      var toast = document.createElement('div');
-      toast.className = 'fixed ' + positionClass + ' z-50 px-4 py-2.5 rounded-xl text-xs font-bold text-white shadow-2xl flex items-center gap-2 transition-all opacity-0 ' + (isError ? 'bg-red-600' : 'bg-emerald-600');
-      toast.innerHTML = '<i class="fa-solid ' + (isError ? 'fa-circle-exclamation' : 'fa-circle-check') + '"></i> ' + msg;
-      document.body.appendChild(toast);
-      setTimeout(function() { toast.classList.remove('opacity-0'); }, 10);
-      setTimeout(function() { toast.classList.add('opacity-0'); setTimeout(function() { toast.remove(); }, 300); }, 3000);
-    }
-    
+    // ==========================================
+    // 3. CÁC HÀM TRỢ GIÚP (Helper)
+    // ==========================================
+    function formatMoney(num) { return (Number(num) || 0).toLocaleString('vi-VN'); }
     function formatStudentId(id) { if (!id) return ''; var clean = String(id).trim(); if (/^\d+$/.test(clean) && clean.length < 6) return ('000' + clean).slice(-3); return clean; }
     function toStandardDateStr(dStr) { if (!dStr) return ''; var str = String(dStr).trim(); if (str.includes('/')) { var parts = str.split('/'); if (parts.length === 3) return parts[2] + '-' + ('0' + parts[1]).slice(-2) + '-' + ('0' + parts[0]).slice(-2); } return str; }
     function cleanName(s) { return String(s || '').toLowerCase().trim().replace(/\s+/g, ' '); }
     function getActiveStudents() { return (appData.students || []).filter(s => !String(s.statusNghi || '').toUpperCase().includes('ĐÃ NGHỈ HỌC')); }
-
+    function normalizeGradeKey(gStr) { var s = cleanName(gStr); if (s.includes('6')) return 'Khối 6'; if (s.includes('7')) return 'Khối 7'; if (s.includes('8')) return 'Khối 8'; if (s.includes('9')) return 'Khối 9'; if (s.includes('10')) return 'Khối 10'; if (s.includes('11')) return 'Khối 11'; if (s.includes('12')) return 'Khối 12'; return gStr; }
+    function getCurrentMonthStr() { var curYear = new Date().getFullYear(); var curMonth = new Date().getMonth() + 1; return 'Tháng ' + curMonth + '/' + curYear; }
+    function formatDateWithDay(dateStr) { var std = toStandardDateStr(dateStr); if (!std) return ''; var parts = std.split('-'); if (parts.length !== 3) return dateStr; var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])); if (isNaN(d.getTime())) return dateStr; var dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']; var dd = ('0' + d.getDate()).slice(-2); var mm = ('0' + (d.getMonth() + 1)).slice(-2); return dayNames[d.getDay()] + ' - ' + dd + '/' + mm + '/' + d.getFullYear(); }
+    
     function setAllAvatars(url) {
-      var avatarSrc = (appData && appData.avatarUrl && appData.avatarUrl.length > 20) 
-        ? appData.avatarUrl 
-        : ((url && url.length > 20) ? url : (localStorage.getItem('teacherAvatar') || DEFAULT_AVATAR));
-
-      ['headerAvatar', 'sidebarAvatar', 'profileAvatar', 'loginLogo'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) {
-          el.src = avatarSrc;
-          el.onerror = function() {
-            this.onerror = null;
-            this.src = DEFAULT_AVATAR;
-          };
-        }
-      });
+      var avatarSrc = (appData && appData.avatarUrl && appData.avatarUrl.length > 20) ? appData.avatarUrl : ((url && url.length > 20) ? url : (localStorage.getItem('teacherAvatar') || DEFAULT_AVATAR));
+      ['headerAvatar', 'sidebarAvatar', 'profileAvatar', 'loginLogo'].forEach(function(id) { var el = document.getElementById(id); if (el) { el.src = avatarSrc; el.onerror = function() { this.onerror = null; this.src = DEFAULT_AVATAR; }; } });
     }
-
-    // --- CÁC HÀM TÍNH TOÁN HỌC PHÍ & ĐIỂM DANH BỊ THIẾU ---
-    function formatMoney(num) { return (Number(num) || 0).toLocaleString('vi-VN'); }
 
     function isSameMonth(m1, m2) {
       if (!m1 || !m2) return false;
-      var s1 = String(m1).trim().toLowerCase();
-      var s2 = String(m2).trim().toLowerCase();
+      var s1 = String(m1).trim().toLowerCase(); var s2 = String(m2).trim().toLowerCase();
       if (s1 === s2) return true;
-      var n2 = s2.match(/\d+/g);
-      if (!n2 || n2.length < 2) return false;
-      var tM = parseInt(n2[0], 10);
-      var tY = parseInt(n2[1], 10);
+      var n2 = s2.match(/\d+/g); if (!n2 || n2.length < 2) return false;
+      var tM = parseInt(n2[0], 10); var tY = parseInt(n2[1], 10);
       var parts = s1.split(/[,;|]/);
       for (var i = 0; i < parts.length; i++) {
         var n1 = parts[i].match(/\d+/g);
-        if (n1 && n1.length >= 2) {
-          var cM = parseInt(n1[n1.length - 2], 10); 
-          var cY = parseInt(n1[n1.length - 1], 10); 
-          if (cM === tM && cY === tY) return true;
-        }
+        if (n1 && n1.length >= 2) { var cM = parseInt(n1[n1.length - 2], 10); var cY = parseInt(n1[n1.length - 1], 10); if (cM === tM && cY === tY) return true; }
       }
       return false;
     }
 
     function compareMonths(mStr1, mStr2) {
-      var p1 = String(mStr1).match(/\d+/g);
-      var p2 = String(mStr2).match(/\d+/g);
+      var p1 = String(mStr1).match(/\d+/g); var p2 = String(mStr2).match(/\d+/g);
       if (!p1 || !p2 || p1.length < 2 || p2.length < 2) return 0;
       var month1 = parseInt(p1[0], 10), year1 = parseInt(p1[1], 10);
       var month2 = parseInt(p2[0], 10), year2 = parseInt(p2[1], 10);
@@ -1999,19 +1314,7 @@
       return month1 - month2;
     }
 
-    function formatDateWithDay(dateStr) {
-      var std = toStandardDateStr(dateStr);
-      if (!std) return '';
-      var parts = std.split('-');
-      if (parts.length !== 3) return dateStr;
-      var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-      if (isNaN(d.getTime())) return dateStr;
-      var dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-      var dd = ('0' + d.getDate()).slice(-2);
-      var mm = ('0' + (d.getMonth() + 1)).slice(-2);
-      return dayNames[d.getDay()] + ' - ' + dd + '/' + mm + '/' + d.getFullYear();
-    }
-
+    // Học phí Helpers
     function getStudentFirstAttendanceMonth(student) {
       if (!student || !student.startMonth) return null;
       var match = String(student.startMonth).match(/\d+/g);
@@ -2027,32 +1330,27 @@
       var rates = appData.customRates || [];
       var studentGradeClean = normalizeGradeKey(student.grade);
 
-      var stuRates = rates.filter(function(r) { return String(r.type).toUpperCase() === 'STUDENT' && String(r.key).trim() === String(student.id).trim() && isSameMonth(r.month, targetMonth); });
+      var stuRates = rates.filter(r => String(r.type).toUpperCase() === 'STUDENT' && String(r.key).trim() === String(student.id).trim() && isSameMonth(r.month, targetMonth));
       if (stuRates.length > 0) return [{ id: 'STU_' + student.id, label: 'Học phí cá nhân', amount: Number(stuRates[stuRates.length - 1].amount) || 0 }];
 
       var targetParts = targetMonth.match(/\d+/g);
       if (targetParts && targetParts.length >= 2) {
-        var tM = parseInt(targetParts[0], 10);
-        var tY = parseInt(targetParts[1], 10);
+        var tM = parseInt(targetParts[0], 10), tY = parseInt(targetParts[1], 10);
         var firstAtt = getStudentFirstAttendanceMonth(student);
-        if (firstAtt) {
-          if (tY < firstAtt.year || (tY === firstAtt.year && tM < firstAtt.month)) return []; 
-        } else return []; 
+        if (firstAtt && (tY < firstAtt.year || (tY === firstAtt.year && tM < firstAtt.month))) return []; 
       }
 
       var stuClassKey = String(student.className || '').trim().toUpperCase();
-      var classRates = rates.filter(function(r) { return String(r.type).toUpperCase() === 'CLASS' && String(r.key || '').trim().toUpperCase() === stuClassKey && isSameMonth(r.month, targetMonth); });
+      var classRates = rates.filter(r => String(r.type).toUpperCase() === 'CLASS' && String(r.key || '').trim().toUpperCase() === stuClassKey && isSameMonth(r.month, targetMonth));
       if (classRates.length > 0) return [{ id: 'CLASS_' + student.className, label: 'Học phí lớp ' + student.className, amount: Number(classRates[classRates.length - 1].amount) || 0 }];
 
-      var gradeRates = rates.filter(function(r) { return String(r.type).toUpperCase() === 'GRADE' && (normalizeGradeKey(r.key) === studentGradeClean || cleanName(r.key).includes(cleanName(student.grade))) && isSameMonth(r.month, targetMonth); });
+      var gradeRates = rates.filter(r => String(r.type).toUpperCase() === 'GRADE' && (normalizeGradeKey(r.key) === studentGradeClean || cleanName(r.key).includes(cleanName(student.grade))) && isSameMonth(r.month, targetMonth));
       if (gradeRates.length > 0) return [{ id: 'GRADE_' + student.grade, label: 'Học phí ' + student.grade, amount: Number(gradeRates[gradeRates.length - 1].amount) || 0 }];
 
       return [];
     }
 
-    function getStudentExpectedRateByMonth(student, monthStr) {
-      return getStudentExpectedRateItemsByMonth(student, monthStr).reduce(function(sum, item) { return sum + item.amount; }, 0);
-    }
+    function getStudentExpectedRateByMonth(student, monthStr) { return getStudentExpectedRateItemsByMonth(student, monthStr).reduce((sum, item) => sum + item.amount, 0); }
 
     function getStudentNetSurplusBeforeMonth(student, monthStr) {
       if (!student) return 0;
@@ -2061,67 +1359,35 @@
       var targetYearNum = monthMatch && monthMatch.length >= 2 ? parseInt(monthMatch[1], 10) : new Date().getFullYear();
       var cleanStuId = formatStudentId(student.id);
 
-      function monthValue(mStr) {
-        var m = String(mStr || '').match(/\d+/g);
-        if (!m || m.length < 2) return 0;
-        return parseInt(m[1], 10) * 12 + parseInt(m[0], 10);
-      }
+      function monthValue(mStr) { var m = String(mStr || '').match(/\d+/g); return (!m || m.length < 2) ? 0 : parseInt(m[1], 10) * 12 + parseInt(m[0], 10); }
       var targetValue = targetYearNum * 12 + targetMonthNum;
 
       var startMonth = 1; var startYear = targetYearNum - 2;
-      if (appData.customRates && appData.customRates.length > 0) {
-        appData.customRates.forEach(function(r) {
-          if (!r.month) return;
-          var m = String(r.month).match(/\d+/g);
-          if (m && m.length >= 2) {
-            var yV = parseInt(m[1], 10); var mV = parseInt(m[0], 10);
-            if (yV < startYear || (yV === startYear && mV < startMonth)) { startYear = yV; startMonth = mV; }
-          }
-        });
-      }
+      (appData.customRates || []).forEach(r => {
+        if (!r.month) return; var m = String(r.month).match(/\d+/g);
+        if (m && m.length >= 2) { var yV = parseInt(m[1], 10), mV = parseInt(m[0], 10); if (yV < startYear || (yV === startYear && mV < startMonth)) { startYear = yV; startMonth = mV; } }
+      });
       var firstAtt = getStudentFirstAttendanceMonth(student);
-      if (firstAtt) {
-        if (firstAtt.year < startYear || (firstAtt.year === startYear && firstAtt.month < startMonth)) { startYear = firstAtt.year; startMonth = firstAtt.month; }
-      }
+      if (firstAtt && (firstAtt.year < startYear || (firstAtt.year === startYear && firstAtt.month < startMonth))) { startYear = firstAtt.year; startMonth = firstAtt.month; }
 
-      var totalExpectedBefore = 0;
-      var y = startYear; var m = startMonth;
-      while (y < targetYearNum || (y === targetYearNum && m < targetMonthNum)) {
-        totalExpectedBefore += getStudentExpectedRateByMonth(student, 'Tháng ' + m + '/' + y);
-        m++; if (m > 12) { m = 1; y++; }
-      }
+      var totalExpectedBefore = 0; var y = startYear; var m = startMonth;
+      while (y < targetYearNum || (y === targetYearNum && m < targetMonthNum)) { totalExpectedBefore += getStudentExpectedRateByMonth(student, 'Tháng ' + m + '/' + y); m++; if (m > 12) { m = 1; y++; } }
 
-      var totalRealPaidBefore = (appData.tuition || []).filter(function(t) {
+      var totalRealPaidBefore = (appData.tuition || []).filter(t => {
         var tStuId = formatStudentId(t.studentId);
-        if (!cleanStuId || !tStuId || cleanStuId !== tStuId) return false;
-        if (t.method !== 'Tiền mặt' && t.method !== 'Chuyển khoản') return false;
+        if (!cleanStuId || !tStuId || cleanStuId !== tStuId || (t.method !== 'Tiền mặt' && t.method !== 'Chuyển khoản')) return false;
         var receiptMonth = t.month;
-        if (!receiptMonth) {
-          var stdDate = toStandardDateStr(t.date);
-          if (stdDate) {
-            var parts = stdDate.split('-');
-            if (parts.length === 3) receiptMonth = 'Tháng ' + parseInt(parts[1], 10) + '/' + parseInt(parts[0], 10);
-          }
-        }
-        if (!receiptMonth) return false;
-        return monthValue(receiptMonth) < targetValue;
-      }).reduce(function(sum, t) { return sum + (Number(t.amount) || 0); }, 0);
+        if (!receiptMonth) { var stdDate = toStandardDateStr(t.date); if (stdDate) { var parts = stdDate.split('-'); if (parts.length === 3) receiptMonth = 'Tháng ' + parseInt(parts[1], 10) + '/' + parseInt(parts[0], 10); } }
+        return receiptMonth && monthValue(receiptMonth) < targetValue;
+      }).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
-      var totalSurplusUsedBefore = (appData.tuition || []).filter(function(t) {
+      var totalSurplusUsedBefore = (appData.tuition || []).filter(t => {
         var tStuId = formatStudentId(t.studentId);
-        if (!cleanStuId || !tStuId || cleanStuId !== tStuId) return false;
-        if (t.method !== 'Quỹ còn dư') return false;
+        if (!cleanStuId || !tStuId || cleanStuId !== tStuId || t.method !== 'Quỹ còn dư') return false;
         var receiptMonth = t.month;
-        if (!receiptMonth) {
-          var stdDate = toStandardDateStr(t.date);
-          if (stdDate) {
-            var parts = stdDate.split('-');
-            if (parts.length === 3) receiptMonth = 'Tháng ' + parseInt(parts[1], 10) + '/' + parseInt(parts[0], 10);
-          }
-        }
-        if (!receiptMonth) return false;
-        return monthValue(receiptMonth) <= targetValue;
-      }).reduce(function(sum, t) { return sum + (Number(t.amount) || 0); }, 0);
+        if (!receiptMonth) { var stdDate = toStandardDateStr(t.date); if (stdDate) { var parts = stdDate.split('-'); if (parts.length === 3) receiptMonth = 'Tháng ' + parseInt(parts[1], 10) + '/' + parseInt(parts[0], 10); } }
+        return receiptMonth && monthValue(receiptMonth) <= targetValue;
+      }).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
       var surplus = totalRealPaidBefore - totalExpectedBefore - totalSurplusUsedBefore;
       return surplus > 0 ? surplus : 0;
@@ -2134,118 +1400,176 @@
       var targetYearNum = monthMatch && monthMatch.length >= 2 ? parseInt(monthMatch[1], 10) : new Date().getFullYear();
 
       var startMonth = 1; var startYear = targetYearNum - 2; 
-      if (appData.customRates && appData.customRates.length > 0) {
-        appData.customRates.forEach(function(r) {
-          if (r.month) {
-            var m = String(r.month).match(/\d+/g);
-            if (m && m.length >= 2) {
-              var yV = parseInt(m[1], 10); var mV = parseInt(m[0], 10);
-              if (yV < startYear || (yV === startYear && mV < startMonth)) { startYear = yV; startMonth = mV; }
-            }
-          }
-        });
-      }
-      
+      (appData.customRates || []).forEach(r => {
+        if (r.month) { var m = String(r.month).match(/\d+/g); if (m && m.length >= 2) { var yV = parseInt(m[1], 10), mV = parseInt(m[0], 10); if (yV < startYear || (yV === startYear && mV < startMonth)) { startYear = yV; startMonth = mV; } } }
+      });
       var firstAtt = getStudentFirstAttendanceMonth(student);
-      if (firstAtt) {
-         if (firstAtt.year < startYear || (firstAtt.year === startYear && firstAtt.month < startMonth)) { startYear = firstAtt.year; startMonth = firstAtt.month; }
-      }
+      if (firstAtt && (firstAtt.year < startYear || (firstAtt.year === startYear && firstAtt.month < startMonth))) { startYear = firstAtt.year; startMonth = firstAtt.month; }
 
       var totalRealPaidAcc = getTotalPaidAllTime(student.id);
-      var y = startYear; var m = startMonth;
-      var debtMonths = []; var totalExpectedAcc = 0; var oldestDebtMonth = '';
-      var poolPaid = totalRealPaidAcc;
+      var y = startYear; var m = startMonth; var debtMonths = []; var totalExpectedAcc = 0; var oldestDebtMonth = ''; var poolPaid = totalRealPaidAcc;
 
       while (y < targetYearNum || (y === targetYearNum && m <= targetMonthNum)) {
         var checkMonthStr = 'Tháng ' + m + '/' + y;
         var monthFee = getStudentExpectedRateByMonth(student, checkMonthStr);
-
         if (monthFee > 0) {
           totalExpectedAcc += monthFee;
-          if (poolPaid >= monthFee) {
-            poolPaid -= monthFee;
-          } else {
-            var monthDebt = monthFee - poolPaid;
-            poolPaid = 0;
-            debtMonths.push({ month: checkMonthStr, debtAmount: monthDebt });
-            if (!oldestDebtMonth) oldestDebtMonth = checkMonthStr;
-          }
+          if (poolPaid >= monthFee) { poolPaid -= monthFee; } 
+          else { var monthDebt = monthFee - poolPaid; poolPaid = 0; debtMonths.push({ month: checkMonthStr, debtAmount: monthDebt }); if (!oldestDebtMonth) oldestDebtMonth = checkMonthStr; }
         }
         m++; if (m > 12) { m = 1; y++; }
       }
-
       var netDebt = totalExpectedAcc - totalRealPaidAcc;
       return { totalDebt: netDebt > 0 ? netDebt : 0, debtMonths: debtMonths, oldestDebtMonth: oldestDebtMonth || targetMonthStr };
     }
 
-    function checkMatchStudent(stuId, receiptId) {
-      var sId = String(stuId || '').replace(/\D/g, '').trim();
-      var rId = String(receiptId || '').replace(/\D/g, '').trim();
-      return sId !== '' && rId !== '' && sId === rId;
-    }
+    function checkMatchStudent(stuId, receiptId) { return String(stuId || '').replace(/\D/g, '').trim() === String(receiptId || '').replace(/\D/g, '').trim(); }
+    function getTotalPaidAllTime(studentId) { return (appData.tuition || []).filter(t => checkMatchStudent(studentId, t.studentId) && (t.method === 'Tiền mặt' || t.method === 'Chuyển khoản')).reduce((sum, t) => sum + (Number(t.amount) || 0), 0); }
+    function getStudentPaidTotalByMonth(studentId, name, monthStr) { return (appData.tuition || []).filter(t => checkMatchStudent(studentId, t.studentId) && isSameMonth(t.month, monthStr)).reduce((sum, t) => sum + (Number(t.amount) || 0), 0); }
 
-    function getTotalPaidAllTime(studentId) {
-      return (appData.tuition || []).filter(function(t) {
-        return checkMatchStudent(studentId, t.studentId) && (t.method === 'Tiền mặt' || t.method === 'Chuyển khoản');
-      }).reduce(function(sum, t) { return sum + (Number(t.amount) || 0); }, 0);
-    }
+    // ==========================================
+    // 4. CÁC HÀM VẼ GIAO DIỆN (RENDER UI)
+    // ==========================================
+    function renderStudentsTable() {
+      var tbody = document.getElementById('studentTableBody');
+      if (!tbody) return;
+      var search = document.getElementById('searchStudent') ? document.getElementById('searchStudent').value.toLowerCase().trim() : '';
+      var grade = document.getElementById('filterGrade') ? document.getElementById('filterGrade').value : 'NONE';
+      var className = document.getElementById('filterClass') ? document.getElementById('filterClass').value : 'ALL';
+      var isViewingDisabled = (grade === 'DISABLED');
 
-    function getStudentPaidTotalByMonth(studentId, name, monthStr) {
-      return (appData.tuition || []).filter(function(t) {
-        return checkMatchStudent(studentId, t.studentId) && isSameMonth(t.month, monthStr);
-      }).reduce(function(sum, t) { return sum + (Number(t.amount) || 0); }, 0);
-    }
-    
-    function normalizeGradeKey(gStr) {
-      var s = cleanName(gStr);
-      if (s.includes('6')) return 'Khối 6'; if (s.includes('7')) return 'Khối 7';
-      if (s.includes('8')) return 'Khối 8'; if (s.includes('9')) return 'Khối 9';
-      if (s.includes('10')) return 'Khối 10'; if (s.includes('11')) return 'Khối 11';
-      if (s.includes('12')) return 'Khối 12'; return gStr;
-    }
-
-    function getCurrentMonthStr() {
-      var curYear = new Date().getFullYear();
-      var curMonth = new Date().getMonth() + 1;
-      return 'Tháng ' + curMonth + '/' + curYear;
-    }
-    
-    function getStudentNameById(id) {
-      var cleanId = formatStudentId(id);
-      var student = (appData.students || []).find(function(s) { return formatStudentId(s.id) === cleanId; });
-      return student ? student.name : 'Không xác định';
-    }
-
-    function getStudentAttendanceSummary(student, monthsArr) {
-      if (!student || !monthsArr || monthsArr.length === 0) return 'Chưa có dữ liệu';
-      var cleanStuId = String(student.id || '').replace(/\D/g, '').trim();
-      var cleanStuName = cleanName(student.name);
-
-      var summaryParts = monthsArr.map(function(monthStr) {
-        var monthAttList = (appData.attendance || []).filter(function(a) {
-          var aId = String(a.studentId || '').replace(/\D/g, '').trim();
-          var matchStudent = (cleanStuId !== '' && aId !== '' && cleanStuId === aId) || cleanName(a.studentName) === cleanStuName;
-          if (!matchStudent) return false;
-
-          var stdDate = toStandardDateStr(a.date);
-          if (!stdDate) return false;
-          var dParts = stdDate.split('-');
-          if (dParts.length === 3) {
-            var attMonthStr = 'Tháng ' + parseInt(dParts[1], 10) + '/' + dParts[0];
-            return isSameMonth(attMonthStr, monthStr);
-          }
-          return false;
-        });
-
-        var presentCount = monthAttList.filter(function(a) { return a.status === 'Có mặt' || a.status === 'Học bù'; }).length;
-        var totalDays = monthAttList.filter(function(a) { return a.status !== 'Học bù'; }).length;
-        if (totalDays === 0 && presentCount > 0) totalDays = presentCount;
-
-        return monthStr + ': ' + presentCount + '/' + totalDays + ' buổi';
+      var filtered = (appData.students || []).filter(function(s) {
+        var isInactive = String(s.statusNghi || s.note || '').toUpperCase().includes('ĐÃ NGHỈ HỌC') || s.active === false;
+        if (isViewingDisabled ? !isInactive : isInactive) return false;
+        var schoolStr = cleanName(s.school);
+        var matchSearch = !search || cleanName(s.name).includes(search) || String(s.id).includes(search) || schoolStr.includes(search);
+        var matchGrade = (grade === 'ALL' || grade === 'NONE' || grade === 'DISABLED') || s.grade === grade;
+        var matchClass = className === 'ALL' || s.className === className;
+        return matchSearch && matchGrade && matchClass;
       });
 
-      return summaryParts.join(' | ');
+      var countBadge = document.getElementById('studentCountBadge');
+      if (countBadge) countBadge.innerText = filtered.length + ' Học Sinh';
+
+      if (filtered.length === 0) { tbody.innerHTML = '<tr><td colspan="9" class="p-8 text-center text-slate-400">Không tìm thấy học sinh nào</td></tr>'; return; }
+
+      tbody.innerHTML = filtered.map(function(s, idx) {
+        var formattedId = formatStudentId(s.id);
+        var feeStatusHtml = '';
+        var debtInfo = getStudentDebtDetails(s, getCurrentMonthStr());
+        var isWaiting = String(s.className || '').toUpperCase().includes('ĐỢI');
+
+        if (isWaiting) feeStatusHtml = '<span class="font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Chưa xếp lớp</span>';
+        else if (debtInfo.totalDebt > 0) feeStatusHtml = '<span class="font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200">Thiếu: ' + formatMoney(debtInfo.totalDebt) + ' đ</span>';
+        else feeStatusHtml = '<span class="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">Đã đủ (0 đ)</span>';
+
+        return '<tr class="hover:bg-slate-50 transition border-b border-slate-100">' +
+          '<td class="p-3 font-mono text-emerald-808 font-bold">' + formattedId + '</td>' +
+          '<td class="p-3 font-bold text-slate-800 text-sm">' + s.name + '</td>' +
+          '<td class="p-3 font-medium">' + feeStatusHtml + '</td>' +
+          '<td class="p-3 font-bold text-emerald-700">' + (s.className || 'Chưa xếp') + '</td>' +
+          '<td class="p-3 text-slate-700 font-medium">' + (s.school || '-') + '</td>' +
+          '<td class="p-3">' + (s.phone || '-') + '</td>' +
+          '<td class="p-3">' + (s.parentPhone || '-') + '</td>' +
+          '<td class="p-3 text-slate-500 italic truncate max-w-[120px]">' + (s.note || '-') + '</td>' +
+          '<td class="p-3 text-right"><button onclick="openEditStudentModal(\'' + s.id + '\')" class="bg-blue-50 text-blue-600 font-bold px-3 py-1 rounded">Sửa</button></td>' +
+        '</tr>';
+      }).join('');
     }
+
+    var currentAttendanceState = {};
+    function initAttendanceState(students) {
+      currentAttendanceState = {};
+      var dateVal = toStandardDateStr(document.getElementById('attendanceDate') ? document.getElementById('attendanceDate').value : '');
+      var sheetRecords = (appData.attendance || []).filter(a => toStandardDateStr(a.date) === dateVal);
+      students.forEach(s => {
+        var cleanStuId = formatStudentId(s.id);
+        var rec = sheetRecords.find(a => (cleanStuId && formatStudentId(a.studentId) === cleanStuId) || cleanName(s.name) === cleanName(a.studentName));
+        if (rec) currentAttendanceState[s.id] = { date: dateVal, studentName: s.name, studentId: s.id, grade: s.className || s.grade, status: String(rec.status).trim(), note: rec.note || '' };
+      });
+    }
+
+    function renderAttendanceTable() {
+      var tbody = document.getElementById('attendanceTableBody');
+      if (!tbody) return;
+      var list = getActiveStudents().filter(s => !String(s.className || '').toUpperCase().includes('ĐỢI'));
+      
+      tbody.innerHTML = list.map((s, idx) => {
+        var curStatus = (currentAttendanceState[s.id] || {}).status || 'Có mặt';
+        var opts = [{v:'Có mặt', c:'text-emerald-800'}, {v:'Vắng CP', c:'text-amber-800'}, {v:'Vắng KP', c:'text-red-800'}];
+        var radios = opts.map(o => '<label class="mr-2 ' + o.c + ' font-bold"><input type="radio" name="att_'+s.id+'" value="'+o.v+'" '+(curStatus===o.v?'checked':'')+'> '+o.v+'</label>').join('');
+        return '<tr class="border-b"><td class="p-2">' + (idx+1) + '</td><td class="p-2 font-bold">' + s.name + '</td><td class="p-2">' + (s.className||'') + '</td><td class="p-2">' + radios + '</td><td class="p-2">-</td></tr>';
+      }).join('');
+    }
+
+    var currentOverviewMode = 'student';
+    function switchOverviewMode(mode) { currentOverviewMode = mode; renderAttendanceOverviewClass(); }
+
+    function renderAttendanceOverviewClass() {
+      var container = document.getElementById('classOverviewContainer');
+      if (!container) return;
+      var search = cleanName(document.getElementById('overviewSearch') ? document.getElementById('overviewSearch').value.trim() : '');
+      var selectedMonth = document.getElementById('overviewMonthFilter') ? document.getElementById('overviewMonthFilter').value : getCurrentMonthStr();
+      var grade = document.getElementById('overviewGradeFilter') ? document.getElementById('overviewGradeFilter').value : 'NONE';
+      var isGuest = currentUser && currentUser.role === 'GUEST';
+
+      if (isGuest && !search) { container.innerHTML = '<div class="p-8 text-center text-slate-400">Vui lòng nhập Tên / Mã HS vào ô tìm kiếm...</div>'; return; }
+      if (grade === 'NONE' && !search && !isGuest) { container.innerHTML = '<div class="p-8 text-center text-slate-400">Vui lòng chọn khối hoặc tìm kiếm...</div>'; return; }
+
+      var filtered = getActiveStudents().filter(s => (!search || cleanName(s.name).includes(search) || String(s.id).includes(search)));
+      if (filtered.length === 0) { container.innerHTML = '<div class="p-8 text-center text-slate-400">Không tìm thấy học sinh!</div>'; return; }
+
+      container.innerHTML = filtered.map(s => {
+        var rate = getStudentExpectedRateByMonth(s, selectedMonth);
+        var debt = getStudentDebtDetails(s, selectedMonth);
+        var feeHtml = debt.totalDebt > 0 ? ('<span class="text-red-600">Nợ: ' + formatMoney(debt.totalDebt) + ' đ</span>') : ('<span class="text-emerald-600">Đã đủ: ' + formatMoney(rate) + ' đ</span>');
+        return '<div class="p-4 bg-white rounded-xl shadow-sm border mb-3 flex justify-between items-center"><div class="font-bold text-slate-800">' + s.name + ' (' + (s.className || s.grade) + ')</div><div class="font-bold">' + feeHtml + '</div></div>';
+      }).join('');
+    }
+
+    function renderTuitionAll() {
+      var container = document.getElementById('debtWarningList');
+      if (!container) return;
+      var selectedMonth = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth').value : getCurrentMonthStr();
+      var filtered = getActiveStudents().filter(s => getStudentDebtDetails(s, selectedMonth).totalDebt > 0);
+      
+      if (filtered.length === 0) { container.innerHTML = '<div class="p-6 text-center text-slate-400">🎉 Không có nợ học phí!</div>'; return; }
+      container.innerHTML = filtered.map(s => {
+        var debt = getStudentDebtDetails(s, selectedMonth);
+        return '<div class="p-3 bg-red-50 border border-red-200 rounded-xl mb-2 flex justify-between"><div class="font-bold text-red-800">' + s.name + '</div><div class="font-bold text-red-600">Nợ: ' + formatMoney(debt.totalDebt) + ' đ</div></div>';
+      }).join('');
+    }
+
+    function renderPostsList() {
+      var container = document.getElementById('postsListContainer');
+      if (!container) return;
+      var posts = appData.posts || [];
+      if (posts.length === 0) { container.innerHTML = '<div class="p-8 text-center text-slate-400">Chưa có bài đăng nào.</div>'; return; }
+      container.innerHTML = posts.map(p => '<div class="p-4 bg-white border rounded-xl mb-3"><h4 class="font-bold text-blue-700">' + p.title + '</h4><p class="text-xs text-slate-500">' + p.date + '</p></div>').join('');
+    }
+
+    function renderFullTKBTable() {
+      var tbody = document.getElementById('tblFullTKBBody');
+      if (!tbody) return;
+      var tkb = (appData.scheduleNote && appData.scheduleNote.tkbData) ? appData.scheduleNote.tkbData : {};
+      var html = '';
+      for (var r = 0; r < 5; r++) {
+        html += '<tr><td class="p-2 border bg-slate-100 font-bold text-xs text-center">Ca ' + (r+1) + '</td>';
+        for (var c = 0; c < 7; c++) {
+          var val = tkb[r + '_' + c] || '';
+          html += '<td class="p-2 border text-center font-bold text-slate-700">' + val + '</td>';
+        }
+        html += '</tr>';
+      }
+      tbody.innerHTML = html;
+    }
+
+    function populateFeeStudentSelect() {
+      var select = document.getElementById('feeStudentSelect');
+      if (!select) return;
+      select.innerHTML = '<option value="">-- Chọn học sinh --</option>' + getActiveStudents().map(s => '<option value="' + s.id + '">' + s.name + ' (' + (s.className||s.grade) + ')</option>').join('');
+    }
+
     function renderAllViews() { 
       if(typeof renderStudentsTable === 'function') renderStudentsTable();
       if(typeof renderAttendanceTable === 'function') renderAttendanceTable();
@@ -2255,6 +1579,70 @@
       if(typeof renderPostsList === 'function') renderPostsList();
       if(typeof renderFullTKBTable === 'function') renderFullTKBTable();
     }
+
+    // ==========================================
+    // 5. CÁC HÀM TIỆN ÍCH KHÁC (UI Controls)
+    // ==========================================
+    function initDynamicGradeDropdowns() {
+      var grades = ['Khối 6', 'Khối 7', 'Khối 8', 'Khối 9', 'Khối 10', 'Khối 11', 'Khối 12'];
+      var optionsBasic = grades.map(g => '<option value="' + g + '">' + g + '</option>').join('');
+      document.querySelectorAll('.grade-select-options').forEach(el => el.innerHTML = optionsBasic);
+      document.querySelectorAll('.grade-filter-options-hide').forEach(el => el.innerHTML = '<option value="NONE" selected>-- Chọn Khối --</option><option value="ALL">Tất cả Khối</option>' + optionsBasic);
+      document.querySelectorAll('.grade-filter-options').forEach(el => el.innerHTML = '<option value="NONE" selected>-- Khối --</option><option value="ALL">Tất cả</option>' + optionsBasic);
+    }
+    function updateClassDropdown() {
+      var grade = document.getElementById('stuGrade') ? document.getElementById('stuGrade').value : 'Khối 6';
+      var classSelect = document.getElementById('stuClass');
+      if (classSelect) classSelect.innerHTML = getClassesForGrade(grade).map(c => '<option value="' + c + '">' + c + '</option>').join('');
+    }
+    function initMonthDropdown() {
+      var now = new Date(); var curYear = now.getFullYear(); var curMonth = now.getMonth() + 1;
+      var currentMonthStr = 'Tháng ' + curMonth + '/' + curYear;
+      var html = '';
+      for (var y = curYear - 1; y <= curYear + 2; y++) {
+        for (var m = 1; m <= 12; m++) {
+          var val = 'Tháng ' + m + '/' + y;
+          html += '<option value="' + val + '" ' + ((m === curMonth && y === curYear) ? 'selected' : '') + '>' + val + '</option>';
+        }
+      }
+      ['feeMonth', 'feeOverviewMonth', 'rateGradeMonth', 'rateClassMonth', 'rateStudentMonth', 'overviewMonthFilter', 'historyFilterMonth'].forEach(id => {
+        var el = document.getElementById(id); if (el) { el.innerHTML = html; el.value = currentMonthStr; }
+      });
+    }
+    function initAllDropdowns() { initDynamicGradeDropdowns(); updateClassDropdown(); initMonthDropdown(); }
+
+    function applyRolePermissions() {
+      if (!currentUser) return;
+      var isStudent = currentUser.role === 'STUDENT'; var isGuest = currentUser.role === 'GUEST'; var isAdmin = currentUser.role === 'ADMIN';
+      var isStaff = !isStudent && !isGuest;
+
+      ['menu-tab-hocsinh', 'menu-tab-lichday', 'menu-tab-hocphi'].forEach(id => {
+        var el = document.getElementById(id);
+        if (el) {
+          if (id === 'menu-tab-lichday' || id === 'menu-tab-hocphi') el.classList.toggle('hidden', !isAdmin);
+          else el.classList.toggle('hidden', !isStaff);
+        }
+      });
+      document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', !isStaff));
+      if (isGuest || isStudent) switchTab('tab-diemdanh');
+      else if (isAdmin) switchTab('tab-lichday');
+      else switchTab('tab-hocsinh');
+    }
+
+    function switchTab(id) {
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+      var targetEl = document.getElementById(id); if (targetEl) targetEl.classList.remove('hidden');
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'bg-emerald-50', 'text-emerald-700'));
+      var activeBtn = document.getElementById('menu-' + id); if (activeBtn) activeBtn.classList.add('active', 'bg-emerald-50', 'text-emerald-700');
+    }
+
+    window.onload = function() {
+      updateHeaderDateDisplay();
+      var dateInput = document.getElementById('attendanceDate');
+      if (dateInput) dateInput.value = new Date().toISOString().split('T')[0];
+      initAllDropdowns();
+      checkSessionOnLoad();
+    };
   </script>
 
 </body>
