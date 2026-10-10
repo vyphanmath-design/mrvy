@@ -1965,7 +1965,287 @@
       });
     }
 
+    // --- CÁC HÀM TÍNH TOÁN HỌC PHÍ & ĐIỂM DANH BỊ THIẾU ---
+    function formatMoney(num) { return (Number(num) || 0).toLocaleString('vi-VN'); }
+
+    function isSameMonth(m1, m2) {
+      if (!m1 || !m2) return false;
+      var s1 = String(m1).trim().toLowerCase();
+      var s2 = String(m2).trim().toLowerCase();
+      if (s1 === s2) return true;
+      var n2 = s2.match(/\d+/g);
+      if (!n2 || n2.length < 2) return false;
+      var tM = parseInt(n2[0], 10);
+      var tY = parseInt(n2[1], 10);
+      var parts = s1.split(/[,;|]/);
+      for (var i = 0; i < parts.length; i++) {
+        var n1 = parts[i].match(/\d+/g);
+        if (n1 && n1.length >= 2) {
+          var cM = parseInt(n1[n1.length - 2], 10); 
+          var cY = parseInt(n1[n1.length - 1], 10); 
+          if (cM === tM && cY === tY) return true;
+        }
+      }
+      return false;
+    }
+
+    function compareMonths(mStr1, mStr2) {
+      var p1 = String(mStr1).match(/\d+/g);
+      var p2 = String(mStr2).match(/\d+/g);
+      if (!p1 || !p2 || p1.length < 2 || p2.length < 2) return 0;
+      var month1 = parseInt(p1[0], 10), year1 = parseInt(p1[1], 10);
+      var month2 = parseInt(p2[0], 10), year2 = parseInt(p2[1], 10);
+      if (year1 !== year2) return year1 - year2;
+      return month1 - month2;
+    }
+
+    function formatDateWithDay(dateStr) {
+      var std = toStandardDateStr(dateStr);
+      if (!std) return '';
+      var parts = std.split('-');
+      if (parts.length !== 3) return dateStr;
+      var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      if (isNaN(d.getTime())) return dateStr;
+      var dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+      var dd = ('0' + d.getDate()).slice(-2);
+      var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+      return dayNames[d.getDay()] + ' - ' + dd + '/' + mm + '/' + d.getFullYear();
+    }
+
+    function getStudentFirstAttendanceMonth(student) {
+      if (!student || !student.startMonth) return null;
+      var match = String(student.startMonth).match(/\d+/g);
+      if (match && match.length >= 2) return { month: parseInt(match[0], 10), year: parseInt(match[1], 10) };
+      return null;
+    }
+
+    function getStudentExpectedRateItemsByMonth(student, monthStr) {
+      if (!student) return [];
+      var classNameStr = String(student.className || '').toUpperCase();
+      if (classNameStr.includes('ĐỢI') || classNameStr.includes('DOI')) return [];
+      var targetMonth = String(monthStr || getCurrentMonthStr()).trim();
+      var rates = appData.customRates || [];
+      var studentGradeClean = normalizeGradeKey(student.grade);
+
+      var stuRates = rates.filter(function(r) { return String(r.type).toUpperCase() === 'STUDENT' && String(r.key).trim() === String(student.id).trim() && isSameMonth(r.month, targetMonth); });
+      if (stuRates.length > 0) return [{ id: 'STU_' + student.id, label: 'Học phí cá nhân', amount: Number(stuRates[stuRates.length - 1].amount) || 0 }];
+
+      var targetParts = targetMonth.match(/\d+/g);
+      if (targetParts && targetParts.length >= 2) {
+        var tM = parseInt(targetParts[0], 10);
+        var tY = parseInt(targetParts[1], 10);
+        var firstAtt = getStudentFirstAttendanceMonth(student);
+        if (firstAtt) {
+          if (tY < firstAtt.year || (tY === firstAtt.year && tM < firstAtt.month)) return []; 
+        } else return []; 
+      }
+
+      var stuClassKey = String(student.className || '').trim().toUpperCase();
+      var classRates = rates.filter(function(r) { return String(r.type).toUpperCase() === 'CLASS' && String(r.key || '').trim().toUpperCase() === stuClassKey && isSameMonth(r.month, targetMonth); });
+      if (classRates.length > 0) return [{ id: 'CLASS_' + student.className, label: 'Học phí lớp ' + student.className, amount: Number(classRates[classRates.length - 1].amount) || 0 }];
+
+      var gradeRates = rates.filter(function(r) { return String(r.type).toUpperCase() === 'GRADE' && (normalizeGradeKey(r.key) === studentGradeClean || cleanName(r.key).includes(cleanName(student.grade))) && isSameMonth(r.month, targetMonth); });
+      if (gradeRates.length > 0) return [{ id: 'GRADE_' + student.grade, label: 'Học phí ' + student.grade, amount: Number(gradeRates[gradeRates.length - 1].amount) || 0 }];
+
+      return [];
+    }
+
+    function getStudentExpectedRateByMonth(student, monthStr) {
+      return getStudentExpectedRateItemsByMonth(student, monthStr).reduce(function(sum, item) { return sum + item.amount; }, 0);
+    }
+
+    function getStudentNetSurplusBeforeMonth(student, monthStr) {
+      if (!student) return 0;
+      var monthMatch = String(monthStr).match(/\d+/g);
+      var targetMonthNum = monthMatch && monthMatch.length >= 1 ? parseInt(monthMatch[0], 10) : new Date().getMonth() + 1;
+      var targetYearNum = monthMatch && monthMatch.length >= 2 ? parseInt(monthMatch[1], 10) : new Date().getFullYear();
+      var cleanStuId = formatStudentId(student.id);
+
+      function monthValue(mStr) {
+        var m = String(mStr || '').match(/\d+/g);
+        if (!m || m.length < 2) return 0;
+        return parseInt(m[1], 10) * 12 + parseInt(m[0], 10);
+      }
+      var targetValue = targetYearNum * 12 + targetMonthNum;
+
+      var startMonth = 1; var startYear = targetYearNum - 2;
+      if (appData.customRates && appData.customRates.length > 0) {
+        appData.customRates.forEach(function(r) {
+          if (!r.month) return;
+          var m = String(r.month).match(/\d+/g);
+          if (m && m.length >= 2) {
+            var yV = parseInt(m[1], 10); var mV = parseInt(m[0], 10);
+            if (yV < startYear || (yV === startYear && mV < startMonth)) { startYear = yV; startMonth = mV; }
+          }
+        });
+      }
+      var firstAtt = getStudentFirstAttendanceMonth(student);
+      if (firstAtt) {
+        if (firstAtt.year < startYear || (firstAtt.year === startYear && firstAtt.month < startMonth)) { startYear = firstAtt.year; startMonth = firstAtt.month; }
+      }
+
+      var totalExpectedBefore = 0;
+      var y = startYear; var m = startMonth;
+      while (y < targetYearNum || (y === targetYearNum && m < targetMonthNum)) {
+        totalExpectedBefore += getStudentExpectedRateByMonth(student, 'Tháng ' + m + '/' + y);
+        m++; if (m > 12) { m = 1; y++; }
+      }
+
+      var totalRealPaidBefore = (appData.tuition || []).filter(function(t) {
+        var tStuId = formatStudentId(t.studentId);
+        if (!cleanStuId || !tStuId || cleanStuId !== tStuId) return false;
+        if (t.method !== 'Tiền mặt' && t.method !== 'Chuyển khoản') return false;
+        var receiptMonth = t.month;
+        if (!receiptMonth) {
+          var stdDate = toStandardDateStr(t.date);
+          if (stdDate) {
+            var parts = stdDate.split('-');
+            if (parts.length === 3) receiptMonth = 'Tháng ' + parseInt(parts[1], 10) + '/' + parseInt(parts[0], 10);
+          }
+        }
+        if (!receiptMonth) return false;
+        return monthValue(receiptMonth) < targetValue;
+      }).reduce(function(sum, t) { return sum + (Number(t.amount) || 0); }, 0);
+
+      var totalSurplusUsedBefore = (appData.tuition || []).filter(function(t) {
+        var tStuId = formatStudentId(t.studentId);
+        if (!cleanStuId || !tStuId || cleanStuId !== tStuId) return false;
+        if (t.method !== 'Quỹ còn dư') return false;
+        var receiptMonth = t.month;
+        if (!receiptMonth) {
+          var stdDate = toStandardDateStr(t.date);
+          if (stdDate) {
+            var parts = stdDate.split('-');
+            if (parts.length === 3) receiptMonth = 'Tháng ' + parseInt(parts[1], 10) + '/' + parseInt(parts[0], 10);
+          }
+        }
+        if (!receiptMonth) return false;
+        return monthValue(receiptMonth) <= targetValue;
+      }).reduce(function(sum, t) { return sum + (Number(t.amount) || 0); }, 0);
+
+      var surplus = totalRealPaidBefore - totalExpectedBefore - totalSurplusUsedBefore;
+      return surplus > 0 ? surplus : 0;
+    }
+
+    function getStudentDebtDetails(student, targetMonthStr) {
+      if (!student) return { totalDebt: 0, debtMonths: [], oldestDebtMonth: '' };
+      var monthMatch = String(targetMonthStr).match(/\d+/g);
+      var targetMonthNum = monthMatch && monthMatch.length >= 1 ? parseInt(monthMatch[0], 10) : new Date().getMonth() + 1;
+      var targetYearNum = monthMatch && monthMatch.length >= 2 ? parseInt(monthMatch[1], 10) : new Date().getFullYear();
+
+      var startMonth = 1; var startYear = targetYearNum - 2; 
+      if (appData.customRates && appData.customRates.length > 0) {
+        appData.customRates.forEach(function(r) {
+          if (r.month) {
+            var m = String(r.month).match(/\d+/g);
+            if (m && m.length >= 2) {
+              var yV = parseInt(m[1], 10); var mV = parseInt(m[0], 10);
+              if (yV < startYear || (yV === startYear && mV < startMonth)) { startYear = yV; startMonth = mV; }
+            }
+          }
+        });
+      }
+      
+      var firstAtt = getStudentFirstAttendanceMonth(student);
+      if (firstAtt) {
+         if (firstAtt.year < startYear || (firstAtt.year === startYear && firstAtt.month < startMonth)) { startYear = firstAtt.year; startMonth = firstAtt.month; }
+      }
+
+      var totalRealPaidAcc = getTotalPaidAllTime(student.id);
+      var y = startYear; var m = startMonth;
+      var debtMonths = []; var totalExpectedAcc = 0; var oldestDebtMonth = '';
+      var poolPaid = totalRealPaidAcc;
+
+      while (y < targetYearNum || (y === targetYearNum && m <= targetMonthNum)) {
+        var checkMonthStr = 'Tháng ' + m + '/' + y;
+        var monthFee = getStudentExpectedRateByMonth(student, checkMonthStr);
+
+        if (monthFee > 0) {
+          totalExpectedAcc += monthFee;
+          if (poolPaid >= monthFee) {
+            poolPaid -= monthFee;
+          } else {
+            var monthDebt = monthFee - poolPaid;
+            poolPaid = 0;
+            debtMonths.push({ month: checkMonthStr, debtAmount: monthDebt });
+            if (!oldestDebtMonth) oldestDebtMonth = checkMonthStr;
+          }
+        }
+        m++; if (m > 12) { m = 1; y++; }
+      }
+
+      var netDebt = totalExpectedAcc - totalRealPaidAcc;
+      return { totalDebt: netDebt > 0 ? netDebt : 0, debtMonths: debtMonths, oldestDebtMonth: oldestDebtMonth || targetMonthStr };
+    }
+
+    function checkMatchStudent(stuId, receiptId) {
+      var sId = String(stuId || '').replace(/\D/g, '').trim();
+      var rId = String(receiptId || '').replace(/\D/g, '').trim();
+      return sId !== '' && rId !== '' && sId === rId;
+    }
+
+    function getTotalPaidAllTime(studentId) {
+      return (appData.tuition || []).filter(function(t) {
+        return checkMatchStudent(studentId, t.studentId) && (t.method === 'Tiền mặt' || t.method === 'Chuyển khoản');
+      }).reduce(function(sum, t) { return sum + (Number(t.amount) || 0); }, 0);
+    }
+
+    function getStudentPaidTotalByMonth(studentId, name, monthStr) {
+      return (appData.tuition || []).filter(function(t) {
+        return checkMatchStudent(studentId, t.studentId) && isSameMonth(t.month, monthStr);
+      }).reduce(function(sum, t) { return sum + (Number(t.amount) || 0); }, 0);
+    }
     
+    function normalizeGradeKey(gStr) {
+      var s = cleanName(gStr);
+      if (s.includes('6')) return 'Khối 6'; if (s.includes('7')) return 'Khối 7';
+      if (s.includes('8')) return 'Khối 8'; if (s.includes('9')) return 'Khối 9';
+      if (s.includes('10')) return 'Khối 10'; if (s.includes('11')) return 'Khối 11';
+      if (s.includes('12')) return 'Khối 12'; return gStr;
+    }
+
+    function getCurrentMonthStr() {
+      var curYear = new Date().getFullYear();
+      var curMonth = new Date().getMonth() + 1;
+      return 'Tháng ' + curMonth + '/' + curYear;
+    }
+    
+    function getStudentNameById(id) {
+      var cleanId = formatStudentId(id);
+      var student = (appData.students || []).find(function(s) { return formatStudentId(s.id) === cleanId; });
+      return student ? student.name : 'Không xác định';
+    }
+
+    function getStudentAttendanceSummary(student, monthsArr) {
+      if (!student || !monthsArr || monthsArr.length === 0) return 'Chưa có dữ liệu';
+      var cleanStuId = String(student.id || '').replace(/\D/g, '').trim();
+      var cleanStuName = cleanName(student.name);
+
+      var summaryParts = monthsArr.map(function(monthStr) {
+        var monthAttList = (appData.attendance || []).filter(function(a) {
+          var aId = String(a.studentId || '').replace(/\D/g, '').trim();
+          var matchStudent = (cleanStuId !== '' && aId !== '' && cleanStuId === aId) || cleanName(a.studentName) === cleanStuName;
+          if (!matchStudent) return false;
+
+          var stdDate = toStandardDateStr(a.date);
+          if (!stdDate) return false;
+          var dParts = stdDate.split('-');
+          if (dParts.length === 3) {
+            var attMonthStr = 'Tháng ' + parseInt(dParts[1], 10) + '/' + dParts[0];
+            return isSameMonth(attMonthStr, monthStr);
+          }
+          return false;
+        });
+
+        var presentCount = monthAttList.filter(function(a) { return a.status === 'Có mặt' || a.status === 'Học bù'; }).length;
+        var totalDays = monthAttList.filter(function(a) { return a.status !== 'Học bù'; }).length;
+        if (totalDays === 0 && presentCount > 0) totalDays = presentCount;
+
+        return monthStr + ': ' + presentCount + '/' + totalDays + ' buổi';
+      });
+
+      return summaryParts.join(' | ');
+    }
     function renderAllViews() { 
       if(typeof renderStudentsTable === 'function') renderStudentsTable();
       if(typeof renderAttendanceTable === 'function') renderAttendanceTable();
