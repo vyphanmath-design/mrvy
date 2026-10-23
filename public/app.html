@@ -5501,90 +5501,111 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var container = document.getElementById('postsListContainer');
       if (!container) return;
 
+      var posts = appData.posts || [];
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
-      var isGuest = (role === 'GUEST');
-      var filterSelect = document.getElementById('filterPostGrade');
+      var isStudent = role === 'STUDENT';
+      var isGuest = role === 'GUEST';
+      var isAdmin = role === 'ADMIN';
 
-      // NẾU LÀ KHÁCH VÀ ĐÃ CHỌN HỌC SINH -> TỰ ĐỘNG GÁN ĐÚNG KHỐI CỦA HỌC SINH ĐÓ VÀ ẨN BỘ LỌC ĐI
-      if (isGuest && selectedGuestStudentId) {
-        var chosenStu = (getActiveStudents() || []).find(function(s) {
-          return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
-        });
-        if (chosenStu) {
-          var stuGrade = String(chosenStu.grade || '').trim(); // VD: "Khối 8" hoặc "8"
-          var targetGradeOption = stuGrade.toLowerCase().includes('khối') ? stuGrade : ('Khối ' + stuGrade);
+      var filterSelect = document.getElementById('filterPostGrade');
+      var selectedFilterGrade = filterSelect ? filterSelect.value : 'NONE';
+
+      // 1. NẾU LÀ KHÁCH VÀ CHƯA CHỌN KHỐI -> HIỂN THỊ YÊU CẦU CHỌN KHỐI
+      if (isGuest && selectedFilterGrade === 'NONE') {
+        container.innerHTML = '<div class="p-10 text-center text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">' +
+          '<i class="fa-solid fa-filter text-3xl text-slate-300 mb-2 block"></i>' +
+          'Vui lòng chọn <b>Khối học</b> ở góc trên bên phải để hiển thị bảng tin và bài học.' +
+        '</div>';
+        var badge = document.getElementById('postCountBadge');
+        if (badge) badge.innerText = '0 Bài viết';
+        return;
+      }
+
+      var studentGrade = 'Tất cả khối';
+      if (isStudent) {
+        var me = (getActiveStudents() || []).find(function(s) { return String(s.id).trim() === String(currentUser.username).trim(); });
+        if (me) {
+          studentGrade = me.grade;
           if (filterSelect) {
-            filterSelect.value = targetGradeOption;
-            filterSelect.disabled = true; // Khóa bộ lọc
-            // Ẩn luôn thanh chọn khối đi cho gọn gàng tuyệt đối
-            if (filterSelect.parentElement) filterSelect.parentElement.style.display = 'none';
+            filterSelect.value = me.grade;
+            filterSelect.disabled = true;
           }
         }
-      } else {
-        if (filterSelect) {
-          filterSelect.disabled = false;
-          if (filterSelect.parentElement) filterSelect.parentElement.style.display = 'flex';
+      }
+
+      // 2. LỌC BÀI VIẾT THEO QUY TẮC CHỌN KHỐI
+      var filteredPosts = posts.filter(function(p) {
+        var pGrade = p.grade || 'Tất cả khối';
+        if (isStudent) {
+          return pGrade === 'Tất cả khối' || pGrade === studentGrade;
         }
-      }
-
-      var selectedGrade = filterSelect ? filterSelect.value : 'NONE';
-
-      if (isGuest && selectedGuestStudentId && selectedGrade === 'NONE') {
-        container.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs italic bg-slate-50 rounded-xl border border-dashed">Chưa xác định khối của học sinh.</div>';
-        return;
-      }
-
-      if (!isGuest && selectedGrade === 'NONE') {
-        container.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs italic bg-slate-50 rounded-xl border border-dashed"><i class="fa-solid fa-filter mr-1"></i> Vui lòng chọn <b>Khối học</b> ở góc trên bên phải để hiển thị bảng tin và bài học.</div>';
-        return;
-      }
-
-      var allPosts = appData.posts || [];
-      var filtered = allPosts.filter(function(p) {
-        if (selectedGrade === 'ALL') return true;
-        var pGrade = String(p.grade || '').trim();
-        return pGrade.toLowerCase() === 'tất cả' || pGrade.toLowerCase() === 'tất cả khối' || pGrade === selectedGrade;
+        if (selectedFilterGrade !== 'ALL') {
+          return pGrade === 'Tất cả khối' || pGrade === selectedFilterGrade;
+        }
+        return true;
       });
 
       var badge = document.getElementById('postCountBadge');
-      if (badge) badge.innerText = filtered.length + ' Bài viết';
+      if (badge) badge.innerText = filteredPosts.length + ' Bài viết';
 
-      if (filtered.length === 0) {
-        container.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs italic bg-slate-50 rounded-xl border border-dashed">Không có bài đăng nào cho khối này.</div>';
+      if (filteredPosts.length === 0) {
+        container.innerHTML = '<div class="p-8 text-center text-slate-400 font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">Không có bài đăng nào cho khối này.</div>';
         return;
       }
 
-      container.innerHTML = filtered.map(function(p) {
-        var dateStr = p.date ? formatDateWithDay(p.date) : '';
-        var typeBadge = '<span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">📢 ' + (p.type || 'Thông báo') + '</span>';
-        if (p.type === 'Bài tập') typeBadge = '<span class="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px]">📄 Bài tập</span>';
-        if (p.type === 'Bài giảng') typeBadge = '<span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold text-[10px]">🎥 Bài giảng</span>';
+      // 3. PHÂN CHIA THÀNH 3 NHÓM: THÔNG BÁO, BÀI TẬP, BÀI GIẢNG
+      var listThongBao = [];
+      var listBaiTap = [];
+      var listBaiGiang = [];
 
-        var linkBtn = p.link
-          ? '<a href="' + p.link + '" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-2xs"><i class="fa-solid fa-arrow-up-right-from-square"></i> Mở liên kết đính kèm</a>'
-          : '';
+      filteredPosts.forEach(function(p) {
+        var typeStr = String(p.type || '').toLowerCase();
+        if (typeStr.includes('bài tập') || typeStr.includes('đề kiểm tra')) {
+          listBaiTap.push(p);
+        } else if (typeStr.includes('bài giảng') || typeStr.includes('video') || typeStr.includes('youtube')) {
+          listBaiGiang.push(p);
+        } else {
+          listThongBao.push(p);
+        }
+      });
 
-        var pdfBtn = p.pdfUrl
-          ? '<a href="' + p.pdfUrl + '" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition shadow-2xs"><i class="fa-solid fa-file-pdf"></i> Tải / Xem File PDF</a>'
-          : '';
+      function renderPostCards(list, emptyText, btnColor, btnIcon, defaultBtnText) {
+        if (list.length === 0) {
+          return '<div class="p-3 text-center text-slate-400 text-xs italic bg-slate-50 rounded-xl border border-slate-100">' + emptyText + '</div>';
+        }
 
-        var deleteBtn = (!isGuest)
-          ? '<button type="button" onclick="handleDeletePost(\'' + p.id + '\')" class="text-red-500 hover:text-red-700 font-bold text-xs p-1" title="Xóa bài"><i class="fa-solid fa-trash-can"></i></button>'
-          : '';
+        return list.map(function(p) {
+          var gradeTag = '<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700 ml-1.5">' + (p.grade || 'Tất cả khối') + '</span>';
 
-        return '<div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3 shadow-2xs">' +
-          '<div class="flex items-start justify-between gap-3">' +
-            '<div class="space-y-1">' +
-              '<div class="flex items-center gap-2">' + typeBadge + '<span class="text-[11px] text-slate-400 font-medium">' + dateStr + '</span></div>' +
-              '<h4 class="font-black text-slate-900 text-sm">' + p.title + '</h4>' +
+          var pdfButtonHtml = '';
+          if (p.pdfData && p.pdfData.length > 10) {
+            pdfButtonHtml = '<a href="' + p.pdfData + '" target="_blank" class="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition shadow-xs">' +
+              '<i class="fa-solid fa-file-pdf"></i> Tải / Xem File PDF' +
+            '</a>';
+          }
+
+          var linkButtonHtml = '';
+          if (p.link) {
+            linkButtonHtml = '<a href="' + p.link + '" target="_blank" class="inline-flex items-center gap-1.5 ' + btnColor + ' text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition shadow-xs">' +
+              '<i class="' + btnIcon + '"></i> ' + defaultBtnText +
+            '</a>';
+          }
+
+          return '<div class="p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50/60 hover:bg-slate-50 transition space-y-2.5 shadow-2xs">' +
+            '<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-200/80 pb-2">' +
+              '<div class="flex items-center gap-1 flex-wrap">' +
+                '<h4 class="font-bold text-slate-800 text-sm">' + p.title + '</h4>' + gradeTag +
+              '</div>' +
+              '<div class="flex items-center gap-2 text-[11px] text-slate-400 font-medium self-end sm:self-auto">' +
+                '<span><i class="fa-regular fa-clock mr-1"></i>' + p.date + '</span>' +
+                (isAdmin ? '<button onclick="handleDeletePost(\'' + p.id + '\', \'' + p.title + '\')" class="text-red-500 hover:text-red-700 font-bold ml-1"><i class="fa-solid fa-trash-can"></i></button>' : '') +
+              '</div>' +
             '</div>' +
-            deleteBtn +
-          '</div>' +
-          (p.content ? '<div class="text-xs text-slate-700 whitespace-pre-line leading-relaxed bg-white p-3 rounded-xl border border-slate-100">' + p.content + '</div>' : '') +
-          '<div class="flex flex-wrap items-center gap-2 pt-1">' + linkBtn + pdfBtn + '</div>' +
-        '</div>';
-      }).join('');
-    }
+            (p.content ? '<p class="text-xs text-slate-600 whitespace-pre-line leading-relaxed">' + p.content + '</p>' : '') +
+            '<div class="flex flex-wrap items-center gap-2 pt-0.5">' + linkButtonHtml + pdfButtonHtml + '</div>' +
+          '</div>';
+        }).join('');
+      }
 
       var htmlResult = '';
 
@@ -7911,26 +7932,8 @@ function toggleAllStudents(source) {
     function initScoreClassDropdown() {
       var sel = document.getElementById('scoreClassSelect');
       if (!sel) return;
-      var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
-      var isGuest = (role === 'GUEST');
-
-      // NẾU LÀ KHÁCH VÀ ĐÃ CHỌN HỌC SINH -> TỰ ĐỘNG KHÓA THEO LỚP CỦA HỌC SINH ĐÓ
-      if (isGuest && selectedGuestStudentId) {
-        var chosenStu = (getActiveStudents() || []).find(function(s) {
-          return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
-        });
-        if (chosenStu) {
-          var stuClass = chosenStu.className || chosenStu.grade || '';
-          sel.innerHTML = '<option value="' + stuClass + '">Lớp ' + stuClass + '</option>';
-          sel.value = stuClass;
-          sel.disabled = true; // Khóa không cho đổi lớp khác
-          updateScoreClassHeaderTitle();
-          return;
-        }
-      }
-
-      sel.disabled = false;
       var currentVal = sel.value;
+
       var activeStus = getActiveStudents() || [];
       var classSet = {};
       activeStus.forEach(function(s) {
