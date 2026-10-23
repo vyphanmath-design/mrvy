@@ -168,7 +168,8 @@ async function getInitialData(supabase, token) {
     hpData,
     cnxData,
     bvData,
-    ldData
+    ldData,
+    dktData
   ] = await Promise.all([
     fetchAllRows(supabase, 'cau_hinh', 'id', true),
     fetchAllRows(supabase, 'hoc_sinh', 'id', true),
@@ -176,7 +177,8 @@ async function getInitialData(supabase, token) {
     fetchAllRows(supabase, 'hoc_phi', 'id', true),
     fetchAllRows(supabase, 'cong_no_xoa', 'id', true),
     fetchAllRows(supabase, 'bai_viet', 'id', false),
-    fetchAllRows(supabase, 'lich_day', null, true)
+    fetchAllRows(supabase, 'lich_day', null, true),
+    fetchAllRows(supabase, 'diem_kiem_tra', 'id', true)
   ]);
 
   let avatarUrl = '';
@@ -266,6 +268,18 @@ async function getInitialData(supabase, token) {
     }
   });
 
+  const examScores = (dktData || []).map((r) => ({
+    examId: String(r.ma_bai || '').trim(),
+    examName: String(r.ten_bai || '').trim(),
+    term: String(r.dot || 'Cả năm').trim(),
+    examDate: String(r.ngay_kt || '').trim(),
+    className: String(r.lop || '').trim(),
+    studentId: formatStudentId(r.ma_hs),
+    score: String(r.diem !== null && r.diem !== undefined ? r.diem : '').trim(),
+    note: String(r.ghi_chu || '').trim(),
+    published: r.cong_bo !== false
+  }));
+
   return {
     serverRole,
     students,
@@ -275,7 +289,8 @@ async function getInitialData(supabase, token) {
     customRates,
     dismissedKeys,
     posts,
-    scheduleNote
+    scheduleNote,
+    examScores
   };
 }
 
@@ -790,6 +805,54 @@ export default async function handler(req, res) {
         return res.json({ result: data });
       }
 
+
+      case 'saveExamScores': {
+        const [token, payload] = args;
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
+        const list = Array.isArray(payload) ? payload : [];
+        if (list.length > 0) {
+          const rows = list.map((item) => ({
+            ma_bai: String(item.examId || '').trim(),
+            ten_bai: String(item.examName || '').trim(),
+            dot: String(item.term || 'Cả năm').trim(),
+            ngay_kt: String(item.examDate || '').trim(),
+            lop: String(item.className || '').trim(),
+            ma_hs: formatStudentId(item.studentId),
+            diem: String(item.score !== undefined && item.score !== null ? item.score : '').trim(),
+            ghi_chu: String(item.note || '').trim(),
+            cong_bo: item.published !== false
+          })).filter((r) => r.ma_bai && r.ma_hs);
+
+          if (rows.length > 0) {
+            await supabase.from('diem_kiem_tra').upsert(rows, { onConflict: 'ma_bai,ma_hs' });
+          }
+        }
+        const data = await getInitialData(supabase, token);
+        return res.json({ result: data });
+      }
+
+      case 'togglePublishExam': {
+        const [token, examId, isPublished] = args;
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
+        await supabase
+          .from('diem_kiem_tra')
+          .update({ cong_bo: Boolean(isPublished) })
+          .eq('ma_bai', String(examId || '').trim());
+        const data = await getInitialData(supabase, token);
+        return res.json({ result: data });
+      }
+
+      case 'deleteExamColumn': {
+        const [token, examId] = args;
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
+        await supabase
+          .from('diem_kiem_tra')
+          .delete()
+          .eq('ma_bai', String(examId || '').trim());
+        const data = await getInitialData(supabase, token);
+        return res.json({ result: data });
+      }
+        
       default:
         return res.status(400).json({ error: `Hàm ${action} chưa được khai báo!` });
     }
