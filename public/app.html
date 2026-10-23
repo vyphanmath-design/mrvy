@@ -4350,12 +4350,12 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
     if (isGuest) {
       // TỐI ƯU GIAO DIỆN BỘ LỌC KHÁCH: GỌN GÀNG, Ô TRÁI CÓ CHỮ ẨN HỌ TÊN/MÃ HS/SĐT
-      var filterBarHtml = '<div class="flex flex-wrap items-center gap-3 bg-white p-4 rounded-2xl shadow-sm border text-xs mb-4">' +
-        '<div class="flex-1 min-w-[220px]">' +
-          '<input type="text" id="overviewSearch" oninput="renderAttendanceOverviewClass()" placeholder="🔍 Nhập Họ tên, Mã HS hoặc SĐT..." value="' + searchInput + '" class="w-full px-3.5 py-2 border-2 border-emerald-600 rounded-xl bg-white font-medium text-xs shadow-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">' +
+     var filterBarHtml = '<div class="flex items-center gap-2.5 bg-white p-3.5 rounded-2xl shadow-sm border text-xs mb-4">' +
+        '<div class="flex-1">' +
+          '<input type="text" id="overviewSearch" oninput="renderAttendanceOverviewClass()" placeholder="🔍 Nhập Họ tên, Mã HS hoặc SĐT..." value="' + searchInput + '" class="w-full px-4 py-2.5 border-2 border-emerald-600 rounded-xl bg-white font-medium text-xs shadow-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">' +
         '</div>' +
         '<div>' +
-          '<select id="overviewMonthFilter" onchange="renderAttendanceOverviewClass()" class="px-3.5 py-2 border-2 border-emerald-600 rounded-xl bg-white font-bold text-emerald-800 text-xs shadow-xs">' +
+          '<select id="overviewMonthFilter" onchange="renderAttendanceOverviewClass()" class="px-3.5 py-2.5 border-2 border-emerald-600 rounded-xl bg-white font-bold text-emerald-800 text-xs shadow-xs">' +
             document.getElementById('overviewMonthFilter').innerHTML +
           '</select>' +
         '</div>' +
