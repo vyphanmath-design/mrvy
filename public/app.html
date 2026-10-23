@@ -337,10 +337,20 @@
 
     <!-- MAIN CONTENT -->
     <main class="flex-1 p-2 md:p-6 overflow-y-auto custom-scrollbar">
-
-      <!-- TAB 1: HỌC SINH -->
+    <!-- TAB 1: HỌC SINH -->
       <div id="tab-hocsinh" class="tab-content admin-only space-y-6">
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <!-- THANH CHỌN 2 TAB TRÁI - PHẢI GIỐNG ĐIỂM DANH -->
+        <div id="studentSubTabHeader" class="flex items-center gap-2 border-b pb-2">
+          <button type="button" onclick="switchStudentSubTab('list')" id="subTabStuList" class="px-4 py-2 rounded-xl text-xs font-bold transition bg-emerald-600 text-white shadow-sm flex items-center gap-2">
+            <i class="fa-solid fa-users"></i> Học Sinh
+          </button>
+          <button type="button" onclick="switchStudentSubTab('register')" id="subTabStuRegister" class="px-4 py-2 rounded-xl text-xs font-bold transition text-slate-600 hover:bg-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-user-plus"></i> Đăng Ký Mới
+          </button>
+        </div>
+
+        <!-- PANEL PHẢI: ĐĂNG KÝ HỌC SINH MỚI (MẶC ĐỊNH ẨN) -->
+        <div id="stuSubTabRegisterPanel" class="hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
           <div class="flex items-center justify-between mb-4 pb-2 border-b">
             <h2 class="font-bold text-brand-dark flex items-center gap-2">
               <i class="fa-solid fa-user-plus text-emerald-600"></i> Đăng Ký Học Sinh Mới
@@ -382,7 +392,6 @@
               </div>
             </div>
 
-            <!-- Cụm nút thao tác: Thêm vào danh sách điền tiếp & Nút lưu tổng lên Sheet -->
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-1">
               <button type="submit" class="w-full sm:w-auto px-4 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-semibold py-2 rounded-lg text-sm transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95">
                 <i class="fa-solid fa-user-plus"></i> + Thêm vào danh sách (Điền tiếp)
@@ -393,7 +402,6 @@
             </div>
           </form>
 
-          <!-- Danh sách các em đang trong hàng đợi chờ lưu -->
           <div id="queuedStudentsBox" class="hidden space-y-2 border-t pt-3 mt-3">
             <div class="flex items-center justify-between">
               <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -407,7 +415,8 @@
           </div>
         </div>
 
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <!-- PANEL TRÁI: DANH SÁCH HỌC SINH (MẶC ĐỊNH HIỂN THỊ) -->
+        <div id="stuSubTabListPanel" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b">
             <div class="flex items-center gap-2">
               <h2 class="font-bold text-brand-dark">Danh Sách Học Sinh Trong Sheet</h2>
@@ -415,28 +424,26 @@
             </div>
             
             <div class="flex flex-wrap items-center gap-2">
-  <button onclick="exportStudentExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
-    <i class="fa-solid fa-file-excel"></i> Xuất Excel
-  </button>
-  
-  <button type="button" onclick="promoteSelectedOrAllStudents()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
-    <i class="fa-solid fa-angles-up"></i> Thăng Lớp Đợi
-  </button>
-  
-  <!-- BẠN HÃY CHÈN ĐOẠN CODE NÚT XÓA NÀY VÀO ĐÂY -->
-  <button type="button" id="btnBulkDelete" onclick="permanentlyDeleteSelectedStudents()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5 active:scale-95">
-    <i class="fa-solid fa-trash-xmark"></i> Xóa <span id="bulkDeleteCount">0</span> HS
-  </button>
-  <!-- ========================================== -->
+              <button onclick="exportStudentExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-excel"></i> Xuất Excel
+              </button>
+              
+              <button type="button" onclick="promoteSelectedOrAllStudents()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
+                <i class="fa-solid fa-angles-up"></i> Thăng Lớp Đợi
+              </button>
+              
+              <button type="button" id="btnBulkDelete" onclick="permanentlyDeleteSelectedStudents()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5 active:scale-95">
+                <i class="fa-solid fa-trash-xmark"></i> Xóa <span id="bulkDeleteCount">0</span> HS
+              </button>
 
-  <input type="text" id="searchStudent" oninput="renderStudentsTable()" placeholder="🔍 Tìm kiếm..." class="px-3 py-1.5 text-xs border rounded-lg w-40">
-  
-  <select id="filterGrade" onchange="onGradeFilterChange()" class="px-3 py-1.5 text-xs border rounded-lg bg-white font-bold text-slate-700 grade-filter-options"></select>
-  
-  <select id="filterClass" onchange="renderStudentsTable()" class="px-3 py-1.5 text-xs border rounded-lg bg-white font-medium">
-    <option value="ALL">Tất cả lớp</option>
-  </select>
-</div>
+              <input type="text" id="searchStudent" oninput="renderStudentsTable()" placeholder="🔍 Tìm kiếm..." class="px-3 py-1.5 text-xs border rounded-lg w-40">
+              
+              <select id="filterGrade" onchange="onGradeFilterChange()" class="px-3 py-1.5 text-xs border rounded-lg bg-white font-bold text-slate-700 grade-filter-options"></select>
+              
+              <select id="filterClass" onchange="renderStudentsTable()" class="px-3 py-1.5 text-xs border rounded-lg bg-white font-medium">
+                <option value="ALL">Tất cả lớp</option>
+              </select>
+            </div>
           </div>
           
           <div class="overflow-x-auto">
@@ -459,6 +466,7 @@
           </div>
         </div>
       </div>
+      
 
       <!-- TAB 2: ĐIỂM DANH -->
       <div id="tab-diemdanh" class="tab-content hidden space-y-6">
@@ -3655,6 +3663,26 @@ function getStudentDebtDetails(student, targetMonthStr) {
           showToast('Đã lưu ' + listToSave.length + ' học sinh!');
         }, 400);
       }
+    }
+
+    function switchStudentSubTab(tab) {
+      var btnList = document.getElementById('subTabStuList');
+      var btnReg = document.getElementById('subTabStuRegister');
+      var panelList = document.getElementById('stuSubTabListPanel');
+      var panelReg = document.getElementById('stuSubTabRegisterPanel');
+
+      if (btnList) {
+        btnList.className = tab === 'list'
+          ? "px-4 py-2 rounded-xl text-xs font-bold transition bg-emerald-600 text-white shadow-sm flex items-center gap-2"
+          : "px-4 py-2 rounded-xl text-xs font-bold transition text-slate-600 hover:bg-slate-200 flex items-center gap-2";
+      }
+      if (btnReg) {
+        btnReg.className = tab === 'register'
+          ? "px-4 py-2 rounded-xl text-xs font-bold transition bg-emerald-600 text-white shadow-sm flex items-center gap-2"
+          : "px-4 py-2 rounded-xl text-xs font-bold transition text-slate-600 hover:bg-slate-200 flex items-center gap-2";
+      }
+      if (panelList) panelList.classList.toggle('hidden', tab !== 'list');
+      if (panelReg) panelReg.classList.toggle('hidden', tab !== 'register');
     }
 
     function switchAttendanceSubTab(tab) {
