@@ -4195,13 +4195,30 @@ function getStudentDebtDetails(student, targetMonthStr) {
           }).join('');
 
           var monthFee = getStudentExpectedRateByMonth(s, mLabel);
-          var feeBadgeHtml = monthFee > 0
-            ? '<span class="text-xs font-mono font-black text-emerald-700 bg-white px-2.5 py-0.5 rounded-lg border border-emerald-200">Học phí: ' + formatMoney(monthFee) + ' đ</span>'
+          var paidInThisMonth = getStudentPaidTotalByMonth(s.id, s.name, mLabel);
+          
+          // Kiểm tra xem tháng này đã đóng đủ học phí chưa (Đã đóng >= Phải đóng và > 0)
+          var isMonthPaid = (monthFee > 0 && paidInThisMonth >= monthFee) || (monthFee === 0 && paidInThisMonth > 0);
+          
+          // Đổi màu viền: Đã đóng -> Viền xanh lá (emerald), Chưa đóng -> Viền đỏ (red)
+          var borderStyleClass = isMonthPaid 
+            ? 'border-2 border-emerald-500 bg-emerald-50/20' 
+            : 'border-2 border-red-400 bg-red-50/20';
+
+          var statusBadge = isMonthPaid
+            ? '<span class="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">Đã đóng đủ</span>'
+            : '<span class="text-[11px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-md">Chưa đóng</span>';
+
+          var feeBadgeHtml = monthFee > 0 
+            ? '<span class="text-xs font-mono font-black text-slate-800 bg-white px-2.5 py-1 rounded-lg border">Phải đóng: ' + formatMoney(monthFee) + ' đ</span>'
             : '';
 
-          return '<div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5">' +
-            '<div class="flex items-center justify-between border-b border-slate-200 pb-1.5 gap-2 flex-wrap">' +
-              '<span class="font-black text-brand-dark text-xs uppercase"><i class="fa-regular fa-calendar-check text-emerald-600 mr-1"></i>' + mLabel + '</span>' +
+          return '<div class="p-3.5 rounded-xl ' + borderStyleClass + ' space-y-2.5 shadow-xs">' +
+            '<div class="flex items-center justify-between border-b border-slate-200/80 pb-1.5 gap-2 flex-wrap">' +
+              '<div class="flex items-center gap-2">' +
+                '<span class="font-black text-brand-dark text-xs uppercase"><i class="fa-regular fa-calendar-check text-emerald-600 mr-1"></i>' + mLabel + '</span>' +
+                statusBadge +
+              '</div>' +
               feeBadgeHtml +
             '</div>' +
             '<div class="flex flex-wrap gap-2">' + badges + '</div>' +
