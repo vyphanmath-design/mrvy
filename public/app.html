@@ -560,9 +560,9 @@
                 <option value="ALL">Tất cả Lớp</option>
               </select>
 
-              <!-- Ô TÌM TÊN & CHỌN THÁNG MỞ CHO CẢ KHÁCH VÀ ADMIN -->
-              <input type="text" id="overviewSearch" oninput="renderAttendanceOverviewClass()" placeholder="🔍 Tìm tên..." class="px-3 py-1.5 border rounded-lg bg-white font-medium text-xs w-48">
-              <select id="overviewMonthFilter" onchange="renderAttendanceOverviewClass()" class="px-3 py-1.5 border-2 border-emerald-600 rounded-lg bg-white font-bold text-emerald-800 text-xs shadow-sm"></select>
+    <!-- Ô TÌM TÊN & CHỌN THÁNG MỞ CHO CẢ KHÁCH VÀ ADMIN -->
+              <input type="text" id="overviewSearch" oninput="renderAttendanceOverviewClass()" placeholder="🔍 Nhập Họ tên, Mã HS hoặc SĐT..." class="flex-1 min-w-[220px] px-3.5 py-2 border-2 border-emerald-600 rounded-xl bg-white font-medium text-xs shadow-xs focus:outline-none">
+              <select id="overviewMonthFilter" onchange="renderAttendanceOverviewClass()" class="px-3.5 py-2 border-2 border-emerald-600 rounded-xl bg-white font-bold text-emerald-800 text-xs shadow-xs"></select>
 
               <!-- CỤM NÚT XEM THEO NGÀY / HS ẨN ĐỐI VỚI KHÁCH -->
               <div class="admin-only inline-flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200 text-xs font-bold text-emerald-800 ml-2">
@@ -572,7 +572,7 @@
               </div>
             </div>
 
-            <div class="flex items-center gap-3 text-xs font-bold">
+            <div class="admin-only flex items-center gap-3 text-xs font-bold">
               <span class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg border border-emerald-300">🟢 Có mặt</span>
               <span class="bg-blue-100 text-blue-800 px-2.5 py-1 rounded-lg border border-blue-300">🔵 Báo bù</span>
               <span class="bg-purple-100 text-purple-800 px-2.5 py-1 rounded-lg border border-purple-300">🟣 Học bù</span>
@@ -4196,9 +4196,15 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '</div>';
         }).join('');
 
+        var monthFee = getStudentExpectedRateByMonth(s, mLabel);
+        var feeBadgeHtml = monthFee > 0 
+          ? '<span class="text-xs font-mono font-black text-emerald-700 bg-white px-2.5 py-0.5 rounded-lg border border-emerald-200">Học phí: ' + formatMoney(monthFee) + ' đ</span>'
+          : '';
+
         return '<div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5">' +
-          '<div class="flex items-center justify-between border-b border-slate-200 pb-1.5">' +
+          '<div class="flex items-center justify-between border-b border-slate-200 pb-1.5 gap-2 flex-wrap">' +
             '<span class="font-black text-brand-dark text-xs uppercase"><i class="fa-regular fa-calendar-check text-emerald-600 mr-1"></i>' + mLabel + '</span>' +
+            feeBadgeHtml +
           '</div>' +
           '<div class="flex flex-wrap gap-2">' + badges + '</div>' +
         '</div>';
@@ -4315,7 +4321,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       '<div class="bg-white p-5 rounded-2xl shadow-sm border space-y-4">' +
         '<div class="flex items-center justify-between border-b pb-2.5">' +
           '<h3 class="font-black text-brand-dark text-sm uppercase flex items-center gap-2">' +
-            '<i class="fa-solid fa-calendar-check text-blue-600"></i> 4. Chi Tiết Điểm Danh Tất Cả Các Buổi (' + allAtt.length + ' buổi)' +
+            '<i class="fa-solid fa-calendar-check text-blue-600"></i> 4. Chi Tiết Điểm Danh Tất Cả Các Buổi' +
           '</h3>' +
         '</div>' +
         
@@ -4348,18 +4354,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
     var isGuest = role === 'GUEST';
     var studentIdLimit = isStudent ? currentUser.username : null;
 
-    if (isGuest) {
-      // CHỈ GIỮ LẠI DUY NHẤT 1 KHUNG TÌM KIẾM GỌN GÀNG PHÍA DƯỚI, XÓA BỎ HOÀN TOÀN KHUNG TRÊN
-      var filterBarHtml = '<div class="flex items-center gap-2.5 bg-white p-3.5 rounded-2xl shadow-sm border text-xs mb-4">' +
-        '<div class="flex-1">' +
-          '<input type="text" id="overviewSearch" oninput="renderAttendanceOverviewClass()" placeholder="🔍 Nhập Họ tên, Mã HS hoặc SĐT..." value="' + searchInput + '" class="w-full px-4 py-2.5 border-2 border-emerald-600 rounded-xl bg-white font-medium text-xs shadow-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">' +
-        '</div>' +
-        '<div>' +
-          '<select id="overviewMonthFilter" onchange="renderAttendanceOverviewClass()" class="px-3.5 py-2.5 border-2 border-emerald-600 rounded-xl bg-white font-bold text-emerald-800 text-xs shadow-xs">' +
-            document.getElementById('overviewMonthFilter').innerHTML +
-          '</select>' +
-        '</div>' +
-      '</div>';
+   if (isGuest) {
+      var filterBarHtml = '';
 
       if (!search) {
         selectedGuestStudentId = null;
