@@ -209,20 +209,14 @@ async function getInitialData(supabase, token) {
   const attendance = [];
   (ddData || []).forEach((r) => {
     const dateStr = toStandardDateStr(r.ngay);
-    const dParts = dateStr.split('-');
-    if (dParts.length === 3) {
-      const y = parseInt(dParts[0], 10);
-      const m = parseInt(dParts[1], 10);
-      const rowMonthStr = `Tháng ${m}/${y}`;
-      if (allowedMonthsMap[rowMonthStr]) {
-        attendance.push({
-          date: dateStr,
-          grade: String(r.lop_khoi || '').trim(),
-          status: String(r.trang_thai || 'Có mặt').trim(),
-          note: String(r.ghi_chu || '').trim(),
-          studentId: formatStudentId(r.ma_hs)
-        });
-      }
+    if (dateStr) {
+      attendance.push({
+        date: dateStr,
+        grade: String(r.lop_khoi || '').trim(),
+        status: String(r.trang_thai || 'Có mặt').trim(),
+        note: String(r.ghi_chu || '').trim(),
+        studentId: formatStudentId(r.ma_hs)
+      });
     }
   });
 
@@ -647,18 +641,14 @@ export default async function handler(req, res) {
         const result = [];
         (ddData || []).forEach((r) => {
           const dateStr = toStandardDateStr(r.ngay);
-          const dParts = dateStr.split('-');
-          if (dParts.length === 3) {
-            const rowMonthStr = `Tháng ${parseInt(dParts[1], 10)}/${dParts[0]}`;
-            if (rowMonthStr === String(monthStr).trim()) {
-              result.push({
-                date: dateStr,
-                grade: String(r.lop_khoi || '').trim(),
-                status: String(r.trang_thai || 'Có mặt').trim(),
-                note: String(r.ghi_chu || '').trim(),
-                studentId: formatStudentId(r.ma_hs)
-              });
-            }
+          if (dateStr) {
+            result.push({
+              date: dateStr,
+              grade: String(r.lop_khoi || '').trim(),
+              status: String(r.trang_thai || 'Có mặt').trim(),
+              note: String(r.ghi_chu || '').trim(),
+              studentId: formatStudentId(r.ma_hs)
+            });
           }
         });
         return res.json({ result });
