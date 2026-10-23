@@ -2,20 +2,24 @@
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb', // Hỗ trợ upload ảnh Avatar và file PDF Base64
+      sizeLimit: '10mb',
     },
   },
 };
 
-// --- HÀM TRỢ GIÚP DÙNG CHUNG (GIỮ NGUYÊN TỪ CODE.JS) ---
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'https://sflozzrvmthxaojxqboo.supabase.co';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+  if (!key) {
+    throw new Error('Chưa cài đặt SUPABASE_SERVICE_ROLE_KEY trong mục Environment Variables của Vercel!');
+  }
+  return createClient(url, key);
+}
+
+// --- HÀM TRỢ GIÚP DÙNG CHUNG ---
 function formatStudentId(id) {
   if (!id && id !== 0) return '';
   const clean = String(id).trim().replace(/\D/g, '').replace(/^0+/, '');
@@ -67,39 +71,63 @@ function hashPassword_(password) {
   return crypto.createHash('sha256').update(rawPass, 'utf8').digest('hex');
 }
 
-// --- BẢO MẬT: KIỂM TRA QUYỀN TỪ TOKEN ---
-async function requireRole_(token, allowedRoles) {
-  if (!token) throw new Error('Từ chối truy cập: Không có Token xác thực!');
+// --- TẠO & GIẢI MÃ TOKEN TỰ THÂN (KHÔNG PHỤ THUỘC BẢNG SESSIONS) ---
+function createSelfToken_(userObj) {
+  const payload = {
+    username: String(userObj.username || ''),
+    name: String(userObj.name || ''),
+    role: String(userObj.role || 'STUDENT').toUpperCase().trim(),
+    exp: Date.now() + 12 * 60 * 60 * 1000 // 12 tiếng
+  };
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+}
+
+async function verifySessionToken_(supabase, token) {
+  if (!token) return null;
   const cleanToken = String(token).trim();
 
-  const { data: session, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('token', cleanToken)
-    .single();
+  // 1. Giải mã trực tiếp từ Base64 Token
+  try {
+    const decoded = Buffer.from(cleanToken, 'base64').toString('utf8');
+    if (decoded.startsWith('{')) {
+      const obj = JSON.parse(decoded);
+      if (obj && obj.username && obj.role) {
+        if (obj.exp && Date.now() > Number(obj.exp)) return null;
+        return obj;
+      }
+    }
+  } catch (e) {}
 
-  if (error || !session) {
+  // 2. Dự phòng kiểm tra trong bảng sessions (nếu có)
+  try {
+    const { data: sess } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('token', cleanToken)
+      .single();
+    if (sess && (!sess.expires_at || Date.now() <= Number(sess.expires_at))) {
+      return { username: sess.username, name: sess.name, role: sess.role };
+    }
+  } catch (e) {}
+
+  return null;
+}
+
+async function requireRole_(supabase, token, allowedRoles) {
+  const session = await verifySessionToken_(supabase, token);
+  if (!session) {
     throw new Error('Từ chối truy cập: Phiên đăng nhập đã hết hạn hoặc không hợp lệ!');
   }
-
-  if (session.expires_at && Date.now() > Number(session.expires_at)) {
-    await supabase.from('sessions').delete().eq('token', cleanToken);
-    throw new Error('Từ chối truy cập: Phiên đăng nhập đã hết hạn!');
-  }
-
   const role = String(session.role || '').toUpperCase().trim();
   if (allowedRoles.indexOf(role) === -1) {
     throw new Error('Từ chối truy cập: Tài khoản của bạn không có quyền thực hiện hành động này!');
   }
-
   return session;
 }
 
-// --- HÀM TỰ ĐỘNG DỌN RÁC KHI NGHỈ HỌC / CHUYỂN LỚP ĐỢI ---
-async function clearStudentDataFromDB_(studentId) {
+async function clearStudentDataFromDB_(supabase, studentId) {
   const targetId = formatStudentId(studentId);
   if (!targetId) return;
-
   await Promise.all([
     supabase.from('diem_danh').delete().eq('ma_hs', targetId),
     supabase.from('hoc_phi').delete().eq('ma_hs', targetId),
@@ -107,19 +135,11 @@ async function clearStudentDataFromDB_(studentId) {
   ]);
 }
 
-// --- LẤY DỮ LIỆU TỔNG HỢP BAN ĐẦU (SIÊU TỐC NHỜ TRUY VẤN SONG SONG) ---
-async function getInitialData(token) {
+async function getInitialData(supabase, token) {
   let serverRole = null;
-  if (token) {
-    const { data: sess } = await supabase
-      .from('sessions')
-      .select('role')
-      .eq('token', String(token).trim())
-      .single();
-    if (sess) serverRole = sess.role;
-  }
+  const sess = await verifySessionToken_(supabase, token);
+  if (sess) serverRole = sess.role;
 
-  // Tính 4 tháng gần nhất cho Điểm Danh (giống hệt Code.js)
   const now = new Date();
   const curYear = now.getFullYear();
   const curMonth = now.getMonth() + 1;
@@ -152,7 +172,6 @@ async function getInitialData(token) {
     supabase.from('lich_day').select('*')
   ]);
 
-  // 1. CauHinh
   let avatarUrl = '';
   const customRates = [];
   (chData || []).forEach((r) => {
@@ -169,7 +188,6 @@ async function getInitialData(token) {
     }
   });
 
-  // 2. HocSinh
   const students = (hsData || []).map((r, idx) => {
     let codeVal = String(r.ma_hs || '').trim().replace(/'/g, '');
     if (!codeVal) codeVal = ('000' + (idx + 1)).slice(-3);
@@ -188,7 +206,6 @@ async function getInitialData(token) {
     };
   });
 
-  // 3. DiemDanh (Lọc 4 tháng gần nhất)
   const attendance = [];
   (ddData || []).forEach((r) => {
     const dateStr = toStandardDateStr(r.ngay);
@@ -209,7 +226,6 @@ async function getInitialData(token) {
     }
   });
 
-  // 4. HocPhi
   const tuition = (hpData || []).map((r) => ({
     date: toStandardDateStr(r.ngay_thu),
     amount: Number(r.so_tien) || 0,
@@ -220,10 +236,8 @@ async function getInitialData(token) {
     studentId: formatStudentId(r.ma_hs)
   }));
 
-  // 5. CongNoXoa
   const dismissedKeys = (cnxData || []).map((r) => String(r.item_key || '').trim()).filter(Boolean);
 
-  // 6. BaiViet
   const posts = (bvData || []).map((r) => ({
     id: r.ma_bai,
     date: r.ngay_dang,
@@ -236,7 +250,6 @@ async function getInitialData(token) {
     pdfData: r.file_pdf_data || ''
   }));
 
-  // 7. LichDayNote
   const scheduleNote = { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] };
   (ldData || []).forEach((r) => {
     const key = String(r.key_type || '').trim();
@@ -264,15 +277,22 @@ async function getInitialData(token) {
   };
 }
 
-// --- HANDLER CHÍNH XỬ LÝ MỌI LỆNH GỌI TỪ FRONTEND ---
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  const { action, args = [] } = req.body;
+  const { action, args = [] } = req.body || {};
 
   try {
+    // Riêng chế độ Khách: Tạo phiên ngay lập tức không cần chờ DB
+    if (action === 'createGuestSession') {
+      const guestUser = { username: 'guest', name: 'Khách', role: 'GUEST' };
+      const token = createSelfToken_(guestUser);
+      return res.status(200).json({ result: { success: true, token, user: guestUser } });
+    }
+
+    const supabase = getSupabase();
+
     switch (action) {
-      // 1. ĐĂNG NHẬP & QUẢN LÝ PHIÊN
       case 'checkLogin': {
         const [username, password] = args;
         const u = String(username || '').trim();
@@ -286,11 +306,10 @@ export default async function handler(req, res) {
           const sheetName = acc.ho_ten;
           const sheetRole = String(acc.phan_quyen || 'STUDENT').toUpperCase().trim();
 
-          if (formatStudentId(sheetUser) === formatStudentId(u) || sheetUser === u) {
+          if (formatStudentId(sheetUser) === formatStudentId(u) || sheetUser.toLowerCase() === u.toLowerCase()) {
             const defaultPass = formatStudentId(sheetUser);
             let isValid = false;
             if (sheetRole === 'ADMIN' || sheetRole === 'ASSISTANT') {
-              // Hỗ trợ cả mật khẩu băm đầy đủ (64 ký tự) hoặc chuỗi băm bị cắt trên Sheet (VD: 26 ký tự đầu)
               isValid =
                 hashedInputPass === sheetPass ||
                 (sheetPass.length >= 16 && hashedInputPass.startsWith(sheetPass)) ||
@@ -301,14 +320,7 @@ export default async function handler(req, res) {
 
             if (isValid) {
               const userObj = { username: sheetUser, name: sheetName, role: sheetRole || 'STUDENT' };
-              const token = crypto.randomUUID();
-              await supabase.from('sessions').insert({
-                token,
-                username: userObj.username,
-                name: userObj.name,
-                role: userObj.role,
-                expires_at: Date.now() + 6 * 60 * 60 * 1000
-              });
+              const token = createSelfToken_(userObj);
               return res.json({ result: { success: true, token, user: userObj } });
             } else {
               return res.json({ result: { success: false, message: 'Mật khẩu không chính xác!' } });
@@ -316,7 +328,6 @@ export default async function handler(req, res) {
           }
         }
 
-        // Kiểm tra trực tiếp từ bảng hoc_sinh (STUDENT)
         const { data: stuList } = await supabase.from('hoc_sinh').select('*');
         for (const stu of stuList || []) {
           const stuId = String(stu.ma_hs || '').trim();
@@ -324,19 +335,8 @@ export default async function handler(req, res) {
           if (stuId !== '' && formatStudentId(stuId) === formatStudentId(u)) {
             const defaultPass = formatStudentId(stuId);
             if (p === defaultPass || p === stuId) {
-              await supabase.from('tai_khoan').upsert(
-                { tai_khoan: defaultPass, mat_khau: defaultPass, ho_ten: stuName, phan_quyen: 'STUDENT' },
-                { onConflict: 'tai_khoan' }
-              );
               const userObj2 = { username: defaultPass, name: stuName, role: 'STUDENT' };
-              const token2 = crypto.randomUUID();
-              await supabase.from('sessions').insert({
-                token: token2,
-                username: userObj2.username,
-                name: userObj2.name,
-                role: userObj2.role,
-                expires_at: Date.now() + 6 * 60 * 60 * 1000
-              });
+              const token2 = createSelfToken_(userObj2);
               return res.json({ result: { success: true, token: token2, user: userObj2 } });
             } else {
               return res.json({ result: { success: false, message: 'Mật khẩu không chính xác!' } });
@@ -347,31 +347,10 @@ export default async function handler(req, res) {
         return res.json({ result: { success: false, message: 'Tài khoản hoặc mã học sinh không tồn tại!' } });
       }
 
-      case 'createGuestSession': {
-        const guestUser = { username: 'guest', name: 'Khách', role: 'GUEST' };
-        const token = crypto.randomUUID();
-        await supabase.from('sessions').insert({
-          token,
-          username: guestUser.username,
-          name: guestUser.name,
-          role: guestUser.role,
-          expires_at: Date.now() + 6 * 60 * 60 * 1000
-        });
-        return res.json({ result: { success: true, token, user: guestUser } });
-      }
-
       case 'validateSession': {
         const [token] = args;
-        if (!token) return res.json({ result: { success: false } });
-        const { data: sess } = await supabase
-          .from('sessions')
-          .select('*')
-          .eq('token', String(token).trim())
-          .single();
-
-        if (!sess || (sess.expires_at && Date.now() > Number(sess.expires_at))) {
-          return res.json({ result: { success: false } });
-        }
+        const sess = await verifySessionToken_(supabase, token);
+        if (!sess) return res.json({ result: { success: false } });
         return res.json({
           result: {
             success: true,
@@ -381,14 +360,12 @@ export default async function handler(req, res) {
       }
 
       case 'logoutSession': {
-        const [token] = args;
-        if (token) await supabase.from('sessions').delete().eq('token', String(token).trim());
         return res.json({ result: { success: true } });
       }
 
       case 'changeUserPassword': {
         const [token, username, oldPassword, newPassword] = args;
-        await requireRole_(token, ['ADMIN', 'ASSISTANT', 'STUDENT']);
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT', 'STUDENT']);
         const u = String(username || '').trim();
         const oldP = String(oldPassword || '').trim();
         const newP = String(newPassword || '').trim();
@@ -400,7 +377,7 @@ export default async function handler(req, res) {
           const sheetPass = String(acc.mat_khau).trim();
           const sheetRole = String(acc.phan_quyen || 'STUDENT').toUpperCase().trim();
 
-          if (formatStudentId(sheetUser) === formatStudentId(u) || sheetUser === u) {
+          if (formatStudentId(sheetUser) === formatStudentId(u) || sheetUser.toLowerCase() === u.toLowerCase()) {
             const defaultPass = formatStudentId(sheetUser);
             const isValidOld =
               oldP === sheetPass ||
@@ -428,20 +405,17 @@ export default async function handler(req, res) {
         return res.json({ result: { success: true, message: 'Đã tạo và đổi mật khẩu mới thành công!' } });
       }
 
-      // 2. TẢI DỮ LIỆU BAN ĐẦU
       case 'getInitialData': {
         const [token] = args;
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
-      // 3. QUẢN LÝ HỌC SINH
       case 'saveStudent': {
         const [token, payload] = args;
-        await requireRole_(token, ['ADMIN', 'ASSISTANT']);
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
         const list = Array.isArray(payload) ? payload : [payload];
 
-        // Đọc bộ đếm Mã HS từ dòng đầu tiên có bo_dem_ma_hs trong bảng tai_khoan
         const { data: counterRow } = await supabase
           .from('tai_khoan')
           .select('id, bo_dem_ma_hs')
@@ -488,19 +462,18 @@ export default async function handler(req, res) {
           }
         }
 
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
       case 'updateStudent': {
-        // Hỗ trợ trường hợp promoteSelectedOrAllStudents gọi updateStudent(payload) không truyền token
         let token, studentData;
         if (args.length === 1 && typeof args[0] === 'object') {
           studentData = args[0];
           token = null;
         } else {
           [token, studentData] = args;
-          await requireRole_(token, ['ADMIN', 'ASSISTANT']);
+          await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
         }
 
         const targetId = formatStudentId(studentData.id);
@@ -514,38 +487,31 @@ export default async function handler(req, res) {
           ghi_chu: studentData.note || ''
         };
 
-        if (studentData.isRestore) {
-          updatePayload.trang_thai = '';
-        }
+        if (studentData.isRestore) updatePayload.trang_thai = '';
 
         await supabase.from('hoc_sinh').update(updatePayload).eq('ma_hs', targetId);
 
         const isWaiting =
           String(studentData.className || '').toUpperCase().includes('ĐỢI') ||
           String(studentData.className || '').toUpperCase().includes('DOI');
-        if (isWaiting) {
-          await clearStudentDataFromDB_(targetId);
-        }
+        if (isWaiting) await clearStudentDataFromDB_(supabase, targetId);
 
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
       case 'updateStudentClass': {
         const [token, studentId, studentName, newClass] = args;
-        await requireRole_(token, ['ADMIN', 'ASSISTANT']);
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
         const targetId = formatStudentId(studentId);
-
         await supabase.from('hoc_sinh').update({ lop: newClass }).eq('ma_hs', targetId);
 
         const isWaiting =
           String(newClass || '').toUpperCase().includes('ĐỢI') ||
           String(newClass || '').toUpperCase().includes('DOI');
-        if (isWaiting) {
-          await clearStudentDataFromDB_(targetId);
-        }
+        if (isWaiting) await clearStudentDataFromDB_(supabase, targetId);
 
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
@@ -556,7 +522,7 @@ export default async function handler(req, res) {
           token = null;
         } else {
           [token, studentId] = args;
-          await requireRole_(token, ['ADMIN', 'ASSISTANT']);
+          await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
         }
 
         const targetId = formatStudentId(studentId);
@@ -565,15 +531,14 @@ export default async function handler(req, res) {
           .update({ trang_thai: 'ĐÃ NGHỈ HỌC', thang_bat_dau: '' })
           .eq('ma_hs', targetId);
 
-        await clearStudentDataFromDB_(targetId);
-
-        const data = await getInitialData(token);
+        await clearStudentDataFromDB_(supabase, targetId);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
       case 'archiveStudent': {
         const [token, studentId] = args;
-        await requireRole_(token, ['ADMIN']);
+        await requireRole_(supabase, token, ['ADMIN']);
         const targetId = formatStudentId(studentId);
 
         const { data: stu } = await supabase.from('hoc_sinh').select('*').eq('ma_hs', targetId).single();
@@ -583,14 +548,14 @@ export default async function handler(req, res) {
           await supabase.from('hoc_sinh').delete().eq('ma_hs', targetId);
         }
 
-        await clearStudentDataFromDB_(targetId);
-        const data = await getInitialData(token);
+        await clearStudentDataFromDB_(supabase, targetId);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
       case 'archiveMultipleStudents': {
         const [token, studentIds] = args;
-        await requireRole_(token, ['ADMIN']);
+        await requireRole_(supabase, token, ['ADMIN']);
         if (Array.isArray(studentIds) && studentIds.length > 0) {
           const cleanIds = studentIds.map((id) => formatStudentId(id));
           const { data: stus } = await supabase.from('hoc_sinh').select('*').in('ma_hs', cleanIds);
@@ -600,17 +565,16 @@ export default async function handler(req, res) {
             await supabase.from('hoc_sinh').delete().in('ma_hs', cleanIds);
           }
           for (const id of cleanIds) {
-            await clearStudentDataFromDB_(id);
+            await clearStudentDataFromDB_(supabase, id);
           }
         }
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
-      // 4. ĐIỂM DANH
       case 'saveAttendance': {
         const [token, records] = args;
-        await requireRole_(token, ['ADMIN', 'ASSISTANT']);
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
         if (Array.isArray(records) && records.length > 0) {
           const toDelete = [];
           const toUpsert = [];
@@ -654,7 +618,6 @@ export default async function handler(req, res) {
             await supabase.from('diem_danh').upsert(toUpsert, { onConflict: 'ngay,ma_hs' });
           }
 
-          // Tự động ghi nhận "Tháng Bắt Đầu" nếu Cột K đang trống
           const stuIdsToCheck = Object.keys(firstMonthUpdates);
           if (stuIdsToCheck.length > 0) {
             const { data: hsRows } = await supabase
@@ -673,13 +636,13 @@ export default async function handler(req, res) {
           }
         }
 
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
       case 'getAttendanceByMonth': {
         const [token, monthStr] = args;
-        await requireRole_(token, ['ADMIN', 'ASSISTANT', 'STUDENT', 'GUEST']);
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT', 'STUDENT', 'GUEST']);
         const { data: ddData } = await supabase.from('diem_danh').select('*').order('id', { ascending: true });
         const result = [];
         (ddData || []).forEach((r) => {
@@ -701,10 +664,9 @@ export default async function handler(req, res) {
         return res.json({ result });
       }
 
-      // 5. HỌC PHÍ & CẤU HÌNH
       case 'saveTuition': {
         const [token, feeData] = args;
-        await requireRole_(token, ['ADMIN']);
+        await requireRole_(supabase, token, ['ADMIN']);
         const todayStr = getTodayVN();
         await supabase.from('hoc_phi').insert({
           ngay_thu: todayStr,
@@ -715,13 +677,13 @@ export default async function handler(req, res) {
           ghi_chu: feeData.note || '',
           ma_hs: formatStudentId(feeData.studentId)
         });
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
       case 'saveCustomTuitionRate': {
         const [token, type, key, month, amount] = args;
-        await requireRole_(token, ['ADMIN']);
+        await requireRole_(supabase, token, ['ADMIN']);
         const numAmount = Number(amount) || 0;
         const upperType = String(type).trim().toUpperCase();
         const keyToSave = upperType === 'STUDENT' ? formatStudentId(key) : String(key).trim();
@@ -749,7 +711,7 @@ export default async function handler(req, res) {
           });
         }
 
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
@@ -766,21 +728,19 @@ export default async function handler(req, res) {
         } else {
           await supabase.from('cau_hinh').insert({ loai: 'AVATARURL', key: avatarDataUrl, thang: '', muc_gia: 0 });
         }
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
-      // 6. BÀI VIẾT & FILE PDF
       case 'uploadFileToDrive': {
-        const [token, base64Data, fileName] = args;
-        await requireRole_(token, ['ADMIN', 'ASSISTANT']);
-        // Trả trực tiếp chuỗi Data URL hoặc lưu vào Supabase Storage
+        const [token, base64Data] = args;
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
         return res.json({ result: base64Data });
       }
 
       case 'savePost': {
         const [token, postData] = args;
-        await requireRole_(token, ['ADMIN', 'ASSISTANT']);
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
         const todayStr = getNowDateTimeVN();
         const postId = 'POST_' + Date.now();
 
@@ -796,19 +756,18 @@ export default async function handler(req, res) {
           file_pdf_data: postData.pdfData || ''
         });
 
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
       case 'deletePost': {
         const [token, postId] = args;
-        await requireRole_(token, ['ADMIN']);
+        await requireRole_(supabase, token, ['ADMIN']);
         await supabase.from('bai_viet').delete().eq('ma_bai', String(postId).trim());
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
-      // 7. LỊCH DẠY & GHI CHÚ
       case 'saveLichDayAndNotes': {
         let [token, payload] = args;
         if (typeof token === 'object' && !payload) {
@@ -823,7 +782,7 @@ export default async function handler(req, res) {
             { key_type: 'CUSTOM_STATS', content_json: JSON.stringify(payload.customStats || []) }
           ], { onConflict: 'key_type' });
         }
-        const data = await getInitialData(token);
+        const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
 
@@ -831,6 +790,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: `Hàm ${action} chưa được khai báo!` });
     }
   } catch (err) {
-    return res.status(500).json({ error: err.message || String(err) });
+    return res.status(200).json({
+      result: { success: false, message: err.message || String(err) },
+      error: err.message || String(err)
+    });
   }
 }
