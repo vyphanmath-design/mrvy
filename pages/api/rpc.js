@@ -19,6 +19,28 @@ function getSupabase() {
   return createClient(url, key);
 }
 
+// --- HÀM VƯỢT GIỚI HẠN 1000 DÒNG CỦA SUPABASE (LẤY TOÀN BỘ 100% DỮ LIỆU) ---
+async function fetchAllRows(supabase, tableName, orderCol = 'id', ascending = true) {
+  let allData = [];
+  let from = 0;
+  const step = 1000;
+
+  while (true) {
+    let query = supabase.from(tableName).select('*');
+    if (orderCol) {
+      query = query.order(orderCol, { ascending });
+    }
+    const { data, error } = await query.range(from, from + step - 1);
+    if (error || !data || data.length === 0) break;
+
+    allData = allData.concat(data);
+    if (data.length < step) break; // Đã lấy hết trang cuối
+    from += step;
+  }
+
+  return allData;
+}
+
 // --- HÀM TRỢ GIÚP DÙNG CHUNG ---
 function formatStudentId(id) {
   if (!id && id !== 0) return '';
@@ -71,7 +93,7 @@ function hashPassword_(password) {
   return crypto.createHash('sha256').update(rawPass, 'utf8').digest('hex');
 }
 
-// --- TẠO & GIẢI MÃ TOKEN TỰ THÂN (KHÔNG PHỤ THUỘC BẢNG SESSIONS) ---
+// --- TẠO & GIẢI MÃ TOKEN TỰ THÂN ---
 function createSelfToken_(userObj) {
   const payload = {
     username: String(userObj.username || ''),
@@ -86,7 +108,6 @@ async function verifySessionToken_(supabase, token) {
   if (!token) return null;
   const cleanToken = String(token).trim();
 
-  // 1. Giải mã trực tiếp từ Base64 Token
   try {
     const decoded = Buffer.from(cleanToken, 'base64').toString('utf8');
     if (decoded.startsWith('{')) {
@@ -98,7 +119,6 @@ async function verifySessionToken_(supabase, token) {
     }
   } catch (e) {}
 
-  // 2. Dự phòng kiểm tra trong bảng sessions (nếu có)
   try {
     const { data: sess } = await supabase
       .from('sessions')
@@ -140,36 +160,23 @@ async function getInitialData(supabase, token) {
   const sess = await verifySessionToken_(supabase, token);
   if (sess) serverRole = sess.role;
 
-  const now = new Date();
-  const curYear = now.getFullYear();
-  const curMonth = now.getMonth() + 1;
-  const allowedMonthsMap = {};
-  for (let i = 0; i < 4; i++) {
-    let tM = curMonth - i;
-    let tY = curYear;
-    if (tM <= 0) {
-      tM += 12;
-      tY -= 1;
-    }
-    allowedMonthsMap[`Tháng ${tM}/${tY}`] = true;
-  }
-
+  // Lấy toàn bộ dữ liệu ở tất cả các bảng (không bị cắt ở 1.000 dòng)
   const [
-    { data: chData },
-    { data: hsData },
-    { data: ddData },
-    { data: hpData },
-    { data: cnxData },
-    { data: bvData },
-    { data: ldData }
+    chData,
+    hsData,
+    ddData,
+    hpData,
+    cnxData,
+    bvData,
+    ldData
   ] = await Promise.all([
-    supabase.from('cau_hinh').select('*').order('id', { ascending: true }),
-    supabase.from('hoc_sinh').select('*').order('id', { ascending: true }),
-    supabase.from('diem_danh').select('*').order('id', { ascending: true }),
-    supabase.from('hoc_phi').select('*').order('id', { ascending: true }),
-    supabase.from('cong_no_xoa').select('*').order('id', { ascending: true }),
-    supabase.from('bai_viet').select('*').order('id', { ascending: false }),
-    supabase.from('lich_day').select('*')
+    fetchAllRows(supabase, 'cau_hinh', 'id', true),
+    fetchAllRows(supabase, 'hoc_sinh', 'id', true),
+    fetchAllRows(supabase, 'diem_danh', 'id', true),
+    fetchAllRows(supabase, 'hoc_phi', 'id', true),
+    fetchAllRows(supabase, 'cong_no_xoa', 'id', true),
+    fetchAllRows(supabase, 'bai_viet', 'id', false),
+    fetchAllRows(supabase, 'lich_day', null, true)
   ]);
 
   let avatarUrl = '';
@@ -206,6 +213,7 @@ async function getInitialData(supabase, token) {
     };
   });
 
+  // Trả về TOÀN BỘ tất cả các ngày điểm danh
   const attendance = [];
   (ddData || []).forEach((r) => {
     const dateStr = toStandardDateStr(r.ngay);
@@ -277,7 +285,6 @@ export default async function handler(req, res) {
   const { action, args = [] } = req.body || {};
 
   try {
-    // Riêng chế độ Khách: Tạo phiên ngay lập tức không cần chờ DB
     if (action === 'createGuestSession') {
       const guestUser = { username: 'guest', name: 'Khách', role: 'GUEST' };
       const token = createSelfToken_(guestUser);
@@ -293,7 +300,7 @@ export default async function handler(req, res) {
         const p = String(password || '').trim();
         const hashedInputPass = hashPassword_(p);
 
-        const { data: accList } = await supabase.from('tai_khoan').select('*');
+        const accList = await fetchAllRows(supabase, 'tai_khoan', 'id', true);
         for (const acc of accList || []) {
           const sheetUser = String(acc.tai_khoan).trim();
           const sheetPass = String(acc.mat_khau).trim();
@@ -322,7 +329,7 @@ export default async function handler(req, res) {
           }
         }
 
-        const { data: stuList } = await supabase.from('hoc_sinh').select('*');
+        const stuList = await fetchAllRows(supabase, 'hoc_sinh', 'id', true);
         for (const stu of stuList || []) {
           const stuId = String(stu.ma_hs || '').trim();
           const stuName = String(stu.ho_va_ten || '').trim();
@@ -365,7 +372,7 @@ export default async function handler(req, res) {
         const newP = String(newPassword || '').trim();
         const hashedOld = hashPassword_(oldP);
 
-        const { data: accList } = await supabase.from('tai_khoan').select('*');
+        const accList = await fetchAllRows(supabase, 'tai_khoan', 'id', true);
         for (const acc of accList || []) {
           const sheetUser = String(acc.tai_khoan).trim();
           const sheetPass = String(acc.mat_khau).trim();
@@ -637,18 +644,25 @@ export default async function handler(req, res) {
       case 'getAttendanceByMonth': {
         const [token, monthStr] = args;
         await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT', 'STUDENT', 'GUEST']);
-        const { data: ddData } = await supabase.from('diem_danh').select('*').order('id', { ascending: true });
+        const ddData = await fetchAllRows(supabase, 'diem_danh', 'id', true);
         const result = [];
+        const targetMonth = String(monthStr || '').trim();
+
         (ddData || []).forEach((r) => {
           const dateStr = toStandardDateStr(r.ngay);
-          if (dateStr) {
-            result.push({
-              date: dateStr,
-              grade: String(r.lop_khoi || '').trim(),
-              status: String(r.trang_thai || 'Có mặt').trim(),
-              note: String(r.ghi_chu || '').trim(),
-              studentId: formatStudentId(r.ma_hs)
-            });
+          if (!dateStr) return;
+          const dParts = dateStr.split('-');
+          if (dParts.length === 3) {
+            const rowMonthStr = `Tháng ${parseInt(dParts[1], 10)}/${dParts[0]}`;
+            if (!targetMonth || rowMonthStr === targetMonth) {
+              result.push({
+                date: dateStr,
+                grade: String(r.lop_khoi || '').trim(),
+                status: String(r.trang_thai || 'Có mặt').trim(),
+                note: String(r.ghi_chu || '').trim(),
+                studentId: formatStudentId(r.ma_hs)
+              });
+            }
           }
         });
         return res.json({ result });
