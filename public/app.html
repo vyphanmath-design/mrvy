@@ -4684,43 +4684,75 @@ function getStudentDebtDetails(student, targetMonthStr) {
      var idNumB = parseInt(String(b.id || '').replace(/\D/g, ''), 10) || 0;
      return idNumA - idNumB;
    });
+        
 
         if (matchedList.length === 0) {
-          container.innerHTML = '<div class="bg-white p-8 text-center text-slate-400 font-bold rounded-2xl border">Không tìm thấy học sinh nào khớp với từ khóa "' + searchInput + '"</div>';
-          return;
-        }
-
-        var chosenStu = null;
-        if (selectedGuestStudentId) {
-          chosenStu = matchedList.find(function(s) {
-            return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
-          });
-        }
-
-        if (chosenStu) {
-          container.innerHTML = renderGuestFullStudentProfile(chosenStu, selectedMonth);
-          return;
-        }
-
-        container.innerHTML =
-          '<div class="bg-white p-5 rounded-2xl shadow-sm border space-y-3">' +
-            '<div class="text-xs font-bold text-slate-600 border-b pb-2 flex items-center justify-between">' +
-              '<span><i class="fa-solid fa-hand-pointer text-emerald-600 mr-1"></i> Tìm thấy <b>' + matchedList.length + '</b> học sinh. Vui lòng <b>bấm vào tên học sinh</b> bên dưới để xem chi tiết:</span>' +
-            '</div>' +
-            '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">' +
-              matchedList.map(function(s) {
-                var cId = formatStudentId(s.id);
-                return '<button type="button" onclick="selectGuestStudent(\'' + s.id + '\')" class="p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 transition text-left flex items-center justify-between group shadow-2xs cursor-pointer">' +
-                  '<div>' +
-                    '<div class="font-black text-slate-800 group-hover:text-emerald-700 text-sm">' + s.name + '</div>' +
-                    '<div class="text-xs text-slate-500 mt-0.5">Mã HS: <b class="font-mono text-emerald-700">' + cId + '</b> • Lớp: <b class="text-blue-700">' + (s.className || s.grade || '-') + '</b></div>' +
-                  '</div>' +
-                  '<span class="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs group-hover:bg-emerald-700 whitespace-nowrap">Xem chi tiết <i class="fa-solid fa-chevron-right text-[10px] ml-0.5"></i></span>' +
-                '</button>';
-              }).join('') +
-            '</div>' +
-          '</div>';
+        container.innerHTML = '<div class="bg-white p-8 text-center text-slate-400 font-bold rounded-2xl border">Không tìm thấy học sinh nào khớp với từ khóa "' + searchInput + '"</div>';
         return;
+      }
+
+      var chosenStu = null;
+      if (selectedGuestStudentId) {
+        chosenStu = matchedList.find(function(s) {
+          return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
+        });
+      }
+
+      if (chosenStu) {
+        container.innerHTML = renderGuestFullStudentProfile(chosenStu, selectedMonth);
+        return;
+      }
+
+      // PHÂN NHÓM HỌC SINH THEO TỪNG LỚP RIÊNG BIỆT
+      var groupedByClass = {};
+      var classOrder = [];
+
+      matchedList.forEach(function(s) {
+        var cName = String(s.className || s.grade || 'Chưa xếp').trim();
+        if (!groupedByClass[cName]) {
+          groupedByClass[cName] = [];
+          classOrder.push(cName);
+        }
+        groupedByClass[cName].push(s);
+      });
+
+      classOrder.sort(function(a, b) {
+        var numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+        var numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+        if (numA !== numB) return numA - numB;
+        return a.localeCompare(b);
+      });
+
+      var groupsHtml = classOrder.map(function(cName) {
+        var studentsInClass = groupedByClass[cName];
+        
+        var cardsHtml = studentsInClass.map(function(s) {
+          var cId = formatStudentId(s.id);
+          return '<button type="button" onclick="selectGuestStudent(\'' + s.id + '\')" class="p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 transition text-left flex items-center justify-between group shadow-2xs cursor-pointer bg-white">' +
+            '<div>' +
+              '<div class="font-black text-slate-800 group-hover:text-emerald-700 text-sm">' + s.name + '</div>' +
+              '<div class="text-xs text-slate-500 mt-0.5">Mã HS: <b class="font-mono text-emerald-700">' + cId + '</b> • Lớp: <b class="text-blue-700">' + (s.className || s.grade || '-') + '</b></div>' +
+            '</div>' +
+            '<span class="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs group-hover:bg-emerald-700 whitespace-nowrap">Xem chi tiết <i class="fa-solid fa-chevron-right text-[10px] ml-0.5"></i></span>' +
+          '</button>';
+        }).join('');
+
+        return '<div class="space-y-2.5 mb-5">' +
+          '<div class="font-black text-brand-dark text-xs uppercase flex items-center gap-1.5 border-l-4 border-emerald-600 pl-2.5 py-0.5">' +
+            '<i class="fa-solid fa-graduation-cap text-emerald-600"></i> TOÁN LỚP ' + cName + ' (' + studentsInClass.length + ' em)' +
+          '</div>' +
+          '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">' + cardsHtml + '</div>' +
+        '</div>';
+      }).join('');
+
+      container.innerHTML =
+        '<div class="bg-white p-5 rounded-2xl shadow-sm border space-y-4">' +
+          '<div class="text-xs font-bold text-slate-600 border-b pb-2 flex items-center justify-between">' +
+            '<span><i class="fa-solid fa-hand-pointer text-emerald-600 mr-1"></i> Tìm thấy <b>' + matchedList.length + '</b> học sinh. Vui lòng <b>bấm vào tên học sinh</b> bên dưới để xem chi tiết:</span>' +
+          '</div>' +
+          groupsHtml +
+        '</div>';
+      return;
       }
 
       if (isAdmin && grade === 'NONE' && !search) {
