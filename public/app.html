@@ -4210,7 +4210,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
             : '<span class="text-[11px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-md">Chưa đóng</span>';
 
           var feeBadgeHtml = monthFee > 0 
-            ? '<span class="text-xs font-mono font-black text-slate-800 bg-white px-2.5 py-1 rounded-lg border">Phải đóng: ' + formatMoney(monthFee) + ' đ</span>'
+            ? '<span class="text-xs font-mono font-black text-slate-800 bg-white px-2.5 py-1 rounded-lg border">Học phí: ' + formatMoney(monthFee) + ' đ</span>'
             : '';
 
           return '<div class="p-3.5 rounded-xl ' + borderStyleClass + ' space-y-2.5 shadow-xs">' +
