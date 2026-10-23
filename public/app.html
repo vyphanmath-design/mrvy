@@ -4664,14 +4664,26 @@ function getStudentDebtDetails(student, targetMonthStr) {
         }
 
         var matchedList = (getActiveStudents() || []).filter(function(s) {
-          var pStu = formatPhoneDisplay(s.phone);
-          var pPar = formatPhoneDisplay(s.parentPhone);
-          return cleanName(s.name).includes(search) ||
-                 String(s.id).includes(search) ||
-                 formatStudentId(s.id).includes(search) ||
-                 pStu.includes(search) ||
-                 pPar.includes(search);
-        });
+     var pStu = formatPhoneDisplay(s.phone);
+     var pPar = formatPhoneDisplay(s.parentPhone);
+     return cleanName(s.name).includes(search) ||
+            String(s.id).includes(search) ||
+            formatStudentId(s.id).includes(search) ||
+            pStu.includes(search) ||
+            pPar.includes(search);
+   });
+
+   // SẮP XẾP: THEO KHỐI TỪ NHỎ TỚI LỚN, TRONG MỖI KHỐI XẾP THEO MÃ HỌC SINH TĂNG DẦN
+   matchedList.sort(function(a, b) {
+     var gradeNumA = parseInt(String(a.grade || '').replace(/\D/g, ''), 10) || 0;
+     var gradeNumB = parseInt(String(b.grade || '').replace(/\D/g, ''), 10) || 0;
+     if (gradeNumA !== gradeNumB) {
+       return gradeNumA - gradeNumB;
+     }
+     var idNumA = parseInt(String(a.id || '').replace(/\D/g, ''), 10) || 0;
+     var idNumB = parseInt(String(b.id || '').replace(/\D/g, ''), 10) || 0;
+     return idNumA - idNumB;
+   });
 
         if (matchedList.length === 0) {
           container.innerHTML = '<div class="bg-white p-8 text-center text-slate-400 font-bold rounded-2xl border">Không tìm thấy học sinh nào khớp với từ khóa "' + searchInput + '"</div>';
