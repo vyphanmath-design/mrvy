@@ -4349,8 +4349,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
     var studentIdLimit = isStudent ? currentUser.username : null;
 
     if (isGuest) {
-      // TỐI ƯU GIAO DIỆN BỘ LỌC KHÁCH: GỌN GÀNG, Ô TRÁI CÓ CHỮ ẨN HỌ TÊN/MÃ HS/SĐT
-     var filterBarHtml = '<div class="flex items-center gap-2.5 bg-white p-3.5 rounded-2xl shadow-sm border text-xs mb-4">' +
+      // CHỈ GIỮ LẠI DUY NHẤT 1 KHUNG TÌM KIẾM GỌN GÀNG PHÍA DƯỚI, XÓA BỎ HOÀN TOÀN KHUNG TRÊN
+      var filterBarHtml = '<div class="flex items-center gap-2.5 bg-white p-3.5 rounded-2xl shadow-sm border text-xs mb-4">' +
         '<div class="flex-1">' +
           '<input type="text" id="overviewSearch" oninput="renderAttendanceOverviewClass()" placeholder="🔍 Nhập Họ tên, Mã HS hoặc SĐT..." value="' + searchInput + '" class="w-full px-4 py-2.5 border-2 border-emerald-600 rounded-xl bg-white font-medium text-xs shadow-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">' +
         '</div>' +
@@ -4368,7 +4368,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
             '<i class="fa-solid fa-magnifying-glass text-3xl text-slate-300 mb-2 block"></i>' +
             'Vui lòng nhập <b>Họ tên, Mã HS hoặc SĐT</b> vào ô tìm kiếm ở trên để tra cứu.' +
           '</div>';
-        // Khôi phục giá trị ô input sau khi innerHTML
         setTimeout(function() {
           var inp = document.getElementById('overviewSearch');
           if (inp) { inp.value = searchInput; inp.focus(); }
@@ -4658,7 +4657,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
       '</div>';
     }).join('');
   }
-
 
 
     // THAY TOÀN BỘ HÀM BẰNG:
