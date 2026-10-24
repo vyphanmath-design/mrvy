@@ -8744,9 +8744,16 @@ function applyGuestStudentLock() {
       var filterTopBar = searchInp ? searchInp.closest('.bg-white') : null;
       var scoreClassSel = document.getElementById('scoreClassSelect');
       var postGradeSel = document.getElementById('filterPostGrade');
+      var navSidebar = document.querySelector('aside');
 
-      // Nếu không phải Khách hoặc chưa chọn HS -> Hiện lại bình thường cho Admin
-      if (!isGuest || !selectedGuestStudentId) {
+      var navBtnDiemDanh = document.querySelector('[onclick*="tab-diemdanh"]');
+      var navBtnHoSo = document.querySelector('[onclick*="tab-hoso"]');
+
+      // 1. NẾU LÀ ADMIN / TRỢ GIẢNG -> HIỆN ĐẦY ĐỦ MỌI THỨ BÌNH THƯỜNG
+      if (!isGuest) {
+        if (navSidebar) navSidebar.style.display = '';
+        if (navBtnDiemDanh) navBtnDiemDanh.style.display = '';
+        if (navBtnHoSo) navBtnHoSo.style.display = '';
         if (filterTopBar) filterTopBar.style.display = '';
         if (scoreClassSel) {
           scoreClassSel.disabled = false;
@@ -8758,17 +8765,40 @@ function applyGuestStudentLock() {
         return;
       }
 
-      var stu = (getActiveStudents() || []).find(function(s) {
-        return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
-      });
-      if (!stu) return;
+      // Kiểm tra xem Khách đã chọn học sinh hợp lệ chưa
+      var stu = null;
+      if (selectedGuestStudentId) {
+        stu = (getActiveStudents() || []).find(function(s) {
+          return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
+        });
+      }
 
-      // 1. Ẩn hoàn toàn khung bộ lọc tìm kiếm ở đầu tab Điểm danh
+      // 2. NẾU LÀ KHÁCH NHƯNG CHƯA CHỌN HỌC SINH -> ẨN HẾT CÁC TAB MENU, ÉP Ở LẠI MÀN HÌNH TÌM KIẾM
+      if (!stu) {
+        if (navSidebar) navSidebar.style.display = 'none';
+        if (navBtnDiemDanh) navBtnDiemDanh.style.display = 'none';
+        if (navBtnHoSo) navBtnHoSo.style.display = 'none';
+        if (filterTopBar) filterTopBar.style.display = '';
+
+        // Ép quay về màn hình tìm kiếm học sinh, ẩn nội dung các tab khác
+        var tabDD = document.getElementById('tab-diemdanh');
+        var tabHS = document.getElementById('tab-hoso');
+        if (tabHS) tabHS.classList.add('hidden');
+        if (tabDD) tabDD.classList.remove('hidden');
+        return;
+      }
+
+      // 3. KHI KHÁCH ĐÃ CHỌN HỌC SINH XONG -> HIỆN CÁC TAB MENU & KHÓA CHẶT BỘ LỌC THEO HỌC SINH ĐÓ
+      if (navSidebar) navSidebar.style.display = '';
+      if (navBtnDiemDanh) navBtnDiemDanh.style.display = '';
+      if (navBtnHoSo) navBtnHoSo.style.display = '';
+
+      // Ẩn thanh tìm kiếm ở tab Điểm danh
       if (filterTopBar) {
         filterTopBar.style.display = 'none';
       }
 
-      // 2. Tự động khóa Lớp ở Bảng Điểm Lớp và ẩn ô chọn lớp
+      // Khóa chặt Lớp ở Bảng Điểm Lớp và ẩn hoàn toàn ô chọn lớp
       var stuClass = String(stu.className || stu.grade || '').trim();
       if (scoreClassSel && stuClass) {
         scoreClassSel.innerHTML = '<option value="' + stuClass + '">Lớp ' + stuClass + '</option>';
@@ -8778,7 +8808,7 @@ function applyGuestStudentLock() {
         if (typeof updateScoreClassHeaderTitle === 'function') updateScoreClassHeaderTitle();
       }
 
-      // 3. Tự động gán Khối của học sinh ở Bảng Tin và ẩn bộ lọc Khối
+      // Khóa chặt Khối ở Bảng Tin và ẩn hoàn toàn bộ lọc Khối
       var rawGrade = String(stu.grade || stuClass.replace(/\D/g, '') || '').trim();
       var gradeLabel = rawGrade.toLowerCase().includes('khối') ? rawGrade : ('Khối ' + rawGrade);
       if (postGradeSel && rawGrade) {
@@ -8789,9 +8819,24 @@ function applyGuestStudentLock() {
       }
     }
 
-    // Tự động kích hoạt khóa mỗi khi chuyển qua lại giữa các Tab
+    // Chặn không cho initScoreClassDropdown mở lại danh sách lớp khi là Khách đã khóa HS
+    var _origInitScoreClassDropdown = window.initScoreClassDropdown;
+    window.initScoreClassDropdown = function() {
+      var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
+      if (role === 'GUEST' && selectedGuestStudentId) {
+        applyGuestStudentLock();
+        return;
+      }
+      if (typeof _origInitScoreClassDropdown === 'function') _origInitScoreClassDropdown();
+    };
+
     var _origSwitchTab = window.switchTab;
     window.switchTab = function(id) {
+      var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
+      if (role === 'GUEST' && !selectedGuestStudentId && id !== 'tab-diemdanh') {
+        showToast('Vui lòng tìm và chọn học sinh trước!', true);
+        return;
+      }
       applyGuestStudentLock();
       if (typeof _origSwitchTab === 'function') _origSwitchTab(id);
       applyGuestStudentLock();
@@ -8801,6 +8846,12 @@ function applyGuestStudentLock() {
     window.switchHosoSubTab = function(tab) {
       applyGuestStudentLock();
       if (typeof _origSwitchHosoSubTab === 'function') _origSwitchHosoSubTab(tab);
+      applyGuestStudentLock();
+    };
+
+    var _origRenderAllViews = window.renderAllViews;
+    window.renderAllViews = function() {
+      if (typeof _origRenderAllViews === 'function') _origRenderAllViews();
       applyGuestStudentLock();
     };
 
