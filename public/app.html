@@ -4338,14 +4338,17 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
   var selectedGuestStudentId = null;
 
+    var selectedGuestStudentId = sessionStorage.getItem('lockedGuestStuId') || null;
+
     function selectGuestStudent(stuId) {
       selectedGuestStudentId = String(stuId || '').trim();
+      sessionStorage.setItem('lockedGuestStuId', selectedGuestStudentId);
+      applyGuestStudentLock();
       renderAttendanceOverviewClass();
     }
 
     function clearGuestSelectedStudent() {
-      selectedGuestStudentId = null;
-      renderAttendanceOverviewClass();
+      logout();
     }
 
     function renderGuestFullStudentProfile(s, selectedMonth) {
@@ -4553,9 +4556,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
             '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>' +
             '<span class="font-bold text-slate-700 text-xs sm:text-sm">Đang xem hồ sơ chi tiết của học sinh: <b class="text-brand-dark uppercase">' + s.name + ' (' + cleanStuId + ')</b></span>' +
           '</div>' +
-          '<button type="button" onclick="clearGuestSelectedStudent()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer">' +
-            '<i class="fa-solid fa-arrow-left"></i> Chọn học sinh khác' +
-          '</button>' +
         '</div>' +
 
         '<div class="bg-white p-5 rounded-2xl shadow-sm border space-y-4">' +
@@ -4653,6 +4653,16 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var studentIdLimit = isStudent ? currentUser.username : null;
 
       if (isGuest) {
+        if (selectedGuestStudentId) {
+          var lockedStu = (getActiveStudents() || []).find(function(s) {
+            return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
+          });
+          if (lockedStu) {
+            applyGuestStudentLock();
+            container.innerHTML = renderGuestFullStudentProfile(lockedStu, selectedMonth);
+            return;
+          }
+        }
         if (!search) {
           selectedGuestStudentId = null;
           container.innerHTML =
@@ -8726,6 +8736,82 @@ function toggleAllStudents(source) {
         });
       }
     }
+
+function applyGuestStudentLock() {
+      var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
+      var isGuest = (role === 'GUEST');
+      var searchInp = document.getElementById('overviewSearch');
+      var filterTopBar = searchInp ? searchInp.closest('.bg-white') : null;
+      var scoreClassSel = document.getElementById('scoreClassSelect');
+      var postGradeSel = document.getElementById('filterPostGrade');
+
+      // Nếu không phải Khách hoặc chưa chọn HS -> Hiện lại bình thường cho Admin
+      if (!isGuest || !selectedGuestStudentId) {
+        if (filterTopBar) filterTopBar.style.display = '';
+        if (scoreClassSel) {
+          scoreClassSel.disabled = false;
+          scoreClassSel.style.display = '';
+        }
+        if (postGradeSel && postGradeSel.parentElement) {
+          postGradeSel.parentElement.style.display = '';
+        }
+        return;
+      }
+
+      var stu = (getActiveStudents() || []).find(function(s) {
+        return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
+      });
+      if (!stu) return;
+
+      // 1. Ẩn hoàn toàn khung bộ lọc tìm kiếm ở đầu tab Điểm danh
+      if (filterTopBar) {
+        filterTopBar.style.display = 'none';
+      }
+
+      // 2. Tự động khóa Lớp ở Bảng Điểm Lớp và ẩn ô chọn lớp
+      var stuClass = String(stu.className || stu.grade || '').trim();
+      if (scoreClassSel && stuClass) {
+        scoreClassSel.innerHTML = '<option value="' + stuClass + '">Lớp ' + stuClass + '</option>';
+        scoreClassSel.value = stuClass;
+        scoreClassSel.disabled = true;
+        scoreClassSel.style.display = 'none';
+        if (typeof updateScoreClassHeaderTitle === 'function') updateScoreClassHeaderTitle();
+      }
+
+      // 3. Tự động gán Khối của học sinh ở Bảng Tin và ẩn bộ lọc Khối
+      var rawGrade = String(stu.grade || stuClass.replace(/\D/g, '') || '').trim();
+      var gradeLabel = rawGrade.toLowerCase().includes('khối') ? rawGrade : ('Khối ' + rawGrade);
+      if (postGradeSel && rawGrade) {
+        postGradeSel.value = gradeLabel;
+        if (postGradeSel.parentElement) {
+          postGradeSel.parentElement.style.display = 'none';
+        }
+      }
+    }
+
+    // Tự động kích hoạt khóa mỗi khi chuyển qua lại giữa các Tab
+    var _origSwitchTab = window.switchTab;
+    window.switchTab = function(id) {
+      applyGuestStudentLock();
+      if (typeof _origSwitchTab === 'function') _origSwitchTab(id);
+      applyGuestStudentLock();
+    };
+
+    var _origSwitchHosoSubTab = window.switchHosoSubTab;
+    window.switchHosoSubTab = function(tab) {
+      applyGuestStudentLock();
+      if (typeof _origSwitchHosoSubTab === 'function') _origSwitchHosoSubTab(tab);
+      applyGuestStudentLock();
+    };
+
+    var _origLogout = window.logout;
+    window.logout = function() {
+      selectedGuestStudentId = null;
+      sessionStorage.removeItem('lockedGuestStuId');
+      applyGuestStudentLock();
+      if (typeof _origLogout === 'function') _origLogout();
+    };
+    
 
   </script>
 
