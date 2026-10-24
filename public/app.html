@@ -10098,57 +10098,185 @@ function applyGuestStudentLock() {
     window.renderAttendanceList = renderDirectDailyAttendanceTable;
 
 // =========================================================
-    // TỐI ƯU GIAO DIỆN BẢNG ĐIỂM & KHUNG NHẬP ĐIỂM KIỂM TRA
+    // THU NHỎ THỐNG KÊ BẢNG ĐIỂM (1 HÀNG GỌN) & CHỐNG ĐÈ TÊN KHI NHẬP ĐIỂM
     // =========================================================
+    function optimizeExamScoreboardAndInputLayout() {
+      // 1. THU NHỎ KHU VỰC THỐNG KÊ "BẢNG ĐIỂM LỚP" (HÌNH 1)
+      var allLeafEls = Array.from(document.querySelectorAll('div, span, p, h4'));
 
-    // Tự động chèn CSS tối ưu khung thống kê điểm gọn gàng và cố định hiển thị tên học sinh khi nhập điểm
-    function injectExamUIGuardStyles() {
-      var styleId = 'examUIGuardCustomStyle';
-      if (document.getElementById(styleId)) return;
-      var st = document.createElement('style');
-      st.id = styleId;
-      st.innerHTML =
-        /* 1. Làm gọn khu vực 5 thẻ thống kê (Hình 1) thành bố cục lưới ngang khít, hiện đại */
-        '.exam-stats-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }' +
-        '.exam-stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }' +
-        
-        /* 2. Đảm bảo khung nhập điểm bài kiểm tra (Hình 2) luôn hiển thị rõ tên học sinh, không bị tràn ẩn mất */
-        '.exam-input-grid-row { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: center; background: #fff; padding: 10px 14px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 8px; }' +
-        '@media (max-width: 768px) {' +
-        '  .exam-input-grid-row { grid-template-columns: 160px 1fr; padding: 8px 10px; }' +
-        '}';
-      document.head.appendChild(st);
-    }
+      var labelBaiKT = allLeafEls.find(function(el) {
+        return el.children.length === 0 && (el.textContent || '').trim() === 'BÀI KIỂM TRA';
+      });
 
-    // Tự động tinh chỉnh lại cấu trúc hiển thị danh sách nhập điểm bài kiểm tra (Hình 2)
-    function patchExamScoreInputRows() {
-      var tabDiem = document.getElementById('tab-diemkiemtra') || document.querySelector('[id*="kiemtra"], [id*="score"]');
-      if (!tabDiem) return;
+      if (labelBaiKT) {
+        // Tìm 4 thẻ nhỏ: BÀI KIỂM TRA, HỌC SINH CÓ ĐIỂM, ĐIỂM TB CỦA LỚP, CAO NHẤT LỚP
+        var statLabels = ['BÀI KIỂM TRA', 'HỌC SINH CÓ ĐIỂM', 'ĐIỂM TB CỦA LỚP', 'CAO NHẤT LỚP'];
+        var statCards = [];
 
-      // Tìm các dòng nhập điểm cũ (có ô số thứ tự / tên học sinh bị chèn) và bọc lại bằng lưới chuẩn
-      var rows = tabDiem.querySelectorAll('.exam-row-item, .score-input-row, form .space-y-3 > div, form .grid');
-      rows.forEach(function(r) {
-        if (!r.classList.contains('exam-input-grid-row') && (r.querySelector('input[type="text"]') || r.querySelector('input[placeholder*="Ghi chú"]'))) {
-          r.classList.add('exam-input-grid-row');
+        statLabels.forEach(function(lbText) {
+          var lbEl = allLeafEls.find(function(el) {
+            return el.children.length === 0 && (el.textContent || '').trim() === lbText;
+          });
+          if (lbEl) {
+            var card = lbEl.parentElement;
+            // Đi lên thẻ card có border/padding
+            while (card && card.parentElement && card.parentElement.children.length === 1) {
+              card = card.parentElement;
+            }
+            if (card) statCards.push(card);
+          }
+        });
+
+        // Tìm thẻ "Phân bố xếp loại"
+        var distLabel = allLeafEls.find(function(el) {
+          return el.children.length === 0 && (el.textContent || '').trim() === 'Phân bố xếp loại';
+        });
+        var distCard = distLabel ? distLabel.closest('div.border, div.rounded-2xl, div.rounded-3xl, div.p-4, div.p-5') || distLabel.parentElement.parentElement : null;
+
+        // Gom tất cả lên 1 hàng ngang nhỏ gọn
+        if (statCards.length > 0) {
+          var leftGrid = statCards[0].parentElement;
+          var mainWrapper = leftGrid ? leftGrid.parentElement : null;
+
+          if (leftGrid) {
+            leftGrid.style.display = 'grid';
+            leftGrid.style.gridTemplateColumns = 'repeat(4, minmax(110px, 1fr))';
+            leftGrid.style.gap = '8px';
+            leftGrid.style.alignItems = 'stretch';
+          }
+
+          if (mainWrapper && distCard && mainWrapper.contains(distCard)) {
+            mainWrapper.style.display = 'grid';
+            mainWrapper.style.gridTemplateColumns = '2.2fr 1.3fr';
+            mainWrapper.style.gap = '10px';
+            mainWrapper.style.alignItems = 'stretch';
+            mainWrapper.style.marginTop = '8px';
+          }
+
+          statCards.forEach(function(c) {
+            c.style.padding = '8px 12px';
+            c.style.borderRadius = '14px';
+            c.style.minHeight = 'unset';
+            // Thu nhỏ chữ số khổng lồ bên trong
+            Array.from(c.querySelectorAll('*')).forEach(function(ch) {
+              var txt = (ch.textContent || '').trim();
+              if (statLabels.indexOf(txt) !== -1) {
+                ch.style.fontSize = '10px';
+                ch.style.marginBottom = '2px';
+              } else if (ch.children.length === 0 && /^[0-9,—-]+$/.test(txt)) {
+                ch.style.fontSize = '20px';
+                ch.style.lineHeight = '1.2';
+                ch.style.margin = '2px 0';
+              } else if (ch.children.length === 0) {
+                ch.style.fontSize = '11px';
+              }
+            });
+          });
+
+          if (distCard) {
+            distCard.style.padding = '8px 14px';
+            distCard.style.borderRadius = '14px';
+            distCard.style.display = 'flex';
+            distCard.style.flexDirection = 'column';
+            distCard.style.justifyContent = 'space-between';
+          }
         }
+      }
+
+      // 2. CHỐNG TRÀN & CHỐNG ĐÈ TÊN HỌC SINH Ở PHẦN "NHẬP ĐIỂM" (HÌNH 2)
+      var noteInputs = Array.from(document.querySelectorAll('input[placeholder="Ghi chú"], input[placeholder*="Ghi chú"]'));
+      noteInputs.forEach(function(noteInp) {
+        // Chỉ tác động lên các dòng nhập điểm bài kiểm tra (không phải bảng điểm danh)
+        if (noteInp.id && noteInp.id.startsWith('note_')) return;
+
+        // Tìm thẻ khung của từng học sinh (chứa STT + Avatar + Tên HS + Ô điểm + Ô Ghi chú)
+        var itemCard = noteInp.parentElement;
+        while (itemCard && itemCard.parentElement) {
+          var inpCount = itemCard.querySelectorAll('input').length;
+          if (inpCount === 2 && itemCard.textContent.trim().length > 0) {
+            break;
+          }
+          if (inpCount > 2) {
+            itemCard = null;
+            break;
+          }
+          itemCard = itemCard.parentElement;
+        }
+
+        if (!itemCard) return;
+
+        // Chuyển khung chứa danh sách học sinh sang 1 cột trên màn hình vừa/nhỏ hoặc 2 cột rộng rãi, không cho phép co ép tên
+        var gridParent = itemCard.parentElement;
+        if (gridParent && gridParent.getAttribute('data-fixed-exam-grid') !== '1') {
+          gridParent.setAttribute('data-fixed-exam-grid', '1');
+          gridParent.style.display = 'grid';
+          gridParent.style.gridTemplateColumns = 'repeat(auto-fill, minmax(420px, 1fr))';
+          gridParent.style.gap = '10px';
+        }
+
+        // Cố định bố cục bên trong từng dòng học sinh: [STT + Avatar + Tên HS (rộng thoải mái)] | [Ô Điểm 68px] | [Ô Ghi chú]
+        itemCard.style.display = 'flex';
+        itemCard.style.alignItems = 'center';
+        itemCard.style.justifyContent = 'space-between';
+        itemCard.style.gap = '8px';
+        itemCard.style.padding = '8px 12px';
+        itemCard.style.overflow = 'visible';
+
+        var allInps = itemCard.querySelectorAll('input');
+        var scoreInp = allInps[0];
+        var memoInp = allInps[1];
+
+        if (scoreInp) {
+          scoreInp.style.width = '64px';
+          scoreInp.style.minWidth = '64px';
+          scoreInp.style.maxWidth = '64px';
+          scoreInp.style.flexShrink = '0';
+          scoreInp.style.textAlign = 'center';
+          scoreInp.style.padding = '6px 4px';
+          scoreInp.style.position = 'static';
+        }
+
+        if (memoInp) {
+          memoInp.style.width = '115px';
+          memoInp.style.minWidth = '95px';
+          memoInp.style.maxWidth = '140px';
+          memoInp.style.flexShrink = '1';
+          memoInp.style.padding = '6px 8px';
+          memoInp.style.position = 'static';
+        }
+
+        // Mở khóa phần Tên học sinh & Mã HS để hiển thị đầy đủ 100%, không bị che khuất
+        Array.from(itemCard.children).forEach(function(child) {
+          if (!child.contains(scoreInp) && !child.contains(memoInp)) {
+            child.style.flex = '1 1 auto';
+            child.style.minWidth = '155px';
+            child.style.overflow = 'visible';
+            child.style.whiteSpace = 'normal';
+            Array.from(child.querySelectorAll('*')).forEach(function(sub) {
+              sub.style.overflow = 'visible';
+              sub.style.textOverflow = 'clip';
+              sub.style.whiteSpace = 'normal';
+              sub.style.wordBreak = 'break-word';
+            });
+          } else if (child !== scoreInp && child !== memoInp && (child.contains(scoreInp) || child.contains(memoInp))) {
+            // Nếu 2 ô input nằm chung trong 1 thẻ div con bên phải
+            child.style.display = 'flex';
+            child.style.alignItems = 'center';
+            child.style.gap = '6px';
+            child.style.flexShrink = '0';
+            child.style.position = 'static';
+          }
+        });
       });
     }
 
-    // Kích hoạt style và tự động canh chỉnh mỗi khi chuyển tab hoặc render điểm kiểm tra
-    var _prevRenderExamViews = window.renderExamScoresView || window.renderDiemKiemTra;
-    window.renderExamScoresView = function() {
-      if (typeof _prevRenderExamViews === 'function') _prevRenderExamViews.apply(this, arguments);
-      injectExamUIGuardStyles();
-      patchExamScoreInputRows();
-    };
-    window.renderDiemKiemTra = window.renderExamScoresView;
+    // Tự động theo dõi và áp dụng ngay lập tức mỗi khi bảng điểm hoặc danh sách nhập điểm được vẽ ra
+    var _examUiObserver = new MutationObserver(function() {
+      optimizeExamScoreboardAndInputLayout();
+    });
+    _examUiObserver.observe(document.body, { childList: true, subtree: true });
 
-    // Chạy ngay khi tải trang
-    setTimeout(function() {
-      injectExamUIGuardStyles();
-      patchExamScoreInputRows();
-    }, 500);
-
+    setTimeout(optimizeExamScoreboardAndInputLayout, 300);
     
   </script>
 
