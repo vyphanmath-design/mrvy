@@ -4458,6 +4458,10 @@ function getStudentDebtDetails(student, targetMonthStr) {
             return toStandardDateStr(a.date).localeCompare(toStandardDateStr(b.date));
           });
 
+          var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
+          var isAdmin = (role === 'ADMIN');
+          var isStaff = (role === 'ADMIN' || role === 'ASSISTANT');
+
           var badges = listInMonth.map(function(a) {
             var dotBg = 'bg-emerald-500';
             if (a.status === 'Báo bù') dotBg = 'bg-blue-500';
@@ -4476,12 +4480,69 @@ function getStudentDebtDetails(student, targetMonthStr) {
               }
             }
 
-            return '<div class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold flex items-center gap-2 shadow-2xs">' +
+            // Nếu là Admin/Trợ giảng: bấm vào ngày điểm danh mở ngay popup sửa điểm danh có sẵn
+            var dayClickAttr = isStaff
+              ? 'onclick="event.stopPropagation(); closeStaffFullProfileModal(); quickEditAttendance(\'' + s.id + '\', \'' + a.date + '\', \'' + a.status + '\')"'
+              : '';
+            var dayCursor = isStaff
+              ? 'cursor-pointer hover:border-emerald-500 hover:bg-emerald-50/50 transition'
+              : '';
+
+            return '<div ' + dayClickAttr + ' class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold flex items-center gap-2 shadow-2xs ' + dayCursor + '" title="' + (isStaff ? 'Bấm để sửa điểm danh buổi này' : a.status) + '">' +
               '<span class="w-2.5 h-2.5 rounded-full ' + dotBg + ' flex-shrink-0"></span>' +
               '<span class="text-slate-800">' + dayDisplay + '</span>' +
               (a.note ? '<span class="text-[10px] text-slate-500 italic">(' + a.note + ')</span>' : '') +
             '</div>';
           }).join('');
+
+          var monthFee = getStudentExpectedRateByMonth(s, mLabel);
+          var paidInThisMonth = getStudentPaidTotalByMonth(s.id, s.name, mLabel);
+          var isMonthPaid = (monthFee > 0 && paidInThisMonth >= monthFee) || (monthFee === 0 && paidInThisMonth > 0);
+
+          var borderStyleClass = isMonthPaid
+            ? 'border-2 border-emerald-500 bg-emerald-50/20'
+            : 'border-2 border-red-400 bg-red-50/20';
+
+          // 1. Nút "Chưa đóng": Admin bấm vào chuyển thẳng sang phần phiếu thu của học sinh đó
+          var statusBadge = '';
+          if (isMonthPaid) {
+            statusBadge = '<span class="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">Đã đóng đủ</span>';
+          } else if (isAdmin) {
+            statusBadge = '<button type="button" onclick="event.stopPropagation(); jumpToStudentTuitionReceipt(\'' + s.id + '\', \'' + mLabel + '\')" class="text-[11px] font-bold text-red-700 bg-red-100 hover:bg-red-200 px-2.5 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 shadow-2xs" title="Bấm để mở phần lập phiếu thu học phí cho học sinh này">' +
+              'Chưa đóng <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>' +
+            '</button>';
+          } else {
+            statusBadge = '<span class="text-[11px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-md">Chưa đóng</span>';
+          }
+
+          // 2. Nút "Học phí: ... đ": Admin bấm vào gọi thẳng hàm quickOpenSetStudentRate có sẵn
+          var feeBadgeHtml = '';
+          if (monthFee > 0) {
+            if (isAdmin) {
+              feeBadgeHtml = '<button type="button" onclick="event.stopPropagation(); closeStaffFullProfileModal(); quickOpenSetStudentRate(\'' + s.id + '\', \'' + mLabel + '\')" class="text-xs font-mono font-black text-slate-800 hover:text-blue-700 hover:border-blue-400 bg-white px-2.5 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1.5 shadow-2xs" title="Bấm để sửa mức học phí cá nhân tháng này">' +
+                'Học phí: ' + formatMoney(monthFee) + ' đ <i class="fa-solid fa-pen text-[10px] text-blue-600"></i>' +
+              '</button>';
+            } else {
+              feeBadgeHtml = '<span class="text-xs font-mono font-black text-slate-800 bg-white px-2.5 py-1 rounded-lg border">Học phí: ' + formatMoney(monthFee) + ' đ</span>';
+            }
+          }
+
+          // 3. Khung điểm danh của tháng: Admin/Trợ giảng bấm vào liên kết thẳng qua Tab Điểm danh của học sinh đó
+          var boxClickAttr = isStaff
+            ? 'onclick="jumpToStudentAttendanceTab(\'' + s.id + '\', \'' + mLabel + '\')"'
+            : '';
+          var boxCursor = isStaff ? 'cursor-pointer hover:shadow-md transition' : '';
+
+          return '<div ' + boxClickAttr + ' class="p-3.5 rounded-xl ' + borderStyleClass + ' space-y-2.5 shadow-xs ' + boxCursor + '" title="' + (isStaff ? 'Bấm vào khung để chuyển sang Tab Điểm danh của học sinh này' : '') + '">' +
+            '<div class="flex items-center justify-between border-b border-slate-200/80 pb-1.5 gap-2 flex-wrap">' +
+              '<div class="flex items-center gap-2">' +
+                '<span class="font-black text-brand-dark text-xs uppercase hover:text-emerald-700"><i class="fa-regular fa-calendar-check text-emerald-600 mr-1"></i>' + mLabel + '</span>' +
+                statusBadge +
+              '</div>' +
+              feeBadgeHtml +
+            '</div>' +
+            '<div class="flex flex-wrap gap-2">' + badges + '</div>' +
+          '</div>';
 
           var monthFee = getStudentExpectedRateByMonth(s, mLabel);
           var paidInThisMonth = getStudentPaidTotalByMonth(s.id, s.name, mLabel);
@@ -9060,6 +9121,63 @@ function applyGuestStudentLock() {
     window.openViewStudentModal = function(studentId) {
       openFullStudentProfileStaff(studentId);
     };
+
+// Liên kết từ chữ "Chưa đóng" sang phần Phiếu thu của học sinh đó ở Tab Học phí
+    function jumpToStudentTuitionReceipt(studentId, monthLabel) {
+      closeStaffFullProfileModal();
+      var cleanId = formatStudentId(studentId);
+      var stu = (getActiveStudents() || []).find(function(s) {
+        return formatStudentId(s.id) === cleanId;
+      });
+
+      switchTab('tab-hocphi');
+
+      setTimeout(function() {
+        // Chọn tháng trên bộ lọc học phí nếu có
+        var monthSel = document.getElementById('tuitionMonthFilter') || document.getElementById('feeMonth');
+        if (monthSel && monthLabel) {
+          monthSel.value = monthLabel;
+          monthSel.dispatchEvent(new Event('change'));
+        }
+
+        // Điền mã/tên học sinh vào ô tìm kiếm ở Tab Học phí hoặc mở trực tiếp form thu học phí có sẵn
+        if (typeof openQuickCollectModal === 'function') {
+          openQuickCollectModal(studentId, monthLabel);
+        } else if (typeof selectStudentForTuition === 'function') {
+          selectStudentForTuition(studentId);
+        } else {
+          var searchFeeInp = document.getElementById('searchTuition') || document.getElementById('tuitionSearch') || document.getElementById('feeStudentSearch');
+          if (searchFeeInp && stu) {
+            searchFeeInp.value = stu.name;
+            searchFeeInp.dispatchEvent(new Event('input'));
+            searchFeeInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+      }, 80);
+    }
+
+    // Liên kết từ khung điểm danh sang Tab Điểm danh của đúng học sinh & tháng đó
+    function jumpToStudentAttendanceTab(studentId, monthLabel) {
+      closeStaffFullProfileModal();
+      var cleanId = formatStudentId(studentId);
+
+      switchTab('tab-diemdanh');
+      if (typeof switchAttendanceSubTab === 'function') {
+        switchAttendanceSubTab('overview');
+      }
+
+      setTimeout(function() {
+        var mSel = document.getElementById('overviewMonthFilter');
+        if (mSel && monthLabel) {
+          mSel.value = monthLabel;
+        }
+        var sInp = document.getElementById('overviewSearch');
+        if (sInp) {
+          sInp.value = cleanId;
+        }
+        renderAttendanceOverviewClass();
+      }, 60);
+    }
 
     
   </script>
