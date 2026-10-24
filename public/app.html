@@ -9525,10 +9525,9 @@ function applyGuestStudentLock() {
     function refreshAllClassDirectoriesUI() {
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
       if (role === 'GUEST') return;
+      hideOldFilterSelectsOnly();
 
-      // 1. TAB HỌC SINH: Giữ bảng Lớp học lớn đầy đủ thông tin (Hình 2)
-      hideSelectAndLabel(document.getElementById('filterGrade'));
-      hideSelectAndLabel(document.getElementById('filterClass'));
+      // 1. Tab Học sinh: Giữ bảng lớn đầy đủ thông tin + nút Học sinh đã nghỉ
       var stuPanel = document.getElementById('stuSubTabListPanel');
       if (stuPanel && stuPanel.parentNode) {
         var dirStu = document.getElementById('dirCardStudentTab');
@@ -9537,28 +9536,40 @@ function applyGuestStudentLock() {
           dirStu.id = 'dirCardStudentTab';
           stuPanel.parentNode.insertBefore(dirStu, stuPanel);
         }
-        dirStu.innerHTML = buildClassDirectoryCardHtml('studentTab', true, true);
+        dirStu.innerHTML = buildClassDirectoryCardHtml ? buildClassDirectoryCardHtml('studentTab', true, true) : '';
       }
 
-      // 2. TAB ĐIỂM DANH NGÀY (Hình 1): Ẩn dòng Khối + Tất cả lớp, chèn dãy nút lớp nhỏ gọn ngay trên ô Tìm tên & + HS bù
+      // 2. Tab Điểm danh Ngày: Đưa dãy nút chọn lớp nhỏ gọn (giống bên Học phí) vào ngay phía trên bảng điểm danh hàng ngày
       var tabDD = document.getElementById('tab-diemdanh');
       if (tabDD) {
-        var pairDD = findGradeAndClassSelectsInContainer(tabDD);
-        hideSelectAndLabel(pairDD.gradeEl);
-        hideSelectAndLabel(pairDD.classEl);
-
-        var targetBoxDD = pairDD.classEl ? pairDD.classEl.closest('.bg-slate-50, .p-3, .border, .space-y-3') : null;
-        if (targetBoxDD) {
+        // Tìm vùng chứa bảng Đánh Dấu Điểm Danh Hàng Ngày
+        var dailyCard = tabDD.querySelector('#attDailyCard') || tabDD.querySelector('.bg-white, .border, .space-y-3');
+        if (dailyCard) {
           var dirAtt = document.getElementById('dirCardAttDaily');
           if (!dirAtt) {
             dirAtt = document.createElement('div');
             dirAtt.id = 'dirCardAttDaily';
-            dirAtt.className = 'mb-2 pb-2 border-b border-slate-200/80';
-            targetBoxDD.insertBefore(dirAtt, targetBoxDD.firstChild);
+            dirAtt.className = 'bg-white p-3.5 rounded-2xl shadow-xs border border-slate-200 mb-3';
+            dailyCard.parentNode.insertBefore(dirAtt, dailyCard);
           }
           dirAtt.innerHTML = buildCompactClassPillsHtml('attDailyTab', true);
         }
       }
+
+      // 3. Tab Tổng Quan Điểm Danh: Đưa dãy nút chọn lớp nhỏ gọn vào phía trên bộ lọc tổng quan
+      var ovGradeEl = document.getElementById('overviewGradeFilter');
+      var ovFilterBox = ovGradeEl ? ovGradeEl.closest('.bg-white') : null;
+      if (ovFilterBox) {
+        var dirOv = document.getElementById('dirCardAttOverview');
+        if (!dirOv) {
+          dirOv = document.createElement('div');
+          dirOv.id = 'dirCardAttOverview';
+          dirOv.className = 'bg-white p-3.5 rounded-2xl shadow-xs border border-slate-200 mb-3';
+          ovFilterBox.parentNode.insertBefore(dirOv, ovFilterBox);
+        }
+        dirOv.innerHTML = buildCompactClassPillsHtml('attOverviewTab', true);
+      }
+    }
 
       // 3. TAB TỔNG QUAN ĐIỂM DANH: Ẩn dropdown Khối/Lớp, dùng dãy nút tên lớp nhỏ gọn
       var ovGradeEl = document.getElementById('overviewGradeFilter');
