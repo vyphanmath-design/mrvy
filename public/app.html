@@ -9484,6 +9484,21 @@ function applyGuestStudentLock() {
       }
     }
 
+   // Tìm chính xác cặp thẻ <select> Khối và Lớp trong phần Điểm Danh Ngày (bất kể ID là gì)
+    function getDailyAttendanceSelectPair() {
+      var tabDD = document.getElementById('tab-diemdanh');
+      if (!tabDD) return { gradeEl: null, classEl: null };
+      var allSelects = Array.from(tabDD.querySelectorAll('select')).filter(function(s) {
+        return s.id !== 'overviewGradeFilter' &&
+               s.id !== 'overviewClassFilter' &&
+               s.id !== 'overviewMonthFilter';
+      });
+      return {
+        gradeEl: allSelects[0] || document.getElementById('attendanceGrade') || document.getElementById('attGradeFilter'),
+        classEl: allSelects[1] || document.getElementById('attendanceClass') || document.getElementById('attClassFilter')
+      };
+    }
+
     function selectClassFromDirectory(contextKey, selectionValue) {
       activeClassSelection[contextKey] = selectionValue;
 
@@ -9498,14 +9513,27 @@ function applyGuestStudentLock() {
           window.onGradeFilterChange
         );
         if (typeof renderStudentsTable === 'function') renderStudentsTable();
+
       } else if (contextKey === 'attDailyTab') {
+        var pairDD = getDailyAttendanceSelectPair();
         syncSelectionToOriginalSelects(
-          document.getElementById('attGradeFilter'),
-          document.getElementById('attClassFilter'),
+          pairDD.gradeEl,
+          pairDD.classEl,
           selectionValue,
-          window.onAttGradeFilterChange
+          function() {
+            if (pairDD.gradeEl) {
+              if (typeof pairDD.gradeEl.onchange === 'function') pairDD.gradeEl.onchange();
+              else pairDD.gradeEl.dispatchEvent(new Event('change'));
+            }
+          }
         );
+        if (pairDD.classEl) {
+          if (typeof pairDD.classEl.onchange === 'function') pairDD.classEl.onchange();
+          else pairDD.classEl.dispatchEvent(new Event('change'));
+        }
         if (typeof renderAttendanceList === 'function') renderAttendanceList();
+        if (typeof renderAttendanceTable === 'function') renderAttendanceTable();
+
       } else if (contextKey === 'attOverviewTab') {
         syncSelectionToOriginalSelects(
           document.getElementById('overviewGradeFilter'),
@@ -9514,6 +9542,7 @@ function applyGuestStudentLock() {
           window.onOverviewGradeFilterChange
         );
         if (typeof renderAttendanceOverviewClass === 'function') renderAttendanceOverviewClass();
+
       } else if (contextKey === 'tuitionTab') {
         var tabHP = document.getElementById('tab-hocphi');
         if (tabHP) {
@@ -9531,8 +9560,8 @@ function applyGuestStudentLock() {
       refreshAllClassDirectoriesUI();
     }
 
-    function hideSelectElementCleanly(id) {
-      var el = document.getElementById(id);
+    function hideSelectElementCleanly(elOrId) {
+      var el = (typeof elOrId === 'string') ? document.getElementById(elOrId) : elOrId;
       if (!el) return;
       el.style.display = 'none';
       var prev = el.previousElementSibling;
@@ -9541,7 +9570,7 @@ function applyGuestStudentLock() {
         if (txt.includes('Khối') || txt.includes('Lớp')) prev.style.display = 'none';
       }
       var parent = el.parentElement;
-      if (parent && parent.children.length === 2 && parent.textContent.trim().startsWith('Khối:')) {
+      if (parent && parent.children.length <= 2 && parent.textContent.trim().startsWith('Khối:')) {
         parent.style.display = 'none';
       }
     }
@@ -9550,6 +9579,7 @@ function applyGuestStudentLock() {
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
       if (role === 'GUEST') return;
 
+      // Ẩn các ô chọn Khối / Lớp cũ ở tất cả các tab
       [
         'filterGrade', 'filterClass',
         'attGradeFilter', 'attClassFilter',
@@ -9557,7 +9587,12 @@ function applyGuestStudentLock() {
         'tuitionGradeFilter', 'tuitionClassFilter'
       ].forEach(hideSelectElementCleanly);
 
-      // 1. TAB HỌC SINH: Bảng 3 cột (Tên Lớp - Sĩ Số - Nợ Học Phí >= 2 Tháng)
+      // Ẩn triệt để ô chọn Khối ("-- Chưa chọn Khối (Ẩn) --") và ô chọn Lớp ("8A") ở Điểm Danh Ngày
+      var pairDD = getDailyAttendanceSelectPair();
+      hideSelectElementCleanly(pairDD.gradeEl);
+      hideSelectElementCleanly(pairDD.classEl);
+
+      // 1. TAB HỌC SINH: Giữ nguyên bảng 3 cột
       var stuPanel = document.getElementById('stuSubTabListPanel');
       if (stuPanel && stuPanel.parentNode) {
         var dirStu = document.getElementById('dirCardStudentTab');
@@ -9569,22 +9604,23 @@ function applyGuestStudentLock() {
         dirStu.innerHTML = buildClassDirectoryCardHtml('studentTab', true, true);
       }
 
-      // 2. TAB ĐIỂM DANH NGÀY: Chèn khung Chọn Lớp (giống hệt bên Học phí) ngay phía trên ô Tìm tên & + HS bù
-      var attSearchInp = document.getElementById('searchAttendance') ||
-                         document.querySelector('#tab-diemdanh input[placeholder*="Tìm tên"]');
-      var attBox = attSearchInp ? attSearchInp.closest('.bg-slate-50, .p-3, .border, .rounded-2xl, .space-y-3') : null;
-      if (attBox && attBox.parentNode) {
+      // 2. TAB ĐIỂM DANH NGÀY: Đặt khung Chọn Lớp ở dòng đầu tiên phía trên ô "Tìm tên...", không làm ép hẹp ô Tìm tên
+      var attFilterBox = pairDD.gradeEl ? pairDD.gradeEl.closest('.bg-slate-50, .p-3, .border, .rounded-2xl, .space-y-3') : null;
+      if (attFilterBox) {
         var dirAtt = document.getElementById('dirCardAttDaily');
         if (!dirAtt) {
           dirAtt = document.createElement('div');
           dirAtt.id = 'dirCardAttDaily';
-          dirAtt.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3';
-          attBox.parentNode.insertBefore(dirAtt, attBox);
+          dirAtt.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3 w-full';
+          attFilterBox.insertBefore(dirAtt, attFilterBox.firstChild);
+        } else if (dirAtt.parentNode !== attFilterBox) {
+          dirAtt.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3 w-full';
+          attFilterBox.insertBefore(dirAtt, attFilterBox.firstChild);
         }
         dirAtt.innerHTML = buildCompactClassPillsHtml('attDailyTab', true);
       }
 
-      // 3. TAB TỔNG QUAN ĐIỂM DANH: Chèn khung Chọn Lớp ngay phía trên thanh Tìm kiếm & Tháng
+      // 3. TAB TỔNG QUAN ĐIỂM DANH
       var ovSearchInp = document.getElementById('overviewSearch');
       var ovBox = ovSearchInp ? ovSearchInp.closest('.bg-white') : null;
       if (ovBox && ovBox.parentNode) {
@@ -9598,7 +9634,7 @@ function applyGuestStudentLock() {
         dirOv.innerHTML = buildCompactClassPillsHtml('attOverviewTab', true);
       }
 
-      // 4. TAB HỌC PHÍ: Khung Chọn Lớp ở đầu tab
+      // 4. TAB HỌC PHÍ
       var tabHocPhi = document.getElementById('tab-hocphi');
       if (tabHocPhi) {
         Array.from(tabHocPhi.querySelectorAll('select')).forEach(function(s) {
