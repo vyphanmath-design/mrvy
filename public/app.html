@@ -9563,15 +9563,12 @@ function applyGuestStudentLock() {
     function hideSelectElementCleanly(elOrId) {
       var el = (typeof elOrId === 'string') ? document.getElementById(elOrId) : elOrId;
       if (!el) return;
+      // Chỉ ẩn đúng thẻ <select> và nhãn chữ "Khối:" đứng trước nó, TUYỆT ĐỐI KHÔNG ẩn thẻ cha
       el.style.display = 'none';
       var prev = el.previousElementSibling;
       if (prev && (prev.tagName === 'SPAN' || prev.tagName === 'LABEL')) {
         var txt = (prev.innerText || '').trim();
         if (txt.includes('Khối') || txt.includes('Lớp')) prev.style.display = 'none';
-      }
-      var parent = el.parentElement;
-      if (parent && parent.children.length <= 2 && parent.textContent.trim().startsWith('Khối:')) {
-        parent.style.display = 'none';
       }
     }
 
@@ -9579,7 +9576,6 @@ function applyGuestStudentLock() {
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
       if (role === 'GUEST') return;
 
-      // Ẩn các ô chọn Khối / Lớp cũ ở tất cả các tab
       [
         'filterGrade', 'filterClass',
         'attGradeFilter', 'attClassFilter',
@@ -9587,12 +9583,11 @@ function applyGuestStudentLock() {
         'tuitionGradeFilter', 'tuitionClassFilter'
       ].forEach(hideSelectElementCleanly);
 
-      // Ẩn triệt để ô chọn Khối ("-- Chưa chọn Khối (Ẩn) --") và ô chọn Lớp ("8A") ở Điểm Danh Ngày
       var pairDD = getDailyAttendanceSelectPair();
       hideSelectElementCleanly(pairDD.gradeEl);
       hideSelectElementCleanly(pairDD.classEl);
 
-      // 1. TAB HỌC SINH: Giữ nguyên bảng 3 cột
+      // 1. TAB HỌC SINH: Bảng 3 cột
       var stuPanel = document.getElementById('stuSubTabListPanel');
       if (stuPanel && stuPanel.parentNode) {
         var dirStu = document.getElementById('dirCardStudentTab');
@@ -9604,20 +9599,26 @@ function applyGuestStudentLock() {
         dirStu.innerHTML = buildClassDirectoryCardHtml('studentTab', true, true);
       }
 
-      // 2. TAB ĐIỂM DANH NGÀY: Đặt khung Chọn Lớp ở dòng đầu tiên phía trên ô "Tìm tên...", không làm ép hẹp ô Tìm tên
-      var attFilterBox = pairDD.gradeEl ? pairDD.gradeEl.closest('.bg-slate-50, .p-3, .border, .rounded-2xl, .space-y-3') : null;
-      if (attFilterBox) {
-        var dirAtt = document.getElementById('dirCardAttDaily');
-        if (!dirAtt) {
-          dirAtt = document.createElement('div');
-          dirAtt.id = 'dirCardAttDaily';
-          dirAtt.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3 w-full';
-          attFilterBox.insertBefore(dirAtt, attFilterBox.firstChild);
-        } else if (dirAtt.parentNode !== attFilterBox) {
-          dirAtt.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3 w-full';
-          attFilterBox.insertBefore(dirAtt, attFilterBox.firstChild);
+      // 2. TAB ĐIỂM DANH NGÀY: Bám trực tiếp vào ô "🔍 Tìm tên..." (luôn hiển thị trên màn hình) để đặt khung Chọn Lớp ngay phía trên nó
+      var attSearchInp = document.querySelector('#tab-diemdanh input[placeholder*="Tìm tên"]') ||
+                         document.getElementById('searchAttendance');
+      if (attSearchInp) {
+        var searchRow = attSearchInp.parentElement;
+        if (searchRow && searchRow.parentNode) {
+          // Đảm bảo thẻ cha luôn hiển thị
+          if (searchRow.parentNode.style) searchRow.parentNode.style.display = '';
+          searchRow.style.display = '';
+
+          var dirAtt = document.getElementById('dirCardAttDaily');
+          if (!dirAtt) {
+            dirAtt = document.createElement('div');
+            dirAtt.id = 'dirCardAttDaily';
+          }
+          dirAtt.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3 w-full block';
+          dirAtt.style.display = 'block';
+          searchRow.parentNode.insertBefore(dirAtt, searchRow);
+          dirAtt.innerHTML = buildCompactClassPillsHtml('attDailyTab', true);
         }
-        dirAtt.innerHTML = buildCompactClassPillsHtml('attDailyTab', true);
       }
 
       // 3. TAB TỔNG QUAN ĐIỂM DANH
@@ -9631,6 +9632,7 @@ function applyGuestStudentLock() {
           dirOv.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3';
           ovBox.parentNode.insertBefore(dirOv, ovBox);
         }
+        dirOv.style.display = 'block';
         dirOv.innerHTML = buildCompactClassPillsHtml('attOverviewTab', true);
       }
 
@@ -9650,6 +9652,7 @@ function applyGuestStudentLock() {
           dirFee.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3';
           tabHocPhi.insertBefore(dirFee, tabHocPhi.firstChild);
         }
+        dirFee.style.display = 'block';
         dirFee.innerHTML = buildCompactClassPillsHtml('tuitionTab', true);
       }
     }
