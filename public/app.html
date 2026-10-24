@@ -8864,6 +8864,204 @@ function applyGuestStudentLock() {
     };
     
 
+    // =========================================================
+    // HỒ SƠ CHI TIẾT ĐẦY ĐỦ 4 MỤC + SỬA THÔNG TIN CHO ADMIN & TRỢ GIẢNG
+    // =========================================================
+    function openFullStudentProfileStaff(studentId) {
+      var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
+      var isStaff = (role === 'ADMIN' || role === 'ASSISTANT');
+      var cleanTargetId = formatStudentId(studentId);
+
+      var stu = (getActiveStudents() || []).find(function(s) {
+        return formatStudentId(s.id) === cleanTargetId || String(s.id).trim() === String(studentId).trim();
+      });
+      if (!stu) {
+        return showToast('Không tìm thấy thông tin học sinh!', true);
+      }
+
+      // Tạo Modal hiển thị toàn bộ khung 4 mục nếu chưa có
+      var modal = document.getElementById('staffFullProfileModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'staffFullProfileModal';
+        modal.className = 'hidden fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto';
+        document.body.appendChild(modal);
+      }
+
+      var selectedMonth = document.getElementById('overviewMonthFilter')
+        ? document.getElementById('overviewMonthFilter').value
+        : getCurrentMonthStr();
+
+      // Sử dụng lại chính xác giao diện 4 mục của Hình 1
+      var profileHtml = renderGuestFullStudentProfile(stu, selectedMonth);
+
+      // Tạo khung Sửa thông tin học sinh cho Admin và Trợ giảng
+      var editFormHtml = '';
+      if (isStaff) {
+        var gradeOptions = ['Khối 6', 'Khối 7', 'Khối 8', 'Khối 9', 'Khối 10', 'Khối 11', 'Khối 12'].map(function(g) {
+          var selAttr = (String(stu.grade || '').trim() === g) ? 'selected' : '';
+          return '<option value="' + g + '" ' + selAttr + '>' + g + '</option>';
+        }).join('');
+
+        var classOptions = (typeof ALL_CLASSES !== 'undefined' ? ALL_CLASSES : []).map(function(c) {
+          var selAttr = (String(stu.className || '').trim() === c) ? 'selected' : '';
+          return '<option value="' + c + '" ' + selAttr + '>' + c + '</option>';
+        }).join('');
+
+        var cleanPhoneStu = formatPhoneDisplay(stu.phone);
+        if (cleanPhoneStu === '-') cleanPhoneStu = '';
+        var cleanPhonePar = formatPhoneDisplay(stu.parentPhone);
+        if (cleanPhonePar === '-') cleanPhonePar = '';
+
+        editFormHtml =
+          '<div id="staffInlineEditBox" class="hidden bg-emerald-50/80 border-2 border-emerald-500 rounded-2xl p-5 mb-5 space-y-4 shadow-sm">' +
+            '<div class="flex items-center justify-between border-b border-emerald-200 pb-2.5">' +
+              '<h4 class="font-black text-emerald-950 text-sm uppercase flex items-center gap-2">' +
+                '<i class="fa-solid fa-user-pen text-emerald-600"></i> Sửa Thông Tin Học Sinh (Mã HS: ' + cleanTargetId + ')' +
+              '</h4>' +
+              '<button type="button" onclick="toggleStaffInlineEdit(false)" class="text-slate-600 hover:text-slate-900 text-xs font-bold px-3 py-1 rounded-lg bg-white border cursor-pointer">Thu gọn</button>' +
+            '</div>' +
+            '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">' +
+              '<div>' +
+                '<label class="block font-bold text-slate-700 mb-1">Họ và Tên (*)</label>' +
+                '<input type="text" id="inlineEditName" value="' + (stu.name || '').replace(/"/g, '&quot;') + '" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500">' +
+              '</div>' +
+              '<div>' +
+                '<label class="block font-bold text-slate-700 mb-1">Khối Học (*)</label>' +
+                '<select id="inlineEditGrade" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-slate-800">' + gradeOptions + '</select>' +
+              '</div>' +
+              '<div>' +
+                '<label class="block font-bold text-slate-700 mb-1">Lớp Chi Tiết (*)</label>' +
+                '<select id="inlineEditClass" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-blue-700">' + classOptions + '</select>' +
+              '</div>' +
+              '<div>' +
+                '<label class="block font-bold text-slate-700 mb-1">Trường Học</label>' +
+                '<input type="text" id="inlineEditSchool" value="' + (stu.school || '').replace(/"/g, '&quot;') + '" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-medium text-slate-800">' +
+              '</div>' +
+              '<div>' +
+                '<label class="block font-bold text-slate-700 mb-1">SĐT Học Sinh</label>' +
+                '<input type="text" id="inlineEditPhone" value="' + cleanPhoneStu + '" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-mono font-bold text-emerald-800">' +
+              '</div>' +
+              '<div>' +
+                '<label class="block font-bold text-slate-700 mb-1">SĐT Phụ Huynh</label>' +
+                '<input type="text" id="inlineEditParentPhone" value="' + cleanPhonePar + '" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-mono font-bold text-blue-800">' +
+              '</div>' +
+              '<div class="sm:col-span-2 md:col-span-3">' +
+                '<label class="block font-bold text-slate-700 mb-1">Ghi Chú</label>' +
+                '<input type="text" id="inlineEditNote" value="' + (stu.note || '').replace(/"/g, '&quot;') + '" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-medium text-slate-700">' +
+              '</div>' +
+            '</div>' +
+            '<div class="flex items-center justify-end gap-2 pt-2 border-t border-emerald-200/70">' +
+              '<button type="button" onclick="toggleStaffInlineEdit(false)" class="px-4 py-2 rounded-xl border bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs cursor-pointer">Hủy</button>' +
+              '<button type="button" id="btnSaveInlineStu" onclick="saveStaffInlineStudent(\'' + stu.id + '\')" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition active:scale-95 cursor-pointer flex items-center gap-1.5">' +
+                '<i class="fa-solid fa-floppy-disk"></i> Lưu Thay Đổi' +
+              '</button>' +
+            '</div>' +
+          '</div>';
+      }
+
+      modal.innerHTML =
+        '<div class="bg-slate-100 rounded-3xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-fadeIn">' +
+          '<div class="bg-[#0B2447] text-white px-5 py-3.5 flex items-center justify-between flex-shrink-0">' +
+            '<div class="flex items-center gap-2.5">' +
+              '<span class="w-3 h-3 rounded-full bg-emerald-400"></span>' +
+              '<span class="font-black text-sm sm:text-base uppercase tracking-wide">Hồ sơ chi tiết học sinh: ' + stu.name + ' (' + cleanTargetId + ')</span>' +
+            '</div>' +
+            '<div class="flex items-center gap-2">' +
+              (isStaff ? (
+                '<button type="button" onclick="toggleStaffInlineEdit(true)" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer">' +
+                  '<i class="fa-solid fa-user-pen"></i> Sửa thông tin HS' +
+                '</button>'
+              ) : '') +
+              '<button type="button" onclick="closeStaffFullProfileModal()" class="w-8 h-8 rounded-xl bg-white/10 hover:bg-red-500 text-white flex items-center justify-center text-base font-bold transition cursor-pointer" title="Đóng">' +
+                '<i class="fa-solid fa-xmark"></i>' +
+              '</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4">' +
+            editFormHtml +
+            profileHtml +
+          '</div>' +
+        '</div>';
+
+      // Ẩn thanh tiêu đề phụ bên trong để không lặp với thanh tiêu đề của bảng
+      var firstBar = modal.querySelector('.space-y-5 > .flex.items-center.justify-between.bg-white');
+      if (firstBar) firstBar.style.display = 'none';
+
+      modal.classList.remove('hidden');
+    }
+
+    function toggleStaffInlineEdit(show) {
+      var box = document.getElementById('staffInlineEditBox');
+      if (!box) return;
+      if (show) {
+        box.classList.remove('hidden');
+        box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        box.classList.add('hidden');
+      }
+    }
+
+    function closeStaffFullProfileModal() {
+      var modal = document.getElementById('staffFullProfileModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function saveStaffInlineStudent(stuId) {
+      var nameVal = document.getElementById('inlineEditName') ? document.getElementById('inlineEditName').value.trim() : '';
+      var gradeVal = document.getElementById('inlineEditGrade') ? document.getElementById('inlineEditGrade').value : '';
+      var classVal = document.getElementById('inlineEditClass') ? document.getElementById('inlineEditClass').value : '';
+      var schoolVal = document.getElementById('inlineEditSchool') ? document.getElementById('inlineEditSchool').value.trim() : '';
+      var phoneVal = document.getElementById('inlineEditPhone') ? document.getElementById('inlineEditPhone').value.trim() : '';
+      var parentPhoneVal = document.getElementById('inlineEditParentPhone') ? document.getElementById('inlineEditParentPhone').value.trim() : '';
+      var noteVal = document.getElementById('inlineEditNote') ? document.getElementById('inlineEditNote').value.trim() : '';
+
+      if (!nameVal) return showToast('Vui lòng nhập Họ và Tên học sinh!', true);
+
+      var btn = document.getElementById('btnSaveInlineStu');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = 'Đang lưu...';
+      }
+
+      var payload = {
+        id: stuId,
+        name: nameVal,
+        grade: gradeVal,
+        className: classVal,
+        school: schoolVal,
+        phone: phoneVal,
+        parentPhone: parentPhoneVal,
+        note: noteVal
+      };
+
+      // Gọi trực tiếp hàm updateStudent đã có sẵn trong pages/api/rpc.js
+      google.script.run
+        .withSuccessHandler(function(data) {
+          if (data) appData = data;
+          renderAllViews();
+          openFullStudentProfileStaff(stuId);
+          showToast('✓ Đã cập nhật thông tin học sinh thành công!');
+        })
+        .withFailureHandler(function(err) {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerText = 'Lưu Thay Đổi';
+          }
+          showToast('Lỗi cập nhật: ' + err.message, true);
+        })
+        .updateStudent(sessionStorage.getItem('sessionToken'), payload);
+    }
+
+    // Gắn toàn bộ thao tác bấm vào tên học sinh ở Tab Học sinh & Tab Điểm danh sang mở khung Hồ sơ 4 mục
+    window.openEditStudentModal = function(studentId) {
+      openFullStudentProfileStaff(studentId);
+    };
+    window.openViewStudentModal = function(studentId) {
+      openFullStudentProfileStaff(studentId);
+    };
+
+    
   </script>
 
 
