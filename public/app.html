@@ -9681,100 +9681,421 @@ function applyGuestStudentLock() {
 
 
 // =========================================================
-    // DÙNG 100% BẢNG GỐC, LOGIC TẤT CẢ "CÓ" GỐC & NÚT LƯU GỐC
-    // CHỈ KẾT NỐI THANH CHỌN LỚP VÀ GIỮ LỚP CHÍNH KHI THÊM HS BÙ
+    // BẢNG ĐIỂM DANH NGÀY CHUẨN 1 HÀNG + MẶC ĐỊNH TÍCH "CÓ"
+    // + CỘNG DỒN HỌC SINH BÙ + NÚT LƯU TRỰC TIẾP LÊN SUPABASE
     // =========================================================
+    var _customMakeUpList = [];
+    var _customAttStateMap = {};
 
-    function setOriginalDailyAttFilter(classVal) {
-      var gEl = document.getElementById('attGradeFilter');
-      var cEl = document.getElementById('attClassFilter');
-      if (!gEl || !cEl) return;
+    function getCurrentAttDateInputs() {
+      var tabDD = document.getElementById('tab-diemdanh');
+      var dateInp = document.getElementById('attDate') ||
+                    document.getElementById('attendanceDate') ||
+                    (tabDD ? tabDD.querySelector('input[type="date"]') : null);
+      if (dateInp && dateInp.value) return dateInp.value;
+      // Dự phòng nếu ô ngày hiển thị dạng text hoặc id khác
+      var allInps = tabDD ? Array.from(tabDD.querySelectorAll('input')) : [];
+      var foundDateInp = allInps.find(function(i) {
+        return i.type === 'date' || /\d{4}-\d{2}-\d{2}/.test(i.value) || /\d{2}\/\d{2}\/\d{4}/.test(i.value);
+      });
+      return foundDateInp ? foundDateInp.value : getTodayVN();
+    }
 
-      if (classVal === 'ALL') {
-        if (!Array.from(gEl.options).some(function(o) { return o.value === 'ALL'; })) {
-          gEl.insertAdjacentHTML('afterbegin', '<option value="ALL">Tất cả khối</option>');
+    function captureCurrentTableStates() {
+      var tabDD = document.getElementById('tab-diemdanh');
+      if (!tabDD) return;
+      var radios = tabDD.querySelectorAll('input[type="radio"]:checked');
+      radios.forEach(function(r) {
+        var nameAttr = r.getAttribute('name') || '';
+        if (nameAttr.startsWith('status_')) {
+          var sId = formatStudentId(nameAttr.replace('status_', ''));
+          if (!_customAttStateMap[sId]) _customAttStateMap[sId] = {};
+          _customAttStateMap[sId].status = r.value;
         }
-        gEl.value = 'ALL';
-        if (typeof onAttGradeFilterChange === 'function') onAttGradeFilterChange();
-        cEl.value = 'ALL';
-      } else if (classVal && classVal !== 'NONE') {
-        var num = classVal.replace(/\D/g, '');
-        var gradeStr = num ? ('Khối ' + num) : 'ALL';
-        gEl.value = gradeStr;
-        if (typeof onAttGradeFilterChange === 'function') onAttGradeFilterChange();
-        if (!Array.from(cEl.options).some(function(o) { return o.value === classVal; })) {
-          cEl.insertAdjacentHTML('beforeend', '<option value="' + classVal + '">' + classVal + '</option>');
-        }
-        cEl.value = classVal;
+      });
+      var notes = tabDD.querySelectorAll('input[id^="note_"]');
+      notes.forEach(function(n) {
+        var sId = formatStudentId((n.id || '').replace('note_', ''));
+        if (!_customAttStateMap[sId]) _customAttStateMap[sId] = {};
+        _customAttStateMap[sId].note = n.value;
+      });
+    }
+
+    function renderDirectDailyAttendanceTable() {
+      var tabDD = document.getElementById('tab-diemdanh');
+      if (!tabDD) return;
+      var tbody = document.getElementById('attendanceTableBody') ||
+                  document.getElementById('attTableBody') ||
+                  tabDD.querySelector('tbody');
+      if (!tbody) return;
+
+      captureCurrentTableStates();
+
+      var selectedClass = activeClassSelection.attDailyTab || 'NONE';
+      var rawDate = getCurrentAttDateInputs();
+      var stdDate = toStandardDateStr(rawDate);
+
+      var searchInp = document.getElementById('searchAttendance') ||
+                      tabDD.querySelector('input[placeholder*="Tìm tên"]');
+      var searchVal = searchInp ? cleanName(searchInp.value) : '';
+      var searchNoTone = removeVietnameseTones(searchVal);
+
+      // 1. Lấy danh sách học sinh của Lớp chính đang chọn (VD: 17 bạn lớp 8A)
+      var activeStus = (typeof getActiveStudents === 'function' ? getActiveStudents() : appData.students) || [];
+      var mainClassList = [];
+      if (selectedClass === 'ALL') {
+        mainClassList = sortStudentsByClassThenId(activeStus);
+      } else if (selectedClass !== 'NONE') {
+        mainClassList = sortStudentsByClassThenId(
+          activeStus.filter(function(s) {
+            return String(s.className || s.grade || '').trim() === selectedClass;
+          })
+        );
       }
-    }
 
-    // Lưu lại các nút radio/ghi chú thầy đã chỉnh trên bảng gốc trước khi bấm "+ Thêm" HS bù
-    function saveOriginalTableCheckedState() {
-      var saved = {};
-      var tbody = document.getElementById('attendanceTableBody') || document.querySelector('#tab-diemdanh tbody');
-      if (!tbody) return saved;
-      tbody.querySelectorAll('input[type="radio"]:checked').forEach(function(r) {
-        if (r.name) saved[r.name] = r.value;
+      // 2. Lấy dữ liệu đã điểm danh trong ngày stdDate trên DB (nếu đã lưu trước đó)
+      var savedAttOnDate = (appData.attendance || []).filter(function(a) {
+        return toStandardDateStr(a.date) === stdDate;
       });
-      tbody.querySelectorAll('input[type="text"]').forEach(function(inp) {
-        if (inp.id) saved['NOTE_' + inp.id] = inp.value;
+      var savedMap = {};
+      savedAttOnDate.forEach(function(a) {
+        savedMap[formatStudentId(a.studentId)] = a;
       });
-      return saved;
-    }
 
-    function restoreOriginalTableCheckedState(saved) {
-      var tbody = document.getElementById('attendanceTableBody') || document.querySelector('#tab-diemdanh tbody');
-      if (!tbody || !saved) return;
-      Object.keys(saved).forEach(function(k) {
-        if (k.startsWith('NOTE_')) {
-          var inp = document.getElementById(k.replace('NOTE_', ''));
-          if (inp) inp.value = saved[k];
-        } else {
-          var rad = tbody.querySelector('input[type="radio"][name="' + k + '"][value="' + saved[k] + '"]');
-          if (rad) {
-            rad.checked = true;
-            rad.dispatchEvent(new Event('change'));
-          }
+      // 3. Gộp: [Danh sách Lớp chính] + [Danh sách Học sinh bù]
+      var combinedList = mainClassList.slice();
+      var existingIdSet = {};
+      combinedList.forEach(function(s) {
+        existingIdSet[formatStudentId(s.id)] = true;
+      });
+
+      _customMakeUpList.forEach(function(mStu) {
+        var mId = formatStudentId(mStu.id);
+        if (!existingIdSet[mId]) {
+          combinedList.push(mStu);
+          existingIdSet[mId] = true;
         }
       });
+
+      // Nếu trong ngày stdDate đã có học sinh lớp khác được lưu trạng thái 'Học bù' cho lớp này -> hiện luôn
+      if (selectedClass !== 'NONE' && selectedClass !== 'ALL') {
+        savedAttOnDate.forEach(function(a) {
+          var aId = formatStudentId(a.studentId);
+          if (!existingIdSet[aId] && a.status === 'Học bù' && String(a.grade || '').trim() === selectedClass) {
+            var foundStu = activeStus.find(function(st) { return formatStudentId(st.id) === aId; });
+            if (foundStu) {
+              combinedList.push(foundStu);
+              existingIdSet[aId] = true;
+              if (!_customMakeUpList.some(function(m) { return formatStudentId(m.id) === aId; })) {
+                _customMakeUpList.push(foundStu);
+              }
+            }
+          }
+        });
+      }
+
+      if (searchVal) {
+        combinedList = combinedList.filter(function(s) {
+          var n = cleanName(s.name);
+          var nNo = removeVietnameseTones(n);
+          var cId = formatStudentId(s.id);
+          return n.includes(searchVal) || nNo.includes(searchNoTone) || cId.includes(searchVal);
+        });
+      }
+
+      // Nhãn tổng số học sinh trực quan (VD: Tổng: 19 HS (17 chính + 2 bù))
+      var countBadge = document.getElementById('dailyAttCountBadge');
+      if (searchInp && searchInp.parentElement) {
+        if (!countBadge) {
+          countBadge = document.createElement('span');
+          countBadge.id = 'dailyAttCountBadge';
+          countBadge.className = 'ml-2 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-black text-xs whitespace-nowrap inline-flex items-center gap-1.5';
+          searchInp.parentElement.appendChild(countBadge);
+        }
+        var makeUpCount = _customMakeUpList.length;
+        countBadge.innerHTML = '<i class="fa-solid fa-users text-emerald-600"></i> Tổng: ' + combinedList.length + ' HS' +
+          (makeUpCount > 0 ? ' <span class="text-purple-700">(' + mainClassList.length + ' chính + ' + makeUpCount + ' bù)</span>' : '');
+      }
+
+      if (combinedList.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400 font-medium">' +
+          '<i class="fa-solid fa-filter text-2xl text-emerald-600 mb-2 block"></i>' +
+          'Vui lòng chọn <b>Khối, Lớp chi tiết</b> hoặc dùng ô <b>Thêm học bù</b> bên trên!' +
+        '</td></tr>';
+        return;
+      }
+
+      // 4. Vẽ từng dòng: Mặc định tất cả lớp chính đều tích sẵn "Có mặt" (giống hệt logic gốc của thầy), HS bù tích sẵn "Học bù"
+      tbody.innerHTML = combinedList.map(function(s, idx) {
+        var cId = formatStudentId(s.id);
+        var isMakeUpStu = _customMakeUpList.some(function(m) { return formatStudentId(m.id) === cId; });
+
+        var curStatus = '';
+        var curNote = '';
+
+        if (_customAttStateMap[cId] && _customAttStateMap[cId].status !== undefined) {
+          curStatus = _customAttStateMap[cId].status;
+        } else if (savedMap[cId]) {
+          curStatus = savedMap[cId].status;
+        } else if (isMakeUpStu) {
+          curStatus = 'Học bù';
+        } else {
+          // MẶC ĐỊNH TẤT CẢ HỌC SINH LỚP CHÍNH ĐỀU TÍCH SẴN "CÓ MẶT" RỒI MỚI CHỈNH
+          curStatus = 'Có mặt';
+        }
+        // Lưu vào stateMap để khi bấm Lưu nhận đủ 100%
+        if (!_customAttStateMap[cId]) _customAttStateMap[cId] = {};
+        _customAttStateMap[cId].status = curStatus;
+
+        if (_customAttStateMap[cId] && _customAttStateMap[cId].note !== undefined) {
+          curNote = _customAttStateMap[cId].note;
+        } else if (savedMap[cId]) {
+          curNote = savedMap[cId].note || '';
+        }
+        _customAttStateMap[cId].note = curNote;
+
+        var statuses = [
+          { val: 'Có mặt', label: 'Có', dot: 'bg-emerald-500' },
+          { val: 'Vắng CP', label: 'CP', dot: 'bg-amber-400' },
+          { val: 'Vắng KP', label: 'KP', dot: 'bg-red-500' },
+          { val: 'Báo bù', label: 'Báo bù', dot: 'bg-blue-500' },
+          { val: 'Học bù', label: 'Bù', dot: 'bg-purple-500' }
+        ];
+
+        var radiosHtml = statuses.map(function(st) {
+          var checked = (curStatus === st.val) ? 'checked' : '';
+          return '<label class="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-[11px] font-bold select-none whitespace-nowrap shadow-2xs transition">' +
+            '<input type="radio" name="status_' + cId + '" value="' + st.val + '" ' + checked + ' onchange="onCustomAttRadioChange(\'' + cId + '\', this.value)" class="accent-emerald-600 cursor-pointer w-3 h-3">' +
+            '<span class="w-2 h-2 rounded-full ' + st.dot + ' flex-shrink-0"></span>' +
+            '<span>' + st.label + '</span>' +
+          '</label>';
+        }).join('');
+
+        var removeMakeUpBtn = isMakeUpStu
+          ? '<button type="button" onclick="removeCustomMakeUpStu(\'' + cId + '\')" class="ml-1.5 text-[10px] text-rose-500 hover:text-rose-700 font-bold px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 cursor-pointer whitespace-nowrap" title="Bỏ học sinh bù này khỏi danh sách">✕ Bỏ bù</button>'
+          : '';
+
+        var rowBg = isMakeUpStu ? 'bg-purple-50/40 hover:bg-purple-50/70' : 'hover:bg-slate-50/80';
+        var stuClassStr = String(s.className || s.grade || '').trim();
+
+        return '<tr class="border-b border-slate-100 last:border-none transition ' + rowBg + '" data-stuid="' + cId + '" data-stuclass="' + stuClassStr + '">' +
+          '<td class="py-2.5 px-3 text-xs font-bold text-slate-400 w-10">' + (idx + 1) + '</td>' +
+          '<td class="py-2.5 px-3 min-w-[150px]">' +
+            '<div class="font-bold text-slate-800 text-xs sm:text-sm flex items-center flex-wrap">' +
+              s.name +
+              (isMakeUpStu ? '<span class="ml-1.5 px-1.5 py-0.5 text-[10px] rounded bg-purple-100 text-purple-700 font-black whitespace-nowrap">Học bù</span>' : '') +
+              removeMakeUpBtn +
+            '</div>' +
+            '<div class="text-[11px] font-mono font-bold text-emerald-700">' + cId + '</div>' +
+          '</td>' +
+          '<td class="py-2.5 px-2 whitespace-nowrap"><span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-xs">' + (stuClassStr || '-') + '</span></td>' +
+          '<td class="py-2.5 px-3 whitespace-nowrap"><div class="inline-flex flex-nowrap items-center gap-1 px-1.5 py-1 rounded-2xl bg-slate-50 border border-slate-200/80">' + radiosHtml + '</div></td>' +
+          '<td class="py-2.5 px-3 min-w-[160px]"><input type="text" id="note_' + cId + '" value="' + (curNote || '').replace(/"/g, '&quot;') + '" oninput="onCustomAttNoteChange(\'' + cId + '\', this.value)" placeholder="Ghi chú..." class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"></td>' +
+        '</tr>';
+      }).join('');
     }
 
-    // Khi bấm chọn lớp trên thanh CHỌN LỚP -> Gọi thẳng hàm renderAttendanceList gốc của thầy
-    var _baseSelectClassDir = window.selectClassFromDirectory;
+    function onCustomAttRadioChange(stuId, val) {
+      var cId = formatStudentId(stuId);
+      if (!_customAttStateMap[cId]) _customAttStateMap[cId] = {};
+      _customAttStateMap[cId].status = val;
+    }
+
+    function onCustomAttNoteChange(stuId, val) {
+      var cId = formatStudentId(stuId);
+      if (!_customAttStateMap[cId]) _customAttStateMap[cId] = {};
+      _customAttStateMap[cId].note = val;
+    }
+
+    function removeCustomMakeUpStu(stuId) {
+      var cId = formatStudentId(stuId);
+      _customMakeUpList = _customMakeUpList.filter(function(s) {
+        return formatStudentId(s.id) !== cId;
+      });
+      delete _customAttStateMap[cId];
+      renderDirectDailyAttendanceTable();
+    }
+
+    // Thêm học sinh học bù cộng dồn vào danh sách lớp chính (không làm ẩn lớp chính)
+    function handleAddMakeUpStudentKeepClass() {
+      var tabDD = document.getElementById('tab-diemdanh');
+      var inp = document.getElementById('makeUpInput') ||
+                document.getElementById('makeupStudentInput') ||
+                (tabDD ? tabDD.querySelector('input[placeholder*="Gõ tên"]') : null);
+      if (!inp) return;
+
+      var val = inp.value.trim();
+      if (!val) return showToast('Vui lòng gõ tên hoặc Mã HS cần thêm học bù!', true);
+
+      captureCurrentTableStates();
+
+      var activeStus = (typeof getActiveStudents === 'function' ? getActiveStudents() : appData.students) || [];
+      var qClean = cleanName(val);
+      var qNoTone = removeVietnameseTones(qClean);
+      var qDigits = val.replace(/\D/g, '');
+      var formattedQueryId = qDigits ? formatStudentId(qDigits) : '';
+
+      var matched = activeStus.find(function(s) {
+        return formattedQueryId && formatStudentId(s.id) === formattedQueryId;
+      });
+      if (!matched) {
+        matched = activeStus.find(function(s) {
+          var n = cleanName(s.name);
+          var nNo = removeVietnameseTones(n);
+          return n === qClean || nNo === qNoTone || (s.name + ' (' + formatStudentId(s.id) + ')').toLowerCase().includes(qClean);
+        });
+      }
+      if (!matched) {
+        matched = activeStus.find(function(s) {
+          var n = cleanName(s.name);
+          var nNo = removeVietnameseTones(n);
+          return n.includes(qClean) || nNo.includes(qNoTone) || formatStudentId(s.id).includes(qClean);
+        });
+      }
+
+      if (!matched) {
+        return showToast('Không tìm thấy học sinh "' + val + '"!', true);
+      }
+
+      var cId = formatStudentId(matched.id);
+      if (!_customMakeUpList.some(function(s) { return formatStudentId(s.id) === cId; })) {
+        _customMakeUpList.push(matched);
+      }
+      if (!_customAttStateMap[cId]) _customAttStateMap[cId] = {};
+      _customAttStateMap[cId].status = 'Học bù';
+
+      inp.value = '';
+      renderDirectDailyAttendanceTable();
+      showToast('✓ Đã cộng thêm HS học bù: ' + matched.name + ' (' + cId + ')');
+    }
+
+    // LƯU ĐIỂM DANH TRỰC TIẾP LÊN SUPABASE (GỌI THẲNG saveAttendance CỦA rpc.js)
+    function handleSaveCustomDailyAttendance(btnEl) {
+      captureCurrentTableStates();
+      var tabDD = document.getElementById('tab-diemdanh');
+      if (!tabDD) return;
+
+      var rows = Array.from(tabDD.querySelectorAll('tbody tr[data-stuid]'));
+      if (rows.length === 0) {
+        return showToast('Chưa có học sinh nào được tích điểm danh!', true);
+      }
+
+      var stdDate = toStandardDateStr(getCurrentAttDateInputs());
+      var selectedClass = activeClassSelection.attDailyTab || '';
+      var records = [];
+
+      rows.forEach(function(row) {
+        var sId = formatStudentId(row.getAttribute('data-stuid'));
+        var stuClass = row.getAttribute('data-stuclass') || '';
+        var checkedRadio = row.querySelector('input[type="radio"]:checked');
+        var noteInp = row.querySelector('input[id^="note_"]');
+
+        var statusVal = checkedRadio ? checkedRadio.value : ((_customAttStateMap[sId] && _customAttStateMap[sId].status) || 'Có mặt');
+        var noteVal = noteInp ? noteInp.value.trim() : ((_customAttStateMap[sId] && _customAttStateMap[sId].note) || '');
+        var gradeForRecord = (selectedClass && selectedClass !== 'ALL' && selectedClass !== 'NONE') ? selectedClass : stuClass;
+
+        if (sId && statusVal) {
+          records.push({
+            date: stdDate,
+            studentId: sId,
+            status: statusVal,
+            note: noteVal,
+            grade: gradeForRecord
+          });
+        }
+      });
+
+      if (records.length === 0) {
+        return showToast('Chưa có học sinh nào được tích điểm danh!', true);
+      }
+
+      var oldHtml = btnEl ? btnEl.innerHTML : '';
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Đang lưu...';
+      }
+
+      google.script.run
+        .withSuccessHandler(function(data) {
+          if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerHTML = oldHtml;
+          }
+          if (data) appData = data;
+          renderAllViews();
+          renderDirectDailyAttendanceTable();
+          showToast('✓ Đã lưu điểm danh thành công (' + records.length + ' học sinh)!');
+        })
+        .withFailureHandler(function(err) {
+          if (btnEl) {
+            btnEl.disabled = false;
+            btnEl.innerHTML = oldHtml;
+          }
+          showToast('Lỗi khi lưu điểm danh: ' + (err.message || err), true);
+        })
+        .saveAttendance(sessionStorage.getItem('sessionToken'), records);
+    }
+
+    window.addMakeUpStudent = handleAddMakeUpStudentKeepClass;
+    window.addMakeupStudent = handleAddMakeUpStudentKeepClass;
+    window.saveAttendanceRecords = function() { handleSaveCustomDailyAttendance(null); };
+    window.handleSaveAttendance = function() { handleSaveCustomDailyAttendance(null); };
+
+    // Bắt trực tiếp 3 nút: "+ Thêm", "Tất cả Có", và "Lưu" trong tab Điểm danh
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('button');
+      if (!btn || !btn.closest('#tab-diemdanh')) return;
+      var txt = (btn.innerText || '').trim();
+
+      if (txt === '+ Thêm') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleAddMakeUpStudentKeepClass();
+      } else if (txt.includes('Tất cả "Có"')) {
+        e.preventDefault();
+        e.stopPropagation();
+        var tabDD = document.getElementById('tab-diemdanh');
+        var rows = tabDD ? tabDD.querySelectorAll('tbody tr[data-stuid]') : [];
+        rows.forEach(function(r) {
+          var sId = r.getAttribute('data-stuid');
+          var isMakeUp = _customMakeUpList.some(function(m) { return formatStudentId(m.id) === sId; });
+          if (!_customAttStateMap[sId]) _customAttStateMap[sId] = {};
+          _customAttStateMap[sId].status = isMakeUp ? 'Học bù' : 'Có mặt';
+        });
+        renderDirectDailyAttendanceTable();
+        showToast('✓ Đã tích Tất cả "Có"!');
+      } else if (txt === 'Lưu' || (btn.getAttribute('onclick') || '').toLowerCase().includes('saveattendance')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSaveCustomDailyAttendance(btn);
+      }
+    }, true);
+
+    // Khi đổi ngày điểm danh -> làm mới trạng thái theo ngày đó
+    document.addEventListener('change', function(e) {
+      var inp = e.target;
+      if (inp && inp.closest('#tab-diemdanh') && (inp.type === 'date' || inp.id.toLowerCase().includes('date'))) {
+        _customAttStateMap = {};
+        _customMakeUpList = [];
+        renderDirectDailyAttendanceTable();
+      }
+    }, true);
+
+    var _baseSelectClassFromDir = window.selectClassFromDirectory;
     window.selectClassFromDirectory = function(contextKey, selectionValue) {
       if (contextKey === 'attDailyTab') {
         activeClassSelection.attDailyTab = selectionValue;
-        setOriginalDailyAttFilter(selectionValue);
-        if (typeof renderAttendanceList === 'function') renderAttendanceList();
+        _customAttStateMap = {}; // Chọn lớp mới thì reset trạng thái để mặc định tích "Có mặt" cho lớp đó
+        renderDirectDailyAttendanceTable();
         refreshAllClassDirectoriesUI();
         return;
       }
-      if (typeof _baseSelectClassDir === 'function') {
-        _baseSelectClassDir(contextKey, selectionValue);
+      if (typeof _baseSelectClassFromDir === 'function') {
+        _baseSelectClassFromDir(contextKey, selectionValue);
       }
     };
 
-    // Khi bấm "+ Thêm" học sinh bù: Chạy hàm addMakeUpStudent gốc của thầy,
-    // nhưng giữ nguyên Lớp chính (VD: 8A) không cho nó tự reset về NONE làm ẩn mất 17 bạn lớp chính!
-    var _origAddMakeUpFn = window.addMakeUpStudent;
-    if (typeof _origAddMakeUpFn === 'function') {
-      window.addMakeUpStudent = function() {
-        var currentSelectedClass = activeClassSelection.attDailyTab;
-        var prevChecked = saveOriginalTableCheckedState();
-
-        // Gọi hàm thêm HS bù gốc của thầy
-        _origAddMakeUpFn.apply(this, arguments);
-
-        // Nếu đang chọn lớp chính (VD: 8A) mà hàm gốc vừa reset bộ lọc về NONE -> đặt lại 8A ngay lập tức
-        if (currentSelectedClass && currentSelectedClass !== 'NONE') {
-          setOriginalDailyAttFilter(currentSelectedClass);
-          if (typeof renderAttendanceList === 'function') renderAttendanceList();
-          restoreOriginalTableCheckedState(prevChecked);
-        }
-        refreshAllClassDirectoriesUI();
-      };
-    }
+    window.renderAttendanceList = renderDirectDailyAttendanceTable;
     
   </script>
 
