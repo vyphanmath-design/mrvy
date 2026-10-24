@@ -9210,9 +9210,7 @@ function applyGuestStudentLock() {
     }
 
 // =========================================================
-    // BỘ CHỌN LỚP TỐI ƯU:
-    // - TAB HỌC SINH: BẢNG ĐẦY ĐỦ THÔNG TIN
-    // - TAB ĐIỂM DANH, TỔNG QUAN & HỌC PHÍ: NÚT ĐÓNG KHUNG NHỎ GỌN
+    // BỘ CHỌN LỚP CHUẨN CHO CẢ 3 TAB (ĐÃ FIX ĐỦ 3 LỖI)
     // =========================================================
     var activeClassSelection = {
       studentTab: 'NONE',
@@ -9235,23 +9233,53 @@ function applyGuestStudentLock() {
         var nA = extractClassSortOrder(cA);
         var nB = extractClassSortOrder(cB);
         if (nA !== nB) return nA - nB;
-        if (cA !== cB) return cA.localeCompare(b);
+        if (cA !== cB) return cA.localeCompare(cB);
         var idA = parseInt(String(a.id || '').replace(/\D/g, ''), 10) || 0;
         var idB = parseInt(String(b.id || '').replace(/\D/g, ''), 10) || 0;
         return idA - idB;
       });
     }
 
+    // Đếm xem học sinh đang nợ bao nhiêu tháng
+    function getStudentUnpaidMonthsCount(stu, curMonth) {
+      if (typeof getStudentDebtDetails === 'function') {
+        var d = getStudentDebtDetails(stu, curMonth);
+        if (d) {
+          if (Array.isArray(d.unpaidMonths)) return d.unpaidMonths.length;
+          if (Array.isArray(d.months)) return d.months.length;
+          if (Array.isArray(d.details)) return d.details.length;
+          if (typeof d.monthCount === 'number') return d.monthCount;
+          if (d.detailStr || d.text) {
+            var matches = String(d.detailStr || d.text).match(/Tháng\s*\d+/gi);
+            if (matches) return matches.length;
+          }
+          // Dự phòng: lấy tổng nợ chia cho mức học phí 1 tháng
+          var rate = (typeof getStudentExpectedRateByMonth === 'function')
+            ? (getStudentExpectedRateByMonth(stu, curMonth) || 400000)
+            : 400000;
+          if (d.totalDebt > 0 && rate > 0) {
+            return Math.round(d.totalDebt / rate);
+          }
+        }
+      }
+      return 0;
+    }
+
     function getPopulatedClassesSummary() {
-      var activeStus = getActiveStudents() || [];
+      var activeStus = (typeof getActiveStudents === 'function' ? getActiveStudents() : appData.students) || [];
+      var curMonth = typeof getCurrentMonthStr === 'function' ? getCurrentMonthStr() : '';
       var map = {};
+
       activeStus.forEach(function(s) {
-        var c = String(s.className || s.grade || 'Chưa xếp').trim();
+        var c = String(s.className || s.grade || '').trim();
         if (!c) return;
         if (!map[c]) {
-          map[c] = { className: c, grade: s.grade || '', count: 0, sampleStu: s };
+          map[c] = { className: c, grade: s.grade || '', count: 0, debt2Count: 0 };
         }
         map[c].count++;
+        if (getStudentUnpaidMonthsCount(s, curMonth) >= 2) {
+          map[c].debt2Count++;
+        }
       });
 
       var keys = Object.keys(map).filter(function(k) { return map[k].count > 0; });
@@ -9262,33 +9290,21 @@ function applyGuestStudentLock() {
         return a.localeCompare(b);
       });
 
-      return keys.map(function(k) {
-        var item = map[k];
-        var curMonth = typeof getCurrentMonthStr === 'function' ? getCurrentMonthStr() : '';
-        var fee = 0;
-        if (typeof getStudentExpectedRateByMonth === 'function' && item.sampleStu) {
-          fee = getStudentExpectedRateByMonth(item.sampleStu, curMonth);
-        }
-        return {
-          className: item.className,
-          grade: item.grade,
-          count: item.count,
-          fee: fee
-        };
-      });
+      return keys.map(function(k) { return map[k]; });
     }
 
     function getQuitStudentsList() {
       return (appData.students || []).filter(function(s) {
-        return String(s.statusNghi || '').toUpperCase().includes('NGHỈ');
+        var st = String(s.statusNghi || '').trim().toUpperCase();
+        return st !== '' && (st.includes('NGHỈ') || st.includes('NGHI'));
       });
     }
 
-    // 1. Giao diện Bảng đầy đủ (Dành riêng cho Tab Học Sinh)
+    // 1. BẢNG LỚP Ở TAB HỌC SINH: Bỏ Giáo viên, chỉ hiện Tên Lớp - Sĩ Số - Nợ Học Phí >= 2 Tháng (kèm %)
     function buildClassDirectoryCardHtml(contextKey, includeAllBtn, includeQuitBtn) {
       var classes = getPopulatedClassesSummary();
       var currentSel = activeClassSelection[contextKey] || 'NONE';
-      var totalActive = (getActiveStudents() || []).length;
+      var totalActive = ((typeof getActiveStudents === 'function' ? getActiveStudents() : []) || []).length;
       var quitList = getQuitStudentsList();
 
       var topPillsHtml = '<div class="flex flex-wrap items-center gap-2">';
@@ -9312,7 +9328,7 @@ function applyGuestStudentLock() {
 
       var rowsHtml = '';
       if (classes.length === 0) {
-        rowsHtml = '<tr><td colspan="4" class="p-6 text-center text-slate-400 italic text-xs">Chưa có lớp nào có dữ liệu học sinh</td></tr>';
+        rowsHtml = '<tr><td colspan="3" class="p-6 text-center text-slate-400 italic text-xs">Chưa có lớp nào có dữ liệu học sinh</td></tr>';
       } else {
         rowsHtml = classes.map(function(c) {
           var isSelected = (currentSel === c.className);
@@ -9321,36 +9337,39 @@ function applyGuestStudentLock() {
             : 'hover:bg-slate-50/90';
           var titleColor = isSelected ? 'text-emerald-800' : 'text-slate-900';
 
+          var pct = c.count > 0 ? Math.round((c.debt2Count / c.count) * 100) : 0;
+          var debtBadge = c.debt2Count > 0
+            ? '<span class="px-2.5 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200 font-bold text-xs inline-flex items-center gap-1">' +
+                c.debt2Count + ' HS <span class="text-[11px] font-black">(' + pct + '%)</span>' +
+              '</span>'
+            : '<span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs">0 HS (0%)</span>';
+
           return '<tr onclick="selectClassFromDirectory(\'' + contextKey + '\', \'' + c.className.replace(/'/g, "\\'") + '\')" class="border-b border-slate-100 last:border-none transition cursor-pointer ' + rowStyle + '">' +
             '<td class="py-2.5 px-4 font-black text-xs sm:text-sm uppercase ' + titleColor + '">' +
               'TOÁN ' + c.className + ' THẦY VY' +
               (isSelected ? ' <span class="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-emerald-600 text-white font-bold">Đang chọn</span>' : '') +
             '</td>' +
-            '<td class="py-2.5 px-4 text-xs text-slate-600 font-medium">Phan Hoài Vy</td>' +
-            '<td class="py-2.5 px-4 text-xs text-slate-800 font-bold text-center">' + c.count + '</td>' +
-            '<td class="py-2.5 px-4 text-xs text-slate-800 font-mono font-bold text-right">' + (c.fee > 0 ? (formatMoney(c.fee) + ' đ') : '—') + '</td>' +
+            '<td class="py-2.5 px-4 text-xs text-slate-800 font-bold text-center">' + c.count + ' HS</td>' +
+            '<td class="py-2.5 px-4 text-right">' + debtBadge + '</td>' +
           '</tr>';
         }).join('');
       }
 
       return '<div class="bg-white p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-200 space-y-3 mb-4">' +
         '<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">' +
-          '<div>' +
-            '<h3 class="text-base font-black text-slate-900 flex items-center gap-2">' +
-              '<span>Toán</span>' +
-              '<span class="text-xs font-normal text-slate-400">· ' + classes.length + ' lớp đang có học sinh · bấm vào lớp để lọc nhanh</span>' +
-            '</h3>' +
-          '</div>' +
+          '<h3 class="text-base font-black text-slate-900 flex items-center gap-2">' +
+            '<span>Toán</span>' +
+            '<span class="text-xs font-normal text-slate-400">· ' + classes.length + ' lớp đang có học sinh · bấm vào lớp để lọc nhanh</span>' +
+          '</h3>' +
           topPillsHtml +
         '</div>' +
         '<div class="overflow-x-auto">' +
           '<table class="w-full text-left border-collapse">' +
             '<thead>' +
               '<tr class="bg-slate-50/90 text-[11px] font-bold text-slate-400 uppercase border-b border-slate-100">' +
-                '<th class="py-2 px-4 rounded-tl-xl">LỚP</th>' +
-                '<th class="py-2 px-4">GIÁO VIÊN</th>' +
+                '<th class="py-2 px-4 rounded-tl-xl">TÊN LỚP</th>' +
                 '<th class="py-2 px-4 text-center">SĨ SỐ</th>' +
-                '<th class="py-2 px-4 text-right rounded-tr-xl">HỌC PHÍ/THÁNG</th>' +
+                '<th class="py-2 px-4 text-right rounded-tr-xl">NỢ HỌC PHÍ TỪ 2 THÁNG</th>' +
               '</tr>' +
             '</thead>' +
             '<tbody>' + rowsHtml + '</tbody>' +
@@ -9359,7 +9378,7 @@ function applyGuestStudentLock() {
       '</div>';
     }
 
-    // 2. Giao diện Nút tên lớp đóng khung nhỏ gọn (Cho Điểm danh ngày, Tổng quan & Học phí)
+    // 2. DÃY NÚT CHỌN LỚP NHỎ GỌN (Dùng chung cho Điểm danh Ngày, Tổng Quan & Học Phí)
     function buildCompactClassPillsHtml(contextKey, includeAllBtn) {
       var classes = getPopulatedClassesSummary();
       var currentSel = activeClassSelection[contextKey] || 'NONE';
@@ -9368,10 +9387,10 @@ function applyGuestStudentLock() {
       if (includeAllBtn) {
         var isAll = (currentSel === 'ALL');
         pills.push(
-          '<button type="button" onclick="selectClassFromDirectory(\'' + contextKey + '\', \'ALL\')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer ' +
+          '<button type="button" onclick="selectClassFromDirectory(\'' + contextKey + '\', \'ALL\')" class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer ' +
           (isAll
-            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-            : 'bg-white hover:bg-emerald-50 text-slate-700 border-slate-200 hover:border-emerald-400') + '">' +
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-500 ring-1 ring-emerald-500'
+            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200') + '">' +
             'Tất cả' +
           '</button>'
         );
@@ -9380,58 +9399,81 @@ function applyGuestStudentLock() {
       classes.forEach(function(c) {
         var isAct = (currentSel === c.className);
         pills.push(
-          '<button type="button" onclick="selectClassFromDirectory(\'' + contextKey + '\', \'' + c.className.replace(/'/g, "\\'") + '\')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer ' +
+          '<button type="button" onclick="selectClassFromDirectory(\'' + contextKey + '\', \'' + c.className.replace(/'/g, "\\'") + '\')" class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer ' +
           (isAct
-            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-            : 'bg-white hover:bg-emerald-50 text-slate-700 border-slate-200 hover:border-emerald-400') + '">' +
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-500 ring-1 ring-emerald-500'
+            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200') + '">' +
             'Lớp ' + c.className +
           '</button>'
         );
       });
 
-      return '<div class="flex flex-wrap items-center gap-1.5 py-1">' +
-        '<span class="text-[11px] font-bold text-slate-400 uppercase mr-1"><i class="fa-solid fa-graduation-cap text-emerald-600 mr-1"></i>Chọn lớp:</span>' +
+      return '<div class="flex flex-wrap items-center gap-2">' +
+        '<span class="text-xs font-black text-slate-400 uppercase mr-1 flex items-center gap-1.5"><i class="fa-solid fa-graduation-cap text-emerald-600"></i>CHỌN LỚP:</span>' +
         pills.join('') +
       '</div>';
     }
 
-    function syncSelectionToHiddenFilters(gradeEl, classEl, selVal, changeFn) {
+    // Đồng bộ chính xác vào các thẻ <select> gốc để giữ 100% logic cũ
+    function syncSelectionToOriginalSelects(gradeEl, classEl, selVal, changeFn) {
       if (!gradeEl) return;
 
+      if (selVal === 'NGHI') {
+        // Tự động tìm đúng option của "Học sinh đã nghỉ" trong thẻ <select> gốc (dù value là QUIT, NGHI hay ĐÃ NGHỈ HỌC)
+        var quitOpt = Array.from(gradeEl.options).find(function(o) {
+          var t = (o.text + ' ' + o.value).toUpperCase();
+          return t.includes('NGHỈ') || t.includes('NGHI') || t.includes('QUIT');
+        });
+        if (quitOpt) {
+          gradeEl.value = quitOpt.value;
+        } else {
+          gradeEl.insertAdjacentHTML('beforeend', '<option value="NGHI">Học sinh đã nghỉ</option>');
+          gradeEl.value = 'NGHI';
+        }
+        if (typeof changeFn === 'function') changeFn();
+        else gradeEl.dispatchEvent(new Event('change'));
+        if (classEl) {
+          classEl.value = 'ALL';
+          classEl.dispatchEvent(new Event('change'));
+        }
+        return;
+      }
+
       if (selVal === 'ALL') {
-        if (!Array.from(gradeEl.options).some(function(o) { return o.value === 'ALL'; })) {
+        var allOpt = Array.from(gradeEl.options).find(function(o) {
+          return o.value === 'ALL' || o.text.toUpperCase().includes('TẤT CẢ');
+        });
+        if (!allOpt) {
           gradeEl.insertAdjacentHTML('afterbegin', '<option value="ALL">Tất cả khối</option>');
+          gradeEl.value = 'ALL';
+        } else {
+          gradeEl.value = allOpt.value;
         }
-        gradeEl.value = 'ALL';
         if (typeof changeFn === 'function') changeFn();
         else gradeEl.dispatchEvent(new Event('change'));
         if (classEl) {
           classEl.value = 'ALL';
           classEl.dispatchEvent(new Event('change'));
         }
-      } else if (selVal === 'NGHI') {
-        if (!Array.from(gradeEl.options).some(function(o) { return o.value === 'NGHI'; })) {
-          gradeEl.insertAdjacentHTML('afterbegin', '<option value="NGHI">Học sinh đã nghỉ</option>');
-        }
-        gradeEl.value = 'NGHI';
-        if (typeof changeFn === 'function') changeFn();
-        else gradeEl.dispatchEvent(new Event('change'));
-        if (classEl) {
-          classEl.value = 'ALL';
-          classEl.dispatchEvent(new Event('change'));
-        }
-      } else if (selVal && selVal !== 'NONE') {
+        return;
+      }
+
+      if (selVal && selVal !== 'NONE') {
         var num = selVal.replace(/\D/g, '');
         var targetGrade = num ? ('Khối ' + num) : 'ALL';
         if (selVal.toUpperCase().includes('ĐỢI') || selVal.toUpperCase().includes('DOI')) {
-          var sample = (getActiveStudents() || []).find(function(s) {
+          var sample = ((typeof getActiveStudents === 'function' ? getActiveStudents() : []) || []).find(function(s) {
             return String(s.className || '').trim() === selVal;
           });
           if (sample && sample.grade) targetGrade = sample.grade;
         }
+        if (!Array.from(gradeEl.options).some(function(o) { return o.value === targetGrade; })) {
+          gradeEl.insertAdjacentHTML('beforeend', '<option value="' + targetGrade + '">' + targetGrade + '</option>');
+        }
         gradeEl.value = targetGrade;
         if (typeof changeFn === 'function') changeFn();
         else gradeEl.dispatchEvent(new Event('change'));
+
         if (classEl) {
           if (!Array.from(classEl.options).some(function(o) { return o.value === selVal; })) {
             classEl.insertAdjacentHTML('beforeend', '<option value="' + selVal + '">' + selVal + '</option>');
@@ -9442,25 +9484,6 @@ function applyGuestStudentLock() {
       }
     }
 
-    // Tự động tìm đúng cặp thẻ <select> Khối & Lớp trong bất kỳ vùng giao diện nào
-    function findGradeAndClassSelectsInContainer(containerEl) {
-      if (!containerEl) return { gradeEl: null, classEl: null };
-      var selects = Array.from(containerEl.querySelectorAll('select'));
-      var gradeEl = null;
-      var classEl = null;
-
-      selects.forEach(function(s) {
-        if (s.id === 'overviewMonthFilter' || s.id === 'tuitionMonthFilter' || s.id === 'feeMonth') return;
-        var txt = (s.innerHTML || '') + ' ' + (s.id || '') + ' ' + (s.className || '');
-        if (!gradeEl && (txt.includes('Khối') || txt.toLowerCase().includes('grade'))) {
-          gradeEl = s;
-        } else if (!classEl && (txt.includes('lớp') || txt.includes('Lớp') || txt.toLowerCase().includes('class'))) {
-          classEl = s;
-        }
-      });
-      return { gradeEl: gradeEl, classEl: classEl };
-    }
-
     function selectClassFromDirectory(contextKey, selectionValue) {
       activeClassSelection[contextKey] = selectionValue;
 
@@ -9468,20 +9491,23 @@ function applyGuestStudentLock() {
         if (appData && Array.isArray(appData.students)) {
           appData.students = sortStudentsByClassThenId(appData.students);
         }
-        syncSelectionToHiddenFilters(
+        syncSelectionToOriginalSelects(
           document.getElementById('filterGrade'),
           document.getElementById('filterClass'),
           selectionValue,
           window.onGradeFilterChange
         );
-        if (typeof _origRenderStudentsTable === 'function') _origRenderStudentsTable();
+        if (typeof renderStudentsTable === 'function') renderStudentsTable();
       } else if (contextKey === 'attDailyTab') {
-        var tabDD = document.getElementById('tab-diemdanh');
-        var pairDD = findGradeAndClassSelectsInContainer(tabDD);
-        syncSelectionToHiddenFilters(pairDD.gradeEl, pairDD.classEl, selectionValue, window.onAttGradeFilterChange);
+        syncSelectionToOriginalSelects(
+          document.getElementById('attGradeFilter'),
+          document.getElementById('attClassFilter'),
+          selectionValue,
+          window.onAttGradeFilterChange
+        );
         if (typeof renderAttendanceList === 'function') renderAttendanceList();
       } else if (contextKey === 'attOverviewTab') {
-        syncSelectionToHiddenFilters(
+        syncSelectionToOriginalSelects(
           document.getElementById('overviewGradeFilter'),
           document.getElementById('overviewClassFilter'),
           selectionValue,
@@ -9491,11 +9517,11 @@ function applyGuestStudentLock() {
       } else if (contextKey === 'tuitionTab') {
         var tabHP = document.getElementById('tab-hocphi');
         if (tabHP) {
-          var allSelects = Array.from(tabHP.querySelectorAll('select'));
-          var gSelects = allSelects.filter(function(s) { return (s.innerHTML || '').includes('Khối'); });
-          var cSelects = allSelects.filter(function(s) { return (s.innerHTML || '').includes('lớp') || (s.innerHTML || '').includes('Lớp'); });
-          gSelects.forEach(function(g, idx) {
-            syncSelectionToHiddenFilters(g, cSelects[idx] || null, selectionValue, null);
+          var allSels = Array.from(tabHP.querySelectorAll('select'));
+          var gSels = allSels.filter(function(s) { return (s.innerHTML || '').includes('Khối'); });
+          var cSels = allSels.filter(function(s) { return (s.innerHTML || '').includes('lớp') || (s.innerHTML || '').includes('Lớp'); });
+          gSels.forEach(function(g, idx) {
+            syncSelectionToOriginalSelects(g, cSels[idx] || null, selectionValue, null);
           });
         }
         if (typeof renderTuitionTable === 'function') renderTuitionTable();
@@ -9505,18 +9531,16 @@ function applyGuestStudentLock() {
       refreshAllClassDirectoriesUI();
     }
 
-    function hideSelectAndLabel(selEl) {
-      if (!selEl) return;
-      selEl.style.display = 'none';
-      var prev = selEl.previousElementSibling;
+    function hideSelectElementCleanly(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = 'none';
+      var prev = el.previousElementSibling;
       if (prev && (prev.tagName === 'SPAN' || prev.tagName === 'LABEL')) {
-        var t = (prev.innerText || '').trim();
-        if (t.includes('Khối') || t.includes('Lớp')) {
-          prev.style.display = 'none';
-        }
+        var txt = (prev.innerText || '').trim();
+        if (txt.includes('Khối') || txt.includes('Lớp')) prev.style.display = 'none';
       }
-      // Nếu thẻ cha chỉ chứa chữ "Khối:" và dropdown Khối (như ở Điểm danh ngày Hình 1) thì ẩn gọn cả dòng đó
-      var parent = selEl.parentElement;
+      var parent = el.parentElement;
       if (parent && parent.children.length === 2 && parent.textContent.trim().startsWith('Khối:')) {
         parent.style.display = 'none';
       }
@@ -9526,9 +9550,14 @@ function applyGuestStudentLock() {
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
       if (role === 'GUEST') return;
 
-      // 1. TAB HỌC SINH: Giữ bảng Lớp học lớn đầy đủ thông tin (Hình 2)
-      hideSelectAndLabel(document.getElementById('filterGrade'));
-      hideSelectAndLabel(document.getElementById('filterClass'));
+      [
+        'filterGrade', 'filterClass',
+        'attGradeFilter', 'attClassFilter',
+        'overviewGradeFilter', 'overviewClassFilter',
+        'tuitionGradeFilter', 'tuitionClassFilter'
+      ].forEach(hideSelectElementCleanly);
+
+      // 1. TAB HỌC SINH: Bảng 3 cột (Tên Lớp - Sĩ Số - Nợ Học Phí >= 2 Tháng)
       var stuPanel = document.getElementById('stuSubTabListPanel');
       if (stuPanel && stuPanel.parentNode) {
         var dirStu = document.getElementById('dirCardStudentTab');
@@ -9540,100 +9569,75 @@ function applyGuestStudentLock() {
         dirStu.innerHTML = buildClassDirectoryCardHtml('studentTab', true, true);
       }
 
-      // 2. TAB ĐIỂM DANH NGÀY (Hình 1): Ẩn dòng Khối + Tất cả lớp, chèn dãy nút lớp nhỏ gọn ngay trên ô Tìm tên & + HS bù
-      var tabDD = document.getElementById('tab-diemdanh');
-      if (tabDD) {
-        var pairDD = findGradeAndClassSelectsInContainer(tabDD);
-        hideSelectAndLabel(pairDD.gradeEl);
-        hideSelectAndLabel(pairDD.classEl);
-
-        var targetBoxDD = pairDD.classEl ? pairDD.classEl.closest('.bg-slate-50, .p-3, .border, .space-y-3') : null;
-        if (targetBoxDD) {
-          var dirAtt = document.getElementById('dirCardAttDaily');
-          if (!dirAtt) {
-            dirAtt = document.createElement('div');
-            dirAtt.id = 'dirCardAttDaily';
-            dirAtt.className = 'mb-2 pb-2 border-b border-slate-200/80';
-            targetBoxDD.insertBefore(dirAtt, targetBoxDD.firstChild);
-          }
-          dirAtt.innerHTML = buildCompactClassPillsHtml('attDailyTab', true);
+      // 2. TAB ĐIỂM DANH NGÀY: Chèn khung Chọn Lớp (giống hệt bên Học phí) ngay phía trên ô Tìm tên & + HS bù
+      var attSearchInp = document.getElementById('searchAttendance') ||
+                         document.querySelector('#tab-diemdanh input[placeholder*="Tìm tên"]');
+      var attBox = attSearchInp ? attSearchInp.closest('.bg-slate-50, .p-3, .border, .rounded-2xl, .space-y-3') : null;
+      if (attBox && attBox.parentNode) {
+        var dirAtt = document.getElementById('dirCardAttDaily');
+        if (!dirAtt) {
+          dirAtt = document.createElement('div');
+          dirAtt.id = 'dirCardAttDaily';
+          dirAtt.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3';
+          attBox.parentNode.insertBefore(dirAtt, attBox);
         }
+        dirAtt.innerHTML = buildCompactClassPillsHtml('attDailyTab', true);
       }
 
-      // 3. TAB TỔNG QUAN ĐIỂM DANH: Ẩn dropdown Khối/Lớp, dùng dãy nút tên lớp nhỏ gọn
-      var ovGradeEl = document.getElementById('overviewGradeFilter');
-      var ovClassEl = document.getElementById('overviewClassFilter');
-      hideSelectAndLabel(ovGradeEl);
-      hideSelectAndLabel(ovClassEl);
-      var ovFilterBox = ovGradeEl ? ovGradeEl.closest('.bg-white') : null;
-      if (ovFilterBox) {
+      // 3. TAB TỔNG QUAN ĐIỂM DANH: Chèn khung Chọn Lớp ngay phía trên thanh Tìm kiếm & Tháng
+      var ovSearchInp = document.getElementById('overviewSearch');
+      var ovBox = ovSearchInp ? ovSearchInp.closest('.bg-white') : null;
+      if (ovBox && ovBox.parentNode) {
         var dirOv = document.getElementById('dirCardAttOverview');
         if (!dirOv) {
           dirOv = document.createElement('div');
           dirOv.id = 'dirCardAttOverview';
-          dirOv.className = 'w-full pb-2 mb-2 border-b border-slate-100';
-          ovFilterBox.insertBefore(dirOv, ovFilterBox.firstChild);
+          dirOv.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3';
+          ovBox.parentNode.insertBefore(dirOv, ovBox);
         }
         dirOv.innerHTML = buildCompactClassPillsHtml('attOverviewTab', true);
       }
 
-      // 4. TAB HỌC PHÍ: Ẩn các dropdown Khối/Lớp cũ, dùng khung nút tên lớp nhỏ gọn
+      // 4. TAB HỌC PHÍ: Khung Chọn Lớp ở đầu tab
       var tabHocPhi = document.getElementById('tab-hocphi');
       if (tabHocPhi) {
         Array.from(tabHocPhi.querySelectorAll('select')).forEach(function(s) {
-          var html = s.innerHTML || '';
-          if (html.includes('Khối 6') || html.includes('Tất cả lớp') || html.includes('Tất cả Lớp')) {
-            hideSelectAndLabel(s);
+          var h = s.innerHTML || '';
+          if (h.includes('Khối 6') || h.includes('Tất cả lớp') || h.includes('Tất cả Lớp')) {
+            s.style.display = 'none';
           }
         });
         var dirFee = document.getElementById('dirCardTuitionTab');
         if (!dirFee) {
           dirFee = document.createElement('div');
           dirFee.id = 'dirCardTuitionTab';
-          dirFee.className = 'bg-white px-4 py-2.5 rounded-2xl shadow-xs border border-slate-200 mb-3';
+          dirFee.className = 'bg-white px-4 py-3 rounded-2xl shadow-2xs border border-slate-200 mb-3';
           tabHocPhi.insertBefore(dirFee, tabHocPhi.firstChild);
         }
         dirFee.innerHTML = buildCompactClassPillsHtml('tuitionTab', true);
       }
     }
 
-    var _origRenderStudentsTable = window.renderStudentsTable;
+    var _origRenderStudentsTableFixed = window.renderStudentsTable;
     window.renderStudentsTable = function() {
       if (appData && Array.isArray(appData.students)) {
         appData.students = sortStudentsByClassThenId(appData.students);
       }
-      var searchInp = document.getElementById('searchStudent');
-      var rawSearch = searchInp ? searchInp.value.trim() : '';
-
-      if (rawSearch && activeClassSelection.studentTab === 'NONE') {
-        syncSelectionToHiddenFilters(
-          document.getElementById('filterGrade'),
-          document.getElementById('filterClass'),
-          'ALL',
-          window.onGradeFilterChange
-        );
-      }
-
-      if (typeof _origRenderStudentsTable === 'function') {
-        _origRenderStudentsTable();
+      if (typeof _origRenderStudentsTableFixed === 'function') {
+        _origRenderStudentsTableFixed();
       }
       refreshAllClassDirectoriesUI();
     };
 
-    var _prevRenderAllViewsKeep = window.renderAllViews;
+    var _origRenderAllViewsFixed = window.renderAllViews;
     window.renderAllViews = function() {
       if (appData && Array.isArray(appData.students)) {
         appData.students = sortStudentsByClassThenId(appData.students);
       }
-      if (typeof _prevRenderAllViewsKeep === 'function') _prevRenderAllViewsKeep();
+      if (typeof _origRenderAllViewsFixed === 'function') {
+        _origRenderAllViewsFixed();
+      }
       refreshAllClassDirectoriesUI();
-    };
-
-    var _prevSwitchStuSubTabKeep = window.switchStudentSubTab;
-    window.switchStudentSubTab = function(tab) {
-      if (typeof _prevSwitchStuSubTabKeep === 'function') _prevSwitchStuSubTabKeep(tab);
-      var dirStu = document.getElementById('dirCardStudentTab');
-      if (dirStu) dirStu.classList.toggle('hidden', tab !== 'list');
     };
 
   </script>
