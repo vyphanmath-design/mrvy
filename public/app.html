@@ -9156,27 +9156,57 @@ function applyGuestStudentLock() {
       }, 80);
     }
 
-    // Liên kết từ khung điểm danh sang Tab Điểm danh của đúng học sinh & tháng đó
+    // Liên kết từ khung điểm danh sang thẳng Tab Điểm danh -> Tổng Quan có bộ lọc sẵn như Hình 2
     function jumpToStudentAttendanceTab(studentId, monthLabel) {
       closeStaffFullProfileModal();
       var cleanId = formatStudentId(studentId);
 
+      // 1. Chuyển sang Tab Điểm danh chính
       switchTab('tab-diemdanh');
-      if (typeof switchAttendanceSubTab === 'function') {
-        switchAttendanceSubTab('overview');
+
+      // 2. Kích hoạt thẳng nút "Tổng Quan" (tìm nút Tổng Quan và bấm trực tiếp để mở đúng giao diện Hình 2)
+      var btnOverview = document.getElementById('subTabOverview') ||
+                        document.querySelector('[onclick*="switchAttendanceSubTab"][onclick*="overview"]') ||
+                        document.querySelector('[onclick*="switchAttendanceSubTab(\'summary\')"]');
+      if (btnOverview) {
+        btnOverview.click();
+      } else {
+        // Dự phòng nếu nút dùng tên tham số khác: tìm tất cả nút trong thanh Điểm Danh Ngày / Tổng Quan
+        var allSubBtns = document.querySelectorAll('#tab-diemdanh button');
+        allSubBtns.forEach(function(b) {
+          if (b.innerText && b.innerText.includes('Tổng Quan')) {
+            b.click();
+          }
+        });
       }
 
+      // 3. Chuyển chế độ Xem về "HS" (nếu đang ở chế độ Xem Ngày)
+      var btnViewHS = document.getElementById('btnOverviewByStu') ||
+                      document.querySelector('[onclick*="setOverviewViewMode"][onclick*="student"]');
+      if (btnViewHS) {
+        btnViewHS.click();
+      }
+
+      // 4. Điền sẵn Mã HS (VD: 013) và Tháng vào bộ lọc rồi vẽ bảng ngay lập tức
       setTimeout(function() {
+        var gSel = document.getElementById('overviewGradeFilter');
+        if (gSel) gSel.value = 'NONE';
+
+        var cSel = document.getElementById('overviewClassFilter');
+        if (cSel) cSel.value = 'ALL';
+
         var mSel = document.getElementById('overviewMonthFilter');
         if (mSel && monthLabel) {
           mSel.value = monthLabel;
         }
+
         var sInp = document.getElementById('overviewSearch');
         if (sInp) {
           sInp.value = cleanId;
         }
+
         renderAttendanceOverviewClass();
-      }, 60);
+      }, 50);
     }
 
     
