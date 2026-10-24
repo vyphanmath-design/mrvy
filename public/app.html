@@ -10096,6 +10096,59 @@ function applyGuestStudentLock() {
     };
 
     window.renderAttendanceList = renderDirectDailyAttendanceTable;
+
+
+// =========================================================
+    // TỐI ƯU GIAO DIỆN BẢNG ĐIỂM & KHUNG NHẬP ĐIỂM KIỂM TRA
+    // =========================================================
+
+    // Tự động chèn CSS tối ưu khung thống kê điểm gọn gàng và cố định hiển thị tên học sinh khi nhập điểm
+    function injectExamUIGuardStyles() {
+      var styleId = 'examUIGuardCustomStyle';
+      if (document.getElementById(styleId)) return;
+      var st = document.createElement('style');
+      st.id = styleId;
+      st.innerHTML =
+        /* 1. Làm gọn khu vực 5 thẻ thống kê (Hình 1) thành bố cục lưới ngang khít, hiện đại */
+        '.exam-stats-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }' +
+        '.exam-stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }' +
+        
+        /* 2. Đảm bảo khung nhập điểm bài kiểm tra (Hình 2) luôn hiển thị rõ tên học sinh, không bị tràn ẩn mất */
+        '.exam-input-grid-row { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: center; background: #fff; padding: 10px 14px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 8px; }' +
+        '@media (max-width: 768px) {' +
+        '  .exam-input-grid-row { grid-template-columns: 160px 1fr; padding: 8px 10px; }' +
+        '}';
+      document.head.appendChild(st);
+    }
+
+    // Tự động tinh chỉnh lại cấu trúc hiển thị danh sách nhập điểm bài kiểm tra (Hình 2)
+    function patchExamScoreInputRows() {
+      var tabDiem = document.getElementById('tab-diemkiemtra') || document.querySelector('[id*="kiemtra"], [id*="score"]');
+      if (!tabDiem) return;
+
+      // Tìm các dòng nhập điểm cũ (có ô số thứ tự / tên học sinh bị chèn) và bọc lại bằng lưới chuẩn
+      var rows = tabDiem.querySelectorAll('.exam-row-item, .score-input-row, form .space-y-3 > div, form .grid');
+      rows.forEach(function(r) {
+        if (!r.classList.contains('exam-input-grid-row') && (r.querySelector('input[type="text"]') || r.querySelector('input[placeholder*="Ghi chú"]'))) {
+          r.classList.add('exam-input-grid-row');
+        }
+      });
+    }
+
+    // Kích hoạt style và tự động canh chỉnh mỗi khi chuyển tab hoặc render điểm kiểm tra
+    var _prevRenderExamViews = window.renderExamScoresView || window.renderDiemKiemTra;
+    window.renderExamScoresView = function() {
+      if (typeof _prevRenderExamViews === 'function') _prevRenderExamViews.apply(this, arguments);
+      injectExamUIGuardStyles();
+      patchExamScoreInputRows();
+    };
+    window.renderDiemKiemTra = window.renderExamScoresView;
+
+    // Chạy ngay khi tải trang
+    setTimeout(function() {
+      injectExamUIGuardStyles();
+      patchExamScoreInputRows();
+    }, 500);
     
   </script>
 
