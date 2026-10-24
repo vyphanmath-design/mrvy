@@ -10283,9 +10283,12 @@ function applyGuestStudentLock() {
   // =========================================================
     // HỒ SƠ CHI TIẾT ĐỦ 5 PHẦN + NÚT XUẤT PDF HOÀN CHỈNH
     // =========================================================
+// =========================================================
+    // CHÈN MỤC 3 (ĐIỂM KIỂM TRA) & NÚT XUẤT PDF VÀO HỒ SƠ CHI TIẾT (BẢN CHUẨN)
+    // =========================================================
 
     function getStudentIdFromActiveProfileModal() {
-      var modalEls = Array.from(document.querySelectorAll('div, span, h2, h3, h4'));
+      var modalEls = Array.from(document.querySelectorAll('div, span, h2, h3, h4, header'));
       for (var i = 0; i < modalEls.length; i++) {
         var txt = (modalEls[i].textContent || '').trim();
         if (txt.includes('HỒ SƠ CHI TIẾT HỌC SINH') || txt.includes('Hồ sơ chi tiết')) {
@@ -10295,21 +10298,14 @@ function applyGuestStudentLock() {
           }
         }
       }
-      var allLabels = Array.from(document.querySelectorAll('div, span, p'));
-      for (var j = 0; j < allLabels.length; j++) {
-        var lb = (allLabels[j].textContent || '').trim();
-        if (lb === 'Mã Học Sinh' && allLabels[j].nextElementSibling) {
-          var code = (allLabels[j].nextElementSibling.textContent || '').trim();
-          if (code) return formatStudentId(code);
-        }
-      }
       return '';
     }
 
     function injectExamAndPdfToStudentProfileModal() {
+      // Tìm modal Hồ sơ chi tiết đang hiển thị trên màn hình
       var activeModal = Array.from(document.querySelectorAll('.fixed.inset-0, .modal, div')).find(function(el) {
         var t = (el.textContent || '');
-        return t.includes('TÌNH TRẠNG HỌC PHÍ') && t.includes('LỊCH SỬ CÁC LẦN ĐÓNG TIỀN');
+        return t.includes('TÌNH TRẠNG HỌC PHÍ') && (t.includes('LỊCH SỬ') || t.includes('ĐÓNG TIỀN'));
       });
       if (!activeModal) return;
 
@@ -10323,34 +10319,37 @@ function applyGuestStudentLock() {
       var stuName = stu ? stu.name : '';
       var stuClass = stu ? (stu.className || stu.grade) : '';
 
-      // 1. GẮN NÚT XUẤT PDF Ở GÓC TRÊN TIÊU ĐỀ MODAL
-      var topTitleEl = Array.from(activeModal.querySelectorAll('h3, h4, div')).find(function(el) {
+      // 1. GẮN NÚT XUẤT PDF VÀO THANH TIÊU ĐỀ MODAL
+      var topTitleEl = Array.from(activeModal.querySelectorAll('h3, h4, div, span')).find(function(el) {
         return (el.textContent || '').includes('HỒ SƠ CHI TIẾT HỌC SINH');
       });
+      
       if (topTitleEl && !activeModal.querySelector('.btn-export-student-pdf')) {
-        var headerParent = topTitleEl.parentElement;
-        if (headerParent) {
-          headerParent.style.display = 'flex';
-          headerParent.style.alignItems = 'center';
-          headerParent.style.justifyContent = 'space-between';
-          headerParent.style.flexWrap = 'wrap';
-          headerParent.style.gap = '8px';
+        // Tìm khung chứa tiêu đề (header của modal)
+        var headerBar = topTitleEl.closest('div.flex, div') || topTitleEl.parentElement;
+        if (headerBar) {
+          headerBar.style.display = 'flex';
+          headerBar.style.alignItems = 'center';
+          headerBar.style.justifyContent = 'space-between';
+          headerBar.style.flexWrap = 'wrap';
+          headerBar.style.gap = '8px';
+
+          var pdfBtn = document.createElement('button');
+          pdfBtn.type = 'button';
+          pdfBtn.className = 'btn-export-student-pdf px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-xs transition cursor-pointer inline-flex items-center gap-1.5 ml-auto';
+          pdfBtn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Xuất PDF Hồ sơ';
+          pdfBtn.onclick = function(e) {
+            e.stopPropagation();
+            exportStudentFullProfileToPDF(cId);
+          };
+          headerBar.appendChild(pdfBtn);
         }
-        var pdfBtn = document.createElement('button');
-        pdfBtn.type = 'button';
-        pdfBtn.className = 'btn-export-student-pdf px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-xs transition cursor-pointer inline-flex items-center gap-1.5 ml-auto';
-        pdfBtn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Xuất PDF Hồ sơ';
-        pdfBtn.onclick = function(e) {
-          e.stopPropagation();
-          exportStudentFullProfileToPDF(cId);
-        };
-        if (headerParent) headerParent.appendChild(pdfBtn);
       }
 
-      // 2. CHÈN MỤC 3 (ĐIỂM KIỂM TRA) VÀO GIỮA MỤC 2 VÀ MỤC 4
+      // 2. CHÈN MỤC 3 (ĐIỂM KIỂM TRA) VÀO GIỮA MỤC 2 VÀ MỤC 3 CŨ (LỊCH SỬ ĐÓNG TIỀN)
       var paymentHeading = Array.from(activeModal.querySelectorAll('h3, h4, div, span')).find(function(el) {
         var t = (el.textContent || '').trim();
-        return el.children.length <= 3 && (t.includes('LỊCH SỬ CÁC LẦN ĐÓNG TIỀN') || t.includes('3. LỊCH SỬ'));
+        return t.includes('LỊCH SỬ CÁC LẦN ĐÓNG TIỀN') || t.includes('LỊCH SỬ ĐÓNG TIỀN');
       });
       if (!paymentHeading) return;
 
@@ -10359,25 +10358,31 @@ function applyGuestStudentLock() {
 
       var parentContainer = paymentCard.parentElement;
 
+      // Cập nhật lại số thứ tự tiêu đề
       if (paymentHeading.innerHTML.includes('3. LỊCH SỬ')) {
         paymentHeading.innerHTML = paymentHeading.innerHTML.replace('3. LỊCH SỬ', '4. LỊCH SỬ');
+      } else if (!paymentHeading.innerHTML.includes('4. LỊCH SỬ')) {
+        paymentHeading.innerHTML = paymentHeading.innerHTML.replace('LỊCH SỬ', '4. LỊCH SỬ');
       }
+
       Array.from(parentContainer.querySelectorAll('h3, h4, div, span')).forEach(function(attH) {
         var t = (attH.textContent || '').trim();
-        if (attH.children.length <= 3 && t.includes('CHI TIẾT ĐIỂM DANH')) {
-          attH.innerHTML = attH.innerHTML.replace('4. CHI TIẾT', '5. CHI TIẾT');
+        if (t.includes('CHI TIẾT ĐIỂM DANH') && !t.includes('5.')) {
+          attH.innerHTML = attH.innerHTML.replace(/CHI TIẾT ĐIỂM DANH/, '5. CHI TIẾT ĐIỂM DANH');
         }
       });
 
+      // Kiểm tra xem đã chèn Mục 3 Điểm kiểm tra chưa
       var existingSec3 = parentContainer.querySelector('.injected-profile-exam-section');
       if (existingSec3 && existingSec3.getAttribute('data-stuid') === cId) return;
       if (existingSec3) existingSec3.remove();
 
       var wrapper = document.createElement('div');
-      wrapper.className = 'injected-profile-exam-section';
+      wrapper.className = 'injected-profile-exam-section mb-4';
       wrapper.setAttribute('data-stuid', cId);
       wrapper.innerHTML = buildProfileSection3ExamHtml(cId, stuName, stuClass);
 
+      // Chèn vào ngay phía trước khối Lịch sử đóng tiền
       parentContainer.insertBefore(wrapper, paymentCard);
     }
 
@@ -10386,7 +10391,7 @@ function applyGuestStudentLock() {
     });
     _modalExamPdfObserver.observe(document.body, { childList: true, subtree: true });
 
-    setTimeout(injectExamAndPdfToStudentProfileModal, 400);
+    setTimeout(injectExamAndPdfToStudentProfileModal, 300);
     
   </script>
 
