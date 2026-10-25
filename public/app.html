@@ -10284,10 +10284,11 @@ function applyGuestStudentLock() {
     
   </script>
 
- <script>
+
+<script>
 // =========================================================================
 // KHỐI SCRIPT ĐỘC LẬP 100%:
-// CHÈN MỤC 3 (ĐIỂM CÁ NHÂN) & 1 NÚT XUẤT PDF TRÊN THANH TIÊU ĐỀ MODAL
+// CHÈN MỤC 3 (ĐIỂM CÁ NHÂN - CHỈ XEM) & 1 NÚT XUẤT PDF TRÊN TIÊU ĐỀ MODAL
 // =========================================================================
 (function() {
   function padId3(id) {
@@ -10302,8 +10303,6 @@ function applyGuestStudentLock() {
     return n.toLocaleString('vi-VN');
   }
 
-  // 1. Quét lấy toàn bộ điểm kiểm tra của học sinh
-  // 1. Quét lấy toàn bộ điểm kiểm tra & hiển thị đúng tên bài (VD: Thường xuyên 1)
   function expandExamDisplayName(rawName) {
     var s = String(rawName || '').trim();
     var up = s.toUpperCase();
@@ -10320,12 +10319,10 @@ function applyGuestStudentLock() {
 
   function extractRealExamTitle(obj) {
     if (!obj || typeof obj !== 'object') return '';
-    // Kiểm tra các trường tên phổ biến trước
     var direct = obj.testName || obj.examName || obj.ten_bai_kiem_tra || obj.ten_bai ||
                  obj.tenBai || obj.bai_kiem_tra || obj.baiKiemTra || obj.title || obj.label || obj.name || '';
     if (direct && String(direct).trim()) return expandExamDisplayName(direct);
 
-    // Tự động dò bất kỳ trường nào trong object có chữ "ten", "name", "title", "bai"
     var keys = Object.keys(obj);
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
@@ -10339,6 +10336,7 @@ function applyGuestStudentLock() {
     return '';
   }
 
+  // 1. Quét lấy toàn bộ điểm kiểm tra của học sinh
   function collectStudentExamScores(stuId) {
     var cId = padId3(stuId);
     var list = [];
@@ -10409,7 +10407,7 @@ function applyGuestStudentLock() {
     return unique;
   }
 
-  // 2. Tạo HTML cho Mục 3: Kết quả điểm kiểm tra cá nhân
+  // 2. Tạo HTML cho Mục 3: Kết quả điểm kiểm tra cá nhân (Chỉ hiển thị xem, không click chuyển tab)
   function createSection3ScoreCardHtml(stuId, stuName, stuClass) {
     var cId = padId3(stuId);
     var scores = collectStudentExamScores(cId);
@@ -10449,7 +10447,7 @@ function applyGuestStudentLock() {
     if (scores.length === 0) {
       bodyHtml =
         '<div style="padding:14px;border-radius:14px;background:#f8fafc;border:1px dashed #cbd5e1;text-align:center;font-size:12px;color:#64748b;font-style:italic;">' +
-          'Chưa có điểm bài kiểm tra nào của học sinh này. Bấm vào đây để chuyển tới Bảng điểm lớp.' +
+          'Chưa có điểm bài kiểm tra nào của học sinh này.' +
         '</div>';
     } else {
       bodyHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;">' +
@@ -10481,12 +10479,7 @@ function applyGuestStudentLock() {
       '</div>';
     }
 
-    var safeClass = String(stuClass || '').replace(/'/g, "\\'");
-    var safeName = String(stuName || '').replace(/'/g, "\\'");
-
-    return '<div onclick="window.__openStudentScoreTab(\'' + cId + '\', \'' + safeName + '\', \'' + safeClass + '\')" ' +
-                'style="background:#ffffff;padding:20px 24px;border-radius:24px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,0.03);margin-bottom:20px;cursor:pointer;transition:all 0.2s;" ' +
-                'onmouseover="this.style.borderColor=\'#6366f1\'" onmouseout="this.style.borderColor=\'#e2e8f0\'">' +
+    return '<div style="background:#ffffff;padding:20px 24px;border-radius:24px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,0.03);margin-bottom:20px;">' +
       '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #f1f5f9;padding-bottom:12px;margin-bottom:14px;">' +
         '<div style="font-size:14px;font-weight:900;color:#0f172a;text-transform:uppercase;display:flex;align-items:center;gap:8px;">' +
           '<i class="fa-solid fa-graduation-cap" style="color:#4f46e5;"></i>' +
@@ -10496,86 +10489,14 @@ function applyGuestStudentLock() {
           (validNums.length > 0
             ? '<span style="padding:4px 10px;border-radius:10px;font-size:12px;font-weight:900;' + rankStyle + '">ĐTB: ' + avgText + ' (' + rankText + ')</span>'
             : '') +
-          '<span style="padding:5px 12px;border-radius:10px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:6px;">' +
-            '<span>Xem tại Bảng điểm</span>' +
-            '<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;"></i>' +
-          '</span>' +
         '</div>' +
       '</div>' +
       bodyHtml +
     '</div>';
   }
 
-  // 3. Hàm nhảy từ Hồ sơ sang Tab Bảng điểm lớp & lọc đúng học sinh đó
- // 3. Hàm nhảy từ Hồ sơ sang Tab Bảng điểm lớp & lọc đúng học sinh + bài kiểm tra
-  window.__openStudentScoreTab = function(stuId, stuName, stuClass) {
-    var cId = padId3(stuId);
-    var role = (window.currentUser && window.currentUser.role) ? String(window.currentUser.role).toUpperCase() : 'GUEST';
-
-    // 1. Đóng đúng Modal Hồ sơ chi tiết bằng cách kích hoạt nút "✕" của chính modal đó (tuyệt đối không ẩn nhầm giao diện chính)
-    var editBtn = Array.from(document.querySelectorAll('button')).find(function(b) {
-      return (b.textContent || '').toUpperCase().includes('SỬA THÔNG TIN HS');
-    });
-    if (editBtn && editBtn.parentElement) {
-      var closeBtn = Array.from(editBtn.parentElement.querySelectorAll('button')).find(function(b) {
-        var t = (b.textContent || '').trim();
-        return t === '✕' || t === '×' || t === 'X' || b.querySelector('.fa-xmark, .fa-times');
-      });
-      if (closeBtn) {
-        closeBtn.click();
-      } else {
-        var modalEl = editBtn.closest('.fixed');
-        if (modalEl) modalEl.classList.add('hidden');
-      }
-    }
-
-    // 2. Bấm trực tiếp vào nút menu "Hồ sơ & Bảng tin" ở thanh điều hướng bên trái
-    var navHoSoBtn = Array.from(document.querySelectorAll('button, a, li, div')).find(function(el) {
-      return el.children.length <= 2 && (el.textContent || '').trim() === 'Hồ sơ & Bảng tin';
-    });
-    if (navHoSoBtn) {
-      var clickableNav = navHoSoBtn.closest('button, a, [onclick]') || navHoSoBtn;
-      clickableNav.click();
-    } else if (typeof window.switchTab === 'function') {
-      window.switchTab('hoso');
-    }
-
-    // 3. Chuyển vào sub-tab "Bảng Điểm Lớp", chọn đúng Lớp và lọc đúng Mã HS
-    setTimeout(function() {
-      var btnScoreTab = Array.from(document.querySelectorAll('button')).find(function(b) {
-        return (b.textContent || '').toUpperCase().includes('BẢNG ĐIỂM LỚP');
-      });
-      if (btnScoreTab) btnScoreTab.click();
-
-      setTimeout(function() {
-        if (stuClass) {
-          Array.from(document.querySelectorAll('select')).forEach(function(sel) {
-            var opt = Array.from(sel.options).find(function(o) {
-              return o.value === stuClass || (o.text || '').includes(stuClass);
-            });
-            if (opt) {
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-          });
-        }
-
-        setTimeout(function() {
-          var searchInp = document.querySelector('input[placeholder*="Tìm học sinh trong bảng điểm"]');
-          if (searchInp) {
-            searchInp.value = cId;
-            searchInp.dispatchEvent(new Event('input', { bubbles: true }));
-            searchInp.dispatchEvent(new Event('keyup', { bubbles: true }));
-            searchInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            if (role === 'GUEST') {
-              searchInp.readOnly = true;
-              searchInp.disabled = true;
-            }
-          }
-        }, 150);
-      }, 120);
-    }, 100);
-  };
+  // 3. Vô hiệu hóa hoàn toàn thao tác click chuyển tab
+  window.__openStudentScoreTab = function() {};
 
   // 4. Hàm Xuất PDF toàn bộ 5 phần của Học sinh (Chuẩn A4 gọn gàng)
   window.__exportFullStudentPdfNow = function(stuId) {
@@ -10808,11 +10729,10 @@ function applyGuestStudentLock() {
       var stuName = stuObj ? stuObj.name : '';
       var stuClass = stuObj ? (stuObj.className || stuObj.grade) : '';
 
-      // GỠ BỎ NÚT DƯ BÊN DƯỚI (NẾU CÓ) ĐỂ TRẢ LẠI KHUNG MỤC 1 NGUYÊN BẢN
       var oldInlineBtn = profileContainer.querySelector('.btn-pdf-sec1-inline');
       if (oldInlineBtn) oldInlineBtn.remove();
 
-      // A. CHỈ GẮN 1 NÚT "📄 XUẤT PDF HỒ SƠ" DUY NHẤT Ở THANH TIÊU ĐỀ TRÊN CÙNG
+      // A. GẮN NÚT "📄 XUẤT PDF HỒ SƠ" Ở THANH TIÊU ĐỀ TRÊN CÙNG
       var editBtn = Array.from(modalWrapper.querySelectorAll('button')).find(function(b) {
         return (b.textContent || '').toUpperCase().includes('SỬA THÔNG TIN HS');
       });
@@ -10872,7 +10792,6 @@ function applyGuestStudentLock() {
   }
 })();
 </script>
-
 
   <!-- POPUP LỊCH THÁNG & ĐẾM BUỔI HỌC -->
 <div id="calendarMonthModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
