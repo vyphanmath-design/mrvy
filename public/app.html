@@ -7271,9 +7271,19 @@ function exportTuitionExcel() {
           : 'Tổng điểm danh: ' + dayRecords.length + ' em';
 
         return '<div class="bg-white rounded-2xl shadow-sm border overflow-hidden space-y-3 p-5">' +
-          '<div class="flex items-center justify-between border-b pb-3">' +
+          '<div class="flex flex-wrap items-center justify-between gap-2 border-b pb-3">' +
             '<h3 class="font-black text-brand-dark text-base uppercase flex items-center gap-2"><i class="fa-solid fa-calendar-day text-emerald-600"></i> Ngày ' + formatDateWithDay(dStr) + '</h3>' +
-            '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">' + totalText + '</span>' +
+            '<div class="flex items-center gap-2 flex-wrap">' +
+              // Nút 1: Xếp chỗ ngồi kiểm tra
+              '<button type="button" onclick="openSeatingArrangementModal(\'' + dStr + '\')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer">' +
+                '<i class="fa-solid fa-chair"></i> Xếp chỗ kiểm tra' +
+              '</button>' +
+              // Nút 2: Vòng quay may mắn
+              '<button type="button" onclick="openLuckyWheelModal(\'' + dStr + '\')" class="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer">' +
+                '<i class="fa-solid fa-dharmachakra"></i> Vòng quay may mắn' +
+              '</button>' +
+              '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">' + totalText + '</span>' +
+            '</div>' +
           '</div>' +
           '<div class="flex flex-wrap gap-4 text-xs items-start">' +
             blocksHtml.join('') +
@@ -10400,6 +10410,209 @@ function applyGuestStudentLock() {
     
   </script>
 
+
+<script>
+// =========================================================================
+// TÍNH NĂNG 1: XẾP CHỖ NGỒI KIỂM TRA & TÍNH NĂNG 2: VÒNG QUAY MAY MẮN THEO NGÀY
+// =========================================================================
+
+// Lấy danh sách học sinh CÓ MẶT thực tế (gồm cả học sinh đi bù) trong ngày dStr
+function getPresentStudentsForDate(dStr) {
+  var d = window.appData || {};
+  var attList = d.attendance || [];
+  var activeStudents = (typeof getActiveStudents === 'function') ? getActiveStudents() : (d.students || []);
+
+  var stuMap = {};
+  activeStudents.forEach(function(s) {
+    stuMap[padId3(s.id)] = s;
+  });
+
+  var list = [];
+  var seenIds = {};
+
+  attList.forEach(function(a) {
+    if (toStandardDateStr(a.date) !== dStr) return;
+    var st = String(a.status || '').trim();
+    // Lấy học sinh có mặt hoặc học sinh đi học bù ngày hôm đó
+    if (st === 'Có mặt' || st === 'Học bù') {
+      var cid = padId3(a.studentId);
+      var stuObj = stuMap[cid];
+      if (!stuObj) {
+        // Tìm dự phòng theo tên
+        stuObj = activeStudents.find(function(s) { return cleanName(s.name) === cleanName(a.studentName); });
+      }
+      if (stuObj && !seenIds[padId3(stuObj.id)]) {
+        seenIds[padId3(stuObj.id)] = true;
+        list.push({
+          id: padId3(stuObj.id),
+          name: stuObj.name,
+          className: stuObj.className || stuObj.grade || '',
+          isMakeUp: (st === 'Học bù')
+        });
+      }
+    }
+  });
+  return list;
+}
+
+// 1. MODAL XẾP CHỖ NGỒI KIỂM TRA
+function openSeatingArrangementModal(dStr) {
+  var students = getPresentStudentsForDate(dStr);
+  if (students.length === 0) {
+    return showToast('Ngày này không có học sinh nào có mặt để xếp chỗ!', true);
+  }
+
+  // Xóa modal cũ nếu có
+  var old = document.getElementById('seatingModalOverlay');
+  if (old) old.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'seatingModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  
+  var html = '<div style="background:#fff;width:100%;max-width:850px;max-height:90vh;border-radius:24px;overflow-y:auto;box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);display:flex;flex-direction:column;">' +
+    '<div style="padding:18px 24px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;position:sticky;top:0;z-index:10;">' +
+      '<div>' +
+        '<h3 style="font-size:16px;font-weight:900;color:#0f172a;text-transform:uppercase;margin:0;">🪑 Sơ đồ chỗ ngồi kiểm tra - Ngày ' + dStr + '</h3>' +
+        '<p style="font-size:12px;color:#64748b;margin:2px 0 0 0;">Tổng số học sinh có mặt: <b>' + students.length + ' em</b></p>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button onclick="shuffleSeatingList(\'' + dStr + '\')" style="background:#059669;color:#fff;border:none;padding:7px 14px;border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;"><i class="fa-solid fa-shuffle"></i> Xáo lại chỗ</button>' +
+        '<button onclick="window.print()" style="background:#1d4ed8;color:#fff;border:none;padding:7px 14px;border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;"><i class="fa-solid fa-print"></i> In / Xuất ảnh</button>' +
+        '<button onclick="document.getElementById(\'seatingModalOverlay\').remove()" style="background:#e2e8f0;color:#334155;border:none;width:32px;height:32px;border-radius:50%;font-weight:900;cursor:pointer;">✕</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="seatingGridContainer" style="padding:24px;background:#f1f5f9;flex:1;">' +
+      renderSeatingGridHtml(students) +
+    '</div>' +
+  '</div>';
+
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+}
+
+function shuffleArray(array) {
+  for (var i = array.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var temp = array[i]; array[i] = array[j]; array[j] = temp;
+  }
+  return array;
+}
+
+function shuffleSeatingList(dStr) {
+  var students = getPresentStudentsForDate(dStr);
+  students = shuffleArray(students);
+  var container = document.getElementById('seatingGridContainer');
+  if (container) {
+    container.innerHTML = renderSeatingGridHtml(students);
+  }
+}
+
+function renderSeatingGridHtml(students) {
+  // Chia 2 dãy bàn (Dãy 1 và Dãy 2, mỗi bàn 2 học sinh giống Ảnh 1)
+  var rowsHtml = '';
+  for (var i = 0; i < students.length; i += 2) {
+    var s1 = students[i];
+    var s2 = students[i + 1];
+
+    rowsHtml += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">' +
+      // Ghế học sinh 1
+      (s1 ? ('<div style="background:#fff;border:2px solid ' + (s1.isMakeUp ? '#d8b4fe' : '#cbd5e1') + ';border-radius:12px;padding:10px 14px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.05);">' +
+        '<div style="font-weight:900;color:#0f172a;font-size:13.5px;text-transform:uppercase;">' + s1.name + '</div>' +
+        '<div style="font-size:11.5px;color:' + (s1.isMakeUp ? '#7e22ce' : '#64748b') + ';font-weight:700;margin-top:2px;">' + s1.id + (s1.isMakeUp ? ' (Bù - ' + s1.className + ')' : '') + '</div>' +
+      '</div>') : '<div></div>') +
+      // Ghế học sinh 2
+      (s2 ? ('<div style="background:#fff;border:2px solid ' + (s2.isMakeUp ? '#d8b4fe' : '#cbd5e1') + ';border-radius:12px;padding:10px 14px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.05);">' +
+        '<div style="font-weight:900;color:#0f172a;font-size:13.5px;text-transform:uppercase;">' + s2.name + '</div>' +
+        '<div style="font-size:11.5px;color:' + (s2.isMakeUp ? '#7e22ce' : '#64748b') + ';font-weight:700;margin-top:2px;">' + s2.id + (s2.isMakeUp ? ' (Bù - ' + s2.className + ')' : '') + '</div>' +
+      '</div>') : '<div></div>') +
+    '</div>';
+  }
+
+  return '<div style="max-width:700px;margin:0 auto;">' +
+    '<div style="background:#0f172a;color:#fff;text-align:center;padding:10px;border-radius:10px;font-weight:900;text-transform:uppercase;margin-bottom:20px;font-size:13px;letter-spacing:0.5px;">Bảng / Bục giảng</div>' +
+    rowsHtml +
+  '</div>';
+}
+
+
+// 2. MODAL VÒNG QUAY MAY MẮN
+function openLuckyWheelModal(dStr) {
+  var students = getPresentStudentsForDate(dStr);
+  if (students.length === 0) {
+    return showToast('Ngày này không có học sinh nào có mặt để quay thưởng!', true);
+  }
+
+  var old = document.getElementById('wheelModalOverlay');
+  if (old) old.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'wheelModalOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  var html = '<div style="background:#fff;width:100%;max-width:500px;border-radius:24px;overflow:hidden;box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);display:flex;flex-direction:column;text-align:center;">' +
+    '<div style="padding:18px 24px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;background:#f8fafc;">' +
+      '<h3 style="font-size:16px;font-weight:900;color:#0f172a;text-transform:uppercase;margin:0;">🎡 Vòng quay may mắn - Ngày ' + dStr + '</h3>' +
+      '<button onclick="document.getElementById(\'wheelModalOverlay\').remove()" style="background:#e2e8f0;color:#334155;border:none;width:32px;height:32px;border-radius:50%;font-weight:900;cursor:pointer;">✕</button>' +
+    '</div>' +
+    '<div style="padding:30px 20px;display:flex;flex-direction:column;align-items:center;gap:20px;">' +
+      '<div id="wheelResultDisplay" style="width:100%;min-height:120px;background:linear-gradient(135deg, #4f46e5, #7c3aed);border-radius:20px;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;box-shadow:0 10px 15px -3px rgba(79, 70, 229, 0.3);">' +
+        '<div style="font-size:12px;text-transform:uppercase;font-weight:700;opacity:0.9;letter-spacing:1px;margin-bottom:4px;">Học sinh may mắn gọi tên</div>' +
+        '<div id="wheelWinnerName" style="font-size:24px;font-weight:900;text-transform:uppercase;">Bấm nút quay để bắt đầu!</div>' +
+        '<div id="wheelWinnerSub" style="font-size:12px;opacity:0.8;margin-top:4px;">Sẵn sàng chọn ngẫu nhiên từ ' + students.length + ' em có mặt</div>' +
+      '</div>' +
+      '<button onclick=\'startSpinLuckyWheel(' + JSON.stringify(students) + ')\' id="spinWheelBtn" style="background:#e11d48;color:#fff;border:none;padding:14px 32px;border-radius:999px;font-weight:900;font-size:16px;cursor:pointer;box-shadow:0 4px 6px -1px rgba(225, 29, 72, 0.3);text-transform:uppercase;letter-spacing:0.5px;transition:all 0.2s;">' +
+        '🎯 Quay Ngay' +
+      '</button>' +
+    '</div>' +
+  '</div>';
+
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+}
+
+function startSpinLuckyWheel(students) {
+  var btn = document.getElementById('spinWheelBtn');
+  var nameEl = document.getElementById('wheelWinnerName');
+  var subEl = document.getElementById('wheelWinnerSub');
+  if (!btn || !nameEl) return;
+
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+
+  var counter = 0;
+  var maxCount = 25; // Hiệu ứng chạy tên ngẫu nhiên 25 lần
+  var speed = 50;
+
+  function runSlot() {
+    var randomStu = students[Math.floor(Math.random() * students.length)];
+    nameEl.textContent = randomStu.name;
+    subEl.textContent = 'Mã HS: ' + randomStu.id + ' · Lớp: ' + (randomStu.className || 'Chính khóa');
+
+    counter++;
+    if (counter < maxCount) {
+      speed += 10; // Giảm tốc độ dần dần tạo cảm giác hồi hộp
+      setTimeout(runSlot, speed);
+    } else {
+      // Dừng lại ở người chiến thắng cuối cùng
+      var winner = students[Math.floor(Math.random() * students.length)];
+      nameEl.textContent = winner.name;
+      subEl.textContent = 'Mã HS: ' + winner.id + ' · ' + (winner.isMakeUp ? 'Học sinh đi bù' : 'Học sinh chính khóa');
+      
+      btn.disabled = false;
+      btn.style.opacity = '1';
+
+      // Hiệu ứng pháo hoa nhẹ / toast chúc mừng
+      if (typeof showToast === 'function') {
+        showToast('🎉 Chúc mừng học sinh ' + winner.name + ' đã được chọn!');
+      }
+    }
+  }
+
+  runSlot();
+}
+</script>
+  
   
 <script>
 // =========================================================================
