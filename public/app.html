@@ -10419,9 +10419,7 @@ function applyGuestStudentLock() {
     return hasEditBtn;
   }
 
-  // 2. Tạo HTML cho Mục 3: Kết quả điểm kiểm tra cá nhân
-  // - Admin / Trợ giảng: Có nút "Xem tại Bảng điểm" + bấm vào chuyển sang tab Bảng điểm
-  // - Khách (Guest): Chỉ xem điểm tĩnh, ẩn nút và khóa click để không bị đơ
+ // 2. Tạo HTML cho Mục 3: Kết quả điểm kiểm tra cá nhân (Admin/Trợ giảng bấm được, Khách đứng yên không bị đơ)
   function createSection3ScoreCardHtml(stuId, stuName, stuClass) {
     var cId = padId3(stuId);
     var scores = collectStudentExamScores(cId);
@@ -10462,9 +10460,7 @@ function applyGuestStudentLock() {
     if (scores.length === 0) {
       bodyHtml =
         '<div style="padding:14px;border-radius:14px;background:#f8fafc;border:1px dashed #cbd5e1;text-align:center;font-size:12px;color:#64748b;font-style:italic;">' +
-          (canJumpToScoreTab
-            ? 'Chưa có điểm bài kiểm tra nào của học sinh này. Bấm vào đây để chuyển tới Bảng điểm lớp.'
-            : 'Chưa có điểm bài kiểm tra nào của học sinh này.') +
+          'Chưa có điểm bài kiểm tra nào của học sinh này.' +
         '</div>';
     } else {
       bodyHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;">' +
@@ -10499,10 +10495,10 @@ function applyGuestStudentLock() {
     var safeClass = String(stuClass || '').replace(/'/g, "\\'");
     var safeName = String(stuName || '').replace(/'/g, "\\'");
 
-    var clickAttrs = canJumpToScoreTab
-      ? 'onclick="window.__openStudentScoreTab(\'' + cId + '\', \'' + safeName + '\', \'' + safeClass + '\')" onmouseover="this.style.borderColor=\'#6366f1\'" onmouseout="this.style.borderColor=\'#e2e8f0\'"'
-      : '';
-    var cursorCss = canJumpToScoreTab ? 'cursor:pointer;transition:all 0.2s;' : '';
+    // PHÂN QUYỀN CHUẨN XÁC: Chỉ Admin/Trợ giảng mới gắn onclick nhảy tab, Khách bấm vào hoàn toàn đứng yên không bị đơ
+    var cardAttrs = canJumpToScoreTab
+      ? 'onclick="window.__openStudentScoreTab(\'' + cId + '\', \'' + safeName + '\', \'' + safeClass + '\')" style="background:#ffffff;padding:20px 24px;border-radius:24px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,0.03);margin-bottom:20px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor=\'#6366f1\'" onmouseout="this.style.borderColor=\'#e2e8f0\'"'
+      : 'style="background:#ffffff;padding:20px 24px;border-radius:24px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,0.03);margin-bottom:20px;"';
 
     var jumpBtnHtml = canJumpToScoreTab
       ? '<span style="padding:5px 12px;border-radius:10px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:6px;">' +
@@ -10511,7 +10507,7 @@ function applyGuestStudentLock() {
         '</span>'
       : '';
 
-    return '<div ' + clickAttrs + ' style="background:#ffffff;padding:20px 24px;border-radius:24px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,0.03);margin-bottom:20px;' + cursorCss + '">' +
+    return '<div ' + cardAttrs + '>' +
       '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #f1f5f9;padding-bottom:12px;margin-bottom:14px;">' +
         '<div style="font-size:14px;font-weight:900;color:#0f172a;text-transform:uppercase;display:flex;align-items:center;gap:8px;">' +
           '<i class="fa-solid fa-graduation-cap" style="color:#4f46e5;"></i>' +
@@ -10527,73 +10523,6 @@ function applyGuestStudentLock() {
       bodyHtml +
     '</div>';
   }
-
-  // 3. Hàm nhảy từ Hồ sơ sang Tab Bảng điểm lớp (Chỉ chạy cho Admin & Trợ giảng)
-  window.__openStudentScoreTab = function(stuId, stuName, stuClass) {
-    if (!isStaffOrAdminUser()) return; // Chặn tuyệt đối nếu là Khách
-
-    var cId = padId3(stuId);
-
-    // 1. Đóng Modal Hồ sơ chi tiết bằng nút "✕" cạnh nút "Sửa thông tin HS"
-    var editBtn = Array.from(document.querySelectorAll('button')).find(function(b) {
-      return (b.textContent || '').toUpperCase().includes('SỬA THÔNG TIN HS');
-    });
-    if (editBtn && editBtn.parentElement) {
-      var closeBtn = Array.from(editBtn.parentElement.querySelectorAll('button')).find(function(b) {
-        var t = (b.textContent || '').trim();
-        return t === '✕' || t === '×' || t === 'X' || b.querySelector('.fa-xmark, .fa-times');
-      });
-      if (closeBtn) {
-        closeBtn.click();
-      } else {
-        var modalEl = editBtn.closest('.fixed');
-        if (modalEl) modalEl.classList.add('hidden');
-      }
-    }
-
-    // 2. Bấm vào menu "Hồ sơ & Bảng tin" bên trái
-    var navHoSoBtn = Array.from(document.querySelectorAll('button, a, li, div')).find(function(el) {
-      return el.children.length <= 2 && (el.textContent || '').trim() === 'Hồ sơ & Bảng tin';
-    });
-    if (navHoSoBtn) {
-      var clickableNav = navHoSoBtn.closest('button, a, [onclick]') || navHoSoBtn;
-      clickableNav.click();
-    } else if (typeof window.switchTab === 'function') {
-      window.switchTab('hoso');
-    }
-
-    // 3. Mở sub-tab "Bảng Điểm Lớp", chọn đúng Lớp và lọc đúng Mã HS
-    setTimeout(function() {
-      var btnScoreTab = Array.from(document.querySelectorAll('button')).find(function(b) {
-        return (b.textContent || '').toUpperCase().includes('BẢNG ĐIỂM LỚP');
-      });
-      if (btnScoreTab) btnScoreTab.click();
-
-      setTimeout(function() {
-        if (stuClass) {
-          Array.from(document.querySelectorAll('select')).forEach(function(sel) {
-            var opt = Array.from(sel.options).find(function(o) {
-              return o.value === stuClass || (o.text || '').includes(stuClass);
-            });
-            if (opt) {
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-          });
-        }
-
-        setTimeout(function() {
-          var searchInp = document.querySelector('input[placeholder*="Tìm học sinh trong bảng điểm"]');
-          if (searchInp) {
-            searchInp.value = cId;
-            searchInp.dispatchEvent(new Event('input', { bubbles: true }));
-            searchInp.dispatchEvent(new Event('keyup', { bubbles: true }));
-            searchInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 150);
-      }, 120);
-    }, 100);
-  };
 
   // 4. Hàm Xuất PDF toàn bộ 5 phần của Học sinh (Chuẩn A4 gọn gàng)
   window.__exportFullStudentPdfNow = function(stuId) {
