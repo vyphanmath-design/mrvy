@@ -10278,194 +10278,211 @@ function applyGuestStudentLock() {
 
     setTimeout(optimizeExamScoreboardAndInputLayout, 300);
 
-
 // =========================================================================
-  // GỘP HỌC SINH ĐI HỌC BÙ VÀO DANH SÁCH "CÓ MẶT" CỦA LỚP HỌC BÙ (MÀU TÍM)
+  // GỘP & HIỂN THỊ HỌC SINH ĐI BÙ VÀO ĐÚNG LỚP HỌC BÙ (VỪA HIỆN MÀU TÍM TRONG
+  // "CÓ MẶT", VỪA HIỆN KHUNG "HỌC BÙ", CẬP NHẬT "36 EM (1 BÙ)")
   // =========================================================================
-  function parseVNDateFromHeading(headingText) {
-    // Đọc chuỗi ngày dạng "NGÀY CN - 25/10/2026" -> trả về "2026-10-25"
-    var m = String(headingText || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (!m) return '';
-    var dd = ('0' + m[1]).slice(-2);
-    var mm = ('0' + m[2]).slice(-2);
-    var yyyy = m[3];
-    return yyyy + '-' + mm + '-' + dd;
+  function normDateYMD(val) {
+    if (!val) return '';
+    if (typeof window.toStandardDateStr === 'function') {
+      var res = window.toStandardDateStr(val);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(res)) return res;
+    }
+    var s = String(val).trim();
+    var m1 = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m1) return m1[1] + '-' + ('0' + m1[2]).slice(-2) + '-' + ('0' + m1[3]).slice(-2);
+    var m2 = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m2) return m2[3] + '-' + ('0' + m2[2]).slice(-2) + '-' + ('0' + m2[1]).slice(-2);
+    return s;
   }
 
-  function getSelectedOverviewClass() {
-    if (window.activeClassSelection && window.activeClassSelection.attOverviewTab) {
-      var c = window.activeClassSelection.attOverviewTab;
-      if (c && c !== 'ALL' && c !== 'NONE') return String(c).replace(/^Lớp\s+/i, '').trim();
-    }
-    // Dự phòng: tìm nút chọn lớp đang active trong vùng Tổng quan điểm danh
-    var allBtns = Array.from(document.querySelectorAll('button'));
-    for (var i = 0; i < allBtns.length; i++) {
-      var b = allBtns[i];
-      var txt = (b.textContent || '').trim();
-      if (/^Lớp\s+[0-9A-Z]+$/i.test(txt) && b.offsetParent !== null) {
-        var cls = String(b.className || '');
-        if (cls.includes('border-emerald') || cls.includes('bg-emerald') || cls.includes('text-emerald-700') || cls.includes('ring-')) {
-          return txt.replace(/^Lớp\s+/i, '').trim();
-        }
-      }
-    }
-    return '';
+  function cleanClassCode(c) {
+    return String(c || '').replace(/^Lớp\s+/i, '').trim().toUpperCase();
   }
 
-  function mergeMakeUpStudentsIntoPresentBox() {
+  function syncMakeUpAttendanceOverviewCards() {
     var d = window.appData || {};
     var attList = d.attendance || [];
     var stuList = d.students || [];
     if (attList.length === 0 || stuList.length === 0) return;
 
-    var selectedClass = getSelectedOverviewClass();
-    if (!selectedClass) return;
-
-    var stuMap = {};
+    var stuById = {};
+    var stuByName = {};
     stuList.forEach(function(s) {
-      stuMap[padId3(s.id)] = s;
+      var cid = padId3(s.id);
+      stuById[cid] = s;
+      if (s.name) {
+        stuByName[String(s.name).trim().toLowerCase()] = s;
+      }
     });
 
-    // Tìm tất cả các thẻ ngày thống kê (VD: "NGÀY CN - 25/10/2026")
-    var headings = Array.from(document.querySelectorAll('h2, h3, h4, div, span')).filter(function(el) {
-      if (el.children.length > 2) return false;
-      var t = (el.textContent || '').trim().toUpperCase();
-      return t.startsWith('NGÀY ') && /\d{1,2}\/\d{1,2}\/\d{4}/.test(t);
+    // Tìm tất cả các tiêu đề ngày dạng "NGÀY CN - 25/10/2026"
+    var allEls = Array.from(document.querySelectorAll('h2, h3, h4, div, span'));
+    var dateHeaders = allEls.filter(function(el) {
+      if (el.querySelectorAll('div').length > 0) return false;
+      var txt = (el.textContent || '').trim();
+      return /NGÀY\s+.*?\d{1,2}\/\d{1,2}\/\d{4}/i.test(txt);
     });
 
-    headings.forEach(function(hEl) {
-      var stdDate = parseVNDateFromHeading(hEl.textContent);
-      if (!stdDate) return;
+    dateHeaders.forEach(function(hEl) {
+      var dateYMD = normDateYMD(hEl.textContent);
+      if (!dateYMD) return;
 
-      // Tìm khung Card lớn của ngày đó
+      // Đi ngược lên tìm thẻ khung trắng (Card) của ngày đó
       var dayCard = hEl.parentElement;
       while (dayCard && dayCard.parentElement) {
-        var cName = String(dayCard.className || '');
-        if (cName.includes('bg-white') && (cName.includes('rounded') || cName.includes('border'))) {
+        var fullTxt = dayCard.textContent || '';
+        if (fullTxt.includes('Tổng điểm danh:') && (dayCard.className || '').includes('bg-white')) {
           break;
         }
         dayCard = dayCard.parentElement;
       }
       if (!dayCard) return;
 
-      // Lấy toàn bộ bản ghi điểm danh của ngày stdDate
+      // Tìm tiêu đề hộp "Có mặt (31)" (không dùng ^ để tránh vướng icon 🟢 ở đầu)
+      var presentHeader = Array.from(dayCard.querySelectorAll('div, span, p, h4, h5')).find(function(el) {
+        if (el.querySelectorAll('div').length > 0) return false;
+        var t = (el.textContent || '').trim();
+        return /Có mặt\s*\(\d+\)/i.test(t);
+      });
+
+      // Nếu thẻ ngày này KHÔNG có hộp "Có mặt" mà chỉ có hộp "Học bù" lẻ loi (như bên Lớp 12B ngày 25/10/2026) -> bỏ qua
+      if (!presentHeader) return;
+
+      // Xác định chính xác thẻ ngày này đang hiển thị cho Lớp nào (VD: "12A")
+      // bằng cách đọc tên học sinh đầu tiên đang nằm trong thẻ ngày đó
+      var cardTextLines = (dayCard.innerText || dayCard.textContent || '').split('\n');
+      var detectedClass = '';
+      for (var i = 0; i < cardTextLines.length; i++) {
+        var line = cardTextLines[i].trim();
+        if (line.startsWith('•')) {
+          var rawName = line.replace(/^•\s*/, '').replace(/\(Đi bù.*?\)/i, '').trim().toLowerCase();
+          var foundStu = stuByName[rawName];
+          if (foundStu) {
+            detectedClass = cleanClassCode(foundStu.className || foundStu.grade);
+            if (detectedClass) break;
+          }
+        }
+      }
+      if (!detectedClass) return;
+
+      // Lấy tất cả bản ghi điểm danh trong ngày dateYMD
       var recordsOnDate = attList.filter(function(a) {
-        var aDate = (typeof window.toStandardDateStr === 'function')
-          ? window.toStandardDateStr(a.date)
-          : String(a.date || '').trim();
-        return aDate === stdDate;
+        return normDateYMD(a.date) === dateYMD;
       });
 
-      // Kiểm tra xem ngày stdDate này có phải ngày điểm danh của lớp selectedClass không
-      var mainClassRecords = recordsOnDate.filter(function(a) {
-        var st = stuMap[padId3(a.studentId)];
-        var origClass = st ? String(st.className || st.grade || '').trim() : '';
-        return origClass === selectedClass;
+      // Bản ghi của học sinh gốc thuộc lớp detectedClass (VD: 35 em lớp 12A)
+      var nativeClassRecords = recordsOnDate.filter(function(a) {
+        var st = stuById[padId3(a.studentId)];
+        var stClass = st ? cleanClassCode(st.className || st.grade) : '';
+        return stClass === detectedClass;
       });
 
-      // Tìm các học sinh lớp khác đi "Học bù" vào lớp selectedClass trong ngày stdDate
-      var makeUpRecordsForThisClass = recordsOnDate.filter(function(a) {
-        if (String(a.status || '').trim() !== 'Học bù') return false;
-        var st = stuMap[padId3(a.studentId)];
-        var origClass = st ? String(st.className || st.grade || '').trim() : '';
-        if (origClass === selectedClass) return false; // Học sinh chính khóa của lớp thì đã có sẵn
+      // Tìm học sinh lớp khác (VD: 12B) có trạng thái "Học bù" trong ngày dateYMD này
+      var makeUpRecords = recordsOnDate.filter(function(a) {
+        var statusStr = String(a.status || '').trim().toLowerCase();
+        if (statusStr !== 'học bù' && statusStr !== 'hoc bu' && statusStr !== 'bù') return false;
 
-        var recGrade = String(a.grade || a.className || '').replace(/^Lớp\s+/i, '').trim();
-        // Nếu bản ghi Học bù lưu rõ grade === selectedClass (VD: '12A'), hoặc ngày hôm đó chính là ca điểm danh của lớp 12A
-        if (recGrade === selectedClass) return true;
-        if ((!recGrade || recGrade === origClass) && mainClassRecords.length > 0) return true;
+        var st = stuById[padId3(a.studentId)];
+        var origClass = st ? cleanClassCode(st.className || st.grade) : '';
+        if (origClass === detectedClass) return false;
+
+        var targetClass = cleanClassCode(a.grade || a.className || a.targetClass || '');
+        // Nếu bản ghi Học bù chỉ định rõ học bù tại lớp detectedClass (12A), hoặc học bù cùng ngày có ca học của lớp 12A
+        if (targetClass === detectedClass) return true;
+        if (!targetClass || targetClass === origClass) return nativeClassRecords.length > 0;
         return false;
       });
 
-      if (makeUpRecordsForThisClass.length === 0) return;
+      if (makeUpRecords.length === 0) return;
 
-      // Tìm hộp "Có mặt (...)" bên trong dayCard
-      var presentHeader = Array.from(dayCard.querySelectorAll('div, span, h4, h5')).find(function(el) {
-        if (el.children.length > 3) return false;
-        var t = (el.textContent || '').trim();
-        return /^Có mặt\s*\(\d+\)/i.test(t);
-      });
-
-      if (!presentHeader) return;
-
+      // Tìm thẻ hộp xanh "Có mặt"
       var presentBox = presentHeader.parentElement;
       while (presentBox && presentBox.parentElement && presentBox.parentElement !== dayCard) {
-        var cls = String(presentBox.className || '');
-        if (cls.includes('rounded') || cls.includes('border') || cls.includes('bg-emerald') || cls.includes('bg-green')) {
+        var cl = String(presentBox.className || '');
+        if ((cl.includes('rounded') || cl.includes('border')) && presentBox.textContent.includes('•')) {
           break;
         }
         presentBox = presentBox.parentElement;
       }
       if (!presentBox) return;
 
-      // Đếm số học sinh đi bù thực sự chưa được chèn vào hộp "Có mặt"
-      var newlyAddedCount = 0;
+      // Tìm vùng danh sách chứa các dòng "• Tên học sinh" bên trong presentBox
+      var firstBulletEl = Array.from(presentBox.querySelectorAll('div, li, p, span')).find(function(el) {
+        return el.children.length === 0 && (el.textContent || '').trim().startsWith('•');
+      });
+      var namesListContainer = firstBulletEl ? firstBulletEl.parentElement : presentBox;
 
-      makeUpRecordsForThisClass.forEach(function(rec) {
-        var cId = padId3(rec.studentId);
-        var st = stuMap[cId];
-        var stuName = st ? st.name : ('HS ' + cId);
-        var origClass = st ? String(st.className || st.grade || '').trim() : '';
+      // 1. CHÈN DÒNG MÀU TÍM "• Nguyễn Thị Ái Mỹ (Đi bù - 12B)" VÀO TRONG DANH SÁCH "CÓ MẶT"
+      makeUpRecords.forEach(function(rec) {
+        var cid = padId3(rec.studentId);
+        if (presentBox.querySelector('[data-makeup-in-present="' + cid + '"]')) return;
 
-        // Kiểm tra xem học sinh đi bù này đã được hiển thị trong presentBox chưa
-        var existingItem = presentBox.querySelector('[data-makeup-stuid="' + cId + '"]');
-        if (existingItem) return;
+        var st = stuById[cid];
+        var sName = st ? st.name : ('HS ' + cid);
+        var origCl = st ? cleanClassCode(st.className || st.grade) : '';
 
-        // Nếu tên học sinh đã có sẵn dạng thường thì tô màu tím và gắn nhãn đi bù luôn
-        var alreadyInText = Array.from(presentBox.querySelectorAll('div, li, p, span')).find(function(el) {
-          return el.children.length === 0 && (el.textContent || '').includes(stuName);
-        });
+        var row = document.createElement('div');
+        row.setAttribute('data-makeup-in-present', cid);
+        row.style.cssText = 'color:#7e22ce !important;font-weight:800 !important;background:#f3e8ff;border:1px solid #d8b4fe;padding:2px 8px;border-radius:6px;margin-top:4px;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:13px;';
+        row.innerHTML =
+          '<span>• ' + sName + '</span>' +
+          '<span style="background:#9333ea;color:#fff;font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;">Đi bù' + (origCl ? ' - ' + origCl : '') + '</span>';
 
-        if (alreadyInText) {
-          alreadyInText.setAttribute('data-makeup-stuid', cId);
-          alreadyInText.style.cssText = 'color:#7e22ce !important;font-weight:800 !important;background:#f3e8ff;padding:2px 8px;border-radius:8px;display:inline-block;margin:2px 0;';
-          if (!alreadyInText.textContent.includes('Đi bù')) {
-            alreadyInText.textContent = '• ' + stuName + ' (Đi bù' + (origClass ? ' - ' + origClass : '') + ')';
-          }
-          return;
-        }
-
-        // Tìm vùng chứa danh sách tên học sinh bên trong hộp "Có mặt"
-        var listContainer = presentHeader.nextElementSibling || presentBox;
-        var itemEl = document.createElement('div');
-        itemEl.setAttribute('data-makeup-stuid', cId);
-        itemEl.style.cssText = 'color:#7e22ce;font-weight:800;background:#f3e8ff;border:1px solid #d8b4fe;padding:2px 8px;border-radius:8px;margin-top:4px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:6px;';
-        itemEl.innerHTML =
-          '<span>• ' + stuName + '</span>' +
-          '<span style="background:#9333ea;color:#ffffff;font-size:10px;font-weight:900;padding:1px 6px;border-radius:6px;white-space:nowrap;">Đi bù' + (origClass ? ' · ' + origClass : '') + '</span>';
-
-        listContainer.appendChild(itemEl);
-        newlyAddedCount++;
+        namesListContainer.appendChild(row);
       });
 
-      // Cập nhật lại con số trên tiêu đề "Có mặt (31)" -> "Có mặt (32: 31 chính + 1 đi bù)"
-      // và "Tổng điểm danh: 35 em" -> "Tổng điểm danh: 36 em"
-      if (newlyAddedCount > 0) {
-        var totalMakeUpInBox = presentBox.querySelectorAll('[data-makeup-stuid]').length;
-        var basePresentCount = mainClassRecords.filter(function(a) {
-          return String(a.status || '').trim() === 'Có mặt';
-        }).length;
-        var totalPresentNow = basePresentCount + totalMakeUpInBox;
+      // 2. TẠO THÊM KHUNG "🟣 Học bù (1)" NGAY BÊN CẠNH KHUNG "Có mặt" & "Vắng KP" TRONG CÙNG CARD LỚP 12A
+      var boxesGrid = presentBox.parentElement;
+      if (boxesGrid && !boxesGrid.querySelector('.injected-makeup-status-box')) {
+        var makeUpBox = document.createElement('div');
+        makeUpBox.className = 'injected-makeup-status-box';
+        makeUpBox.style.cssText = 'background:#faf5ff;border:1px solid #e9d5ff;border-radius:16px;padding:14px 16px;';
 
+        var itemsHtml = makeUpRecords.map(function(rec) {
+          var cid = padId3(rec.studentId);
+          var st = stuById[cid];
+          var sName = st ? st.name : ('HS ' + cid);
+          var origCl = st ? cleanClassCode(st.className || st.grade) : '';
+          return '<div style="color:#6b21a8;font-weight:700;font-size:13px;margin-top:4px;">• ' + sName + (origCl ? ' <span style="color:#9333ea;font-size:11px;font-weight:800;">(Lớp ' + origCl + ' sang bù)</span>' : '') + '</div>';
+        }).join('');
+
+        makeUpBox.innerHTML =
+          '<div style="color:#6b21a8;font-weight:800;font-size:13.5px;border-bottom:1px solid #e9d5ff;padding-bottom:8px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">' +
+            '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 30% 30%, #c084fc, #7e22ce);"></span>' +
+            '<span>Học bù (' + makeUpRecords.length + ')</span>' +
+          '</div>' +
+          '<div>' + itemsHtml + '</div>';
+
+        boxesGrid.appendChild(makeUpBox);
+      }
+
+      // 3. CẬP NHẬT SỐ LƯỢNG TRÊN TIÊU ĐỀ "Có mặt (32: 31 + 1 bù)" VÀ "Tổng điểm danh: 36 em (1 bù)"
+      var nativePresentCount = nativeClassRecords.filter(function(a) {
+        return String(a.status || 'Có mặt').trim() === 'Có mặt';
+      }).length;
+      var totalPresentWithMakeUp = nativePresentCount + makeUpRecords.length;
+
+      if (!presentHeader.getAttribute('data-updated-makeup')) {
+        presentHeader.setAttribute('data-updated-makeup', '1');
         presentHeader.innerHTML =
           '<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
-            '<span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block;"></span>' +
-            '<span>Có mặt (' + totalPresentNow + ')</span>' +
-            '<span style="background:#f3e8ff;color:#7e22ce;border:1px solid #d8b4fe;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800;">+' + totalMakeUpInBox + ' đi bù</span>' +
+            '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 30% 30%, #6ee7b7, #059669);"></span>' +
+            '<span>Có mặt (' + totalPresentWithMakeUp + ': ' + nativePresentCount + ' chính + ' + makeUpRecords.length + ' bù)</span>' +
           '</span>';
+      }
 
-        var totalBadge = Array.from(dayCard.querySelectorAll('div, span')).find(function(el) {
-          return el.children.length === 0 && /Tổng điểm danh:\s*\d+\s*em/i.test(el.textContent || '');
-        });
-        if (totalBadge) {
-          var totalAll = mainClassRecords.length + totalMakeUpInBox;
-          totalBadge.textContent = 'Tổng điểm danh: ' + totalAll + ' em (' + totalMakeUpInBox + ' bù)';
-        }
+      var totalBadgeEl = Array.from(dayCard.querySelectorAll('div, span')).find(function(el) {
+        return el.children.length === 0 && /Tổng điểm danh:/i.test(el.textContent || '');
+      });
+      if (totalBadgeEl) {
+        var totalAll = nativeClassRecords.length + makeUpRecords.length;
+        totalBadgeEl.textContent = 'Tổng điểm danh: ' + totalAll + ' em (' + makeUpRecords.length + ' bù)';
       }
     });
   }
 
-  setInterval(mergeMakeUpStudentsIntoPresentBox, 400);
+  setInterval(syncMakeUpAttendanceOverviewCards, 400);
     
 //lát nữa lỗi xóa từ đây xuống
 
