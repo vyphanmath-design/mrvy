@@ -11292,5 +11292,578 @@ function startSpinLuckyWheel(students) {
 </div>
 
 
+  <script>
+// =========================================================================
+// KHỐI ĐỘC LẬP 100%: KÍCH HOẠT 2 NÚT "XẾP CHỖ KIỂM TRA" & "VÒNG QUAY MAY MẮN"
+// (Tách riêng thẻ <script> nên tuyệt đối không bao giờ ảnh hưởng code cũ)
+// =========================================================================
+(function() {
+  function pad3(id) {
+    if (typeof window.formatStudentId === 'function') return window.formatStudentId(id);
+    var s = String(id || '').trim().replace(/\D/g, '');
+    return s ? ('000' + s).slice(-3) : String(id || '').trim();
+  }
+
+  function normName(n) {
+    if (typeof window.cleanName === 'function') return window.cleanName(n);
+    return String(n || '').trim().toLowerCase();
+  }
+
+  function stdDate(d) {
+    if (typeof window.toStandardDateStr === 'function') return window.toStandardDateStr(d);
+    return String(d || '').trim();
+  }
+
+  function fmtDay(dStr) {
+    if (typeof window.formatDateWithDay === 'function') return window.formatDateWithDay(dStr);
+    return dStr;
+  }
+
+  function shortName(fullName) {
+    var parts = String(fullName || '').trim().split(/\s+/);
+    if (parts.length <= 2) return fullName;
+    return parts.slice(-2).join(' ');
+  }
+
+  window.__seatingState = {
+    dStr: '',
+    className: '',
+    students: [],
+    history: [],
+    cleared: false,
+    colsGroup: 2,   // Dãy
+    rowsCount: 12,  // Bàn / dãy
+    seatsPerRow: 4, // Chỗ / bàn
+    mode: 'sole'    // 'sole' hoặc 'full'
+  };
+
+  window.__wheelState = {
+    dStr: '',
+    students: [],
+    remaining: [],
+    spinning: false,
+    currentDeg: 0
+  };
+
+  // Lấy danh sách học sinh CÓ MẶT + ĐI BÙ trong ngày dStr theo đúng lớp đang xem
+  window.getPresentStudentsForOverviewDate = function(dStr) {
+    var d = window.appData || {};
+    var gradeEl = document.getElementById('overviewGradeFilter');
+    var classEl = document.getElementById('overviewClassFilter');
+    var grade = gradeEl ? gradeEl.value : 'ALL';
+    var cFilter = classEl ? classEl.value : 'ALL';
+
+    var records = (d.attendance || []).filter(function(a) {
+      return stdDate(a.date) === dStr;
+    });
+    var activeStudents = (typeof window.getActiveStudents === 'function') ? (window.getActiveStudents() || []) : (d.students || []);
+
+    function findStuObj(r) {
+      var rId = pad3(r.studentId);
+      return activeStudents.find(function(s) {
+        return (s.id && pad3(s.id) === rId) || normName(s.name) === normName(r.studentName);
+      });
+    }
+
+    var result = [];
+    var seen = {};
+
+    records.forEach(function(r) {
+      var st = String(r.status || '').trim();
+      if (st !== 'Có mặt' && st !== 'Học bù') return;
+      var s = findStuObj(r);
+      if (!s) return;
+
+      var origClass = String(s.className || s.grade || '').trim();
+      var mGrade = (grade === 'ALL' || grade === 'NONE' || s.grade === grade || origClass === grade);
+      var mClass = (cFilter === 'ALL' || origClass === cFilter);
+
+      if (mGrade && mClass) {
+        var cid = pad3(s.id);
+        if (!seen[cid]) {
+          seen[cid] = true;
+          result.push({
+            id: cid,
+            name: s.name,
+            className: origClass,
+            isMakeUp: (st === 'Học bù')
+          });
+        }
+      }
+    });
+
+    if (cFilter !== 'ALL') {
+      records.forEach(function(r) {
+        if (String(r.status || '').trim() !== 'Học bù') return;
+        var s = findStuObj(r);
+        if (!s) return;
+        var origClass = String(s.className || s.grade || '').trim();
+        if (origClass === cFilter) return;
+
+        var recTargetClass = String(r.grade || r.className || '').replace(/^Lớp\s+/i, '').trim();
+        var sameGradePrefix = origClass.replace(/\D/g, '') === cFilter.replace(/\D/g, '');
+        if (recTargetClass === cFilter || ((!recTargetClass || recTargetClass === origClass) && sameGradePrefix)) {
+          var cid = pad3(s.id);
+          if (!seen[cid]) {
+            seen[cid] = true;
+            result.push({
+              id: cid,
+              name: s.name,
+              className: origClass,
+              isMakeUp: true
+            });
+          }
+        }
+      });
+    }
+
+    return result;
+  };
+
+  window.calcSeatingCapacity = function(cols, rows, seats, mode) {
+    if (mode === 'full') return cols * rows * seats;
+    var perGroup = 0;
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < seats; c++) {
+        if ((r % 2 === 0) ? (c % 2 === 0) : (c % 2 === 1)) perGroup++;
+      }
+    }
+    return perGroup * cols;
+  };
+
+  // 1. MỞ MODAL XẾP CHỖ NGỒI KIỂM TRA (Hỗ trợ gọi từ cả 2 tên hàm)
+  window.openSeatingArrangementModal = window.openSeatingModalForDate = function(dStr) {
+    var list = window.getPresentStudentsForOverviewDate(dStr);
+    if (list.length === 0) {
+      if (typeof window.showToast === 'function') window.showToast('Không có học sinh nào có mặt trong ngày này!', true);
+      else alert('Không có học sinh nào có mặt trong ngày này!');
+      return;
+    }
+
+    var classEl = document.getElementById('overviewClassFilter');
+    var cFilter = classEl ? classEl.value : 'ALL';
+    var st = window.__seatingState;
+    st.dStr = dStr;
+    st.className = (cFilter && cFilter !== 'ALL') ? cFilter : 'Lớp học';
+    st.students = list.slice();
+    st.history = [list.slice()];
+    st.cleared = false;
+    st.colsGroup = st.colsGroup || 2;
+    st.rowsCount = st.rowsCount || 12;
+    st.seatsPerRow = st.seatsPerRow || 4;
+    st.mode = st.mode || 'sole';
+
+    window.shuffleSeatingAction(true);
+
+    var old = document.getElementById('seatingExamModal');
+    if (old) old.remove();
+
+    var capSole = window.calcSeatingCapacity(st.colsGroup, st.rowsCount, st.seatsPerRow, 'sole');
+    var capFull = window.calcSeatingCapacity(st.colsGroup, st.rowsCount, st.seatsPerRow, 'full');
+
+    var modal = document.createElement('div');
+    modal.id = 'seatingExamModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,0.65);padding:12px;';
+    modal.innerHTML =
+      '<div style="background:#fff;width:100%;max-width:1120px;max-height:94vh;border-radius:24px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);border:1px solid #e2e8f0;display:flex;flex-direction:column;overflow:hidden;">' +
+        '<div style="padding:16px 24px;background:#fff;border-bottom:1px solid #e2e8f0;">' +
+          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;">' +
+            '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px;">' +
+              '<div>' +
+                '<label style="display:block;font-size:12px;font-weight:800;color:#475569;margin-bottom:4px;">Dãy</label>' +
+                '<input id="seatColsInput" type="number" min="1" max="8" value="' + st.colsGroup + '" oninput="window.updateSeatingConfig()" style="width:76px;padding:8px 12px;border-radius:14px;border:1px solid #cbd5e1;font-weight:800;font-size:14px;color:#0f172a;outline:none;">' +
+              '</div>' +
+              '<div>' +
+                '<label style="display:block;font-size:12px;font-weight:800;color:#475569;margin-bottom:4px;">Bàn / dãy</label>' +
+                '<input id="seatRowsInput" type="number" min="1" max="40" value="' + st.rowsCount + '" oninput="window.updateSeatingConfig()" style="width:92px;padding:8px 12px;border-radius:14px;border:1px solid #cbd5e1;font-weight:800;font-size:14px;color:#0f172a;outline:none;">' +
+              '</div>' +
+              '<div>' +
+                '<label style="display:block;font-size:12px;font-weight:800;color:#475569;margin-bottom:4px;">Chỗ / bàn</label>' +
+                '<input id="seatPerRowInput" type="number" min="1" max="8" value="' + st.seatsPerRow + '" oninput="window.updateSeatingConfig()" style="width:92px;padding:8px 12px;border-radius:14px;border:1px solid #cbd5e1;font-weight:800;font-size:14px;color:#0f172a;outline:none;">' +
+              '</div>' +
+            '</div>' +
+            '<button type="button" onclick="document.getElementById(\'seatingExamModal\').remove()" style="width:36px;height:36px;border-radius:50%;background:#f1f5f9;border:none;color:#334155;font-weight:900;font-size:16px;cursor:pointer;">✕</button>' +
+          '</div>' +
+
+          '<div style="padding:12px 14px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;">' +
+            '<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;">' +
+              '<div>' +
+                '<label style="display:block;font-size:11px;font-weight:800;color:#64748b;margin-bottom:4px;">Kiểu xếp</label>' +
+                '<select id="seatModeSelect" onchange="window.updateSeatingConfig()" style="background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:8px 14px;font-size:12.5px;font-weight:800;color:#0f172a;outline:none;">' +
+                  '<option id="optModeSole" value="sole" ' + (st.mode === 'sole' ? 'selected' : '') + '>So le (kiểm tra) — ' + capSole + ' chỗ</option>' +
+                  '<option id="optModeFull" value="full" ' + (st.mode === 'full' ? 'selected' : '') + '>Ngồi liền kề — ' + capFull + ' chỗ</option>' +
+                '</select>' +
+              '</div>' +
+              '<button type="button" onclick="window.shuffleSeatingAction()" style="padding:9px 18px;border-radius:999px;background:#059669;color:#fff;border:none;font-weight:800;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">' +
+                '<i class="fa-solid fa-shuffle"></i> Xếp ngẫu nhiên' +
+              '</button>' +
+              '<button type="button" onclick="window.undoSeatingAction()" style="padding:9px 15px;border-radius:999px;background:#fff;color:#334155;border:1px solid #cbd5e1;font-weight:800;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">' +
+                '<i class="fa-solid fa-rotate-left"></i> Hoàn tác' +
+              '</button>' +
+              '<button type="button" onclick="window.clearSeatingAction()" style="padding:9px 15px;border-radius:999px;background:#fff;color:#e11d48;border:1px solid #cbd5e1;font-weight:800;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">' +
+                '<i class="fa-solid fa-eraser"></i> Xoá hết' +
+              '</button>' +
+            '</div>' +
+            '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">' +
+              '<input id="seatExamTitleInput" type="text" placeholder="Tên bài kiểm tra (không bắt buộc)" oninput="window.renderSeatingBoard()" style="background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:8px 14px;font-size:12.5px;font-weight:600;color:#0f172a;width:230px;outline:none;">' +
+              '<button type="button" onclick="window.exportSeatingToImage()" style="padding:9px 18px;border-radius:999px;background:#4f46e5;color:#fff;border:none;font-weight:800;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">' +
+                '<i class="fa-solid fa-image"></i> Xuất ảnh gửi HS' +
+              '</button>' +
+            '</div>' +
+          '</div>' +
+          '<div id="seatingStatusBanner" style="font-size:12px;font-weight:800;color:#047857;margin-top:10px;"></div>' +
+        '</div>' +
+
+        '<div style="padding:20px;overflow-y:auto;flex:1;background:#f8fafc;">' +
+          '<div id="seatingCaptureArea" style="background:#fff;padding:22px;border-radius:20px;border:1px solid #e2e8f0;margin:0 auto;">' +
+            '<div id="seatingBoardContent"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    window.renderSeatingBoard();
+  };
+
+  window.updateSeatingConfig = function() {
+    var st = window.__seatingState;
+    var cInp = document.getElementById('seatColsInput');
+    var rInp = document.getElementById('seatRowsInput');
+    var sInp = document.getElementById('seatPerRowInput');
+    var mSel = document.getElementById('seatModeSelect');
+
+    if (cInp) st.colsGroup = Math.max(1, Math.min(8, parseInt(cInp.value, 10) || 1));
+    if (rInp) st.rowsCount = Math.max(1, Math.min(50, parseInt(rInp.value, 10) || 1));
+    if (sInp) st.seatsPerRow = Math.max(1, Math.min(10, parseInt(sInp.value, 10) || 1));
+    if (mSel) st.mode = mSel.value;
+
+    var capSole = window.calcSeatingCapacity(st.colsGroup, st.rowsCount, st.seatsPerRow, 'sole');
+    var capFull = window.calcSeatingCapacity(st.colsGroup, st.rowsCount, st.seatsPerRow, 'full');
+    var optSole = document.getElementById('optModeSole');
+    var optFull = document.getElementById('optModeFull');
+    if (optSole) optSole.textContent = 'So le (kiểm tra) — ' + capSole + ' chỗ';
+    if (optFull) optFull.textContent = 'Ngồi liền kề — ' + capFull + ' chỗ';
+
+    window.renderSeatingBoard();
+  };
+
+  window.shuffleSeatingAction = function(silent) {
+    var st = window.__seatingState;
+    st.cleared = false;
+    var arr = st.students.slice();
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    st.students = arr;
+    st.history.push(arr.slice());
+    if (!silent) window.renderSeatingBoard();
+  };
+
+  window.undoSeatingAction = function() {
+    var st = window.__seatingState;
+    st.cleared = false;
+    if (st.history.length > 1) {
+      st.history.pop();
+      st.students = st.history[st.history.length - 1].slice();
+      window.renderSeatingBoard();
+    } else if (typeof window.showToast === 'function') {
+      window.showToast('Đã ở sơ đồ đầu tiên!');
+    }
+  };
+
+  window.clearSeatingAction = function() {
+    var st = window.__seatingState;
+    st.cleared = true;
+    window.renderSeatingBoard();
+  };
+
+  window.renderSeatingBoard = function() {
+    var box = document.getElementById('seatingBoardContent');
+    if (!box) return;
+    var st = window.__seatingState;
+    var examTitleEl = document.getElementById('seatExamTitleInput');
+    var examTitle = (examTitleEl && examTitleEl.value.trim()) ? examTitleEl.value.trim() : 'SƠ ĐỒ CHỖ NGỒI KIỂM TRA';
+
+    var cap = window.calcSeatingCapacity(st.colsGroup, st.rowsCount, st.seatsPerRow, st.mode);
+    var banner = document.getElementById('seatingStatusBanner');
+    if (banner) {
+      if (st.cleared) {
+        banner.style.color = '#64748b';
+        banner.textContent = 'Đã xoá trống sơ đồ bàn. Bấm "Xếp ngẫu nhiên" để xếp lại ' + st.students.length + ' học sinh.';
+      } else if (cap < st.students.length) {
+        banner.style.color = '#e11d48';
+        banner.textContent = '⚠️ Số chỗ hiện tại (' + cap + ' chỗ) ít hơn số học sinh có mặt (' + st.students.length + ' em) — còn ' + (st.students.length - cap) + ' em chưa có chỗ. Hãy tăng Bàn/dãy hoặc Chỗ/bàn!';
+      } else {
+        banner.style.color = '#047857';
+        banner.textContent = 'Đã xếp ngẫu nhiên ' + st.students.length + ' học sinh (' + (st.mode === 'sole' ? 'so le (kiểm tra)' : 'ngồi liền kề') + ' — ' + cap + ' chỗ). Bấm "Xếp ngẫu nhiên" để xáo tiếp hoặc "Xuất ảnh gửi HS" để tải ảnh.';
+      }
+    }
+
+    var stuIdx = 0;
+    var groupsHtml = '';
+
+    for (var g = 0; g < st.colsGroup; g++) {
+      var rowsHtml = '';
+      for (var r = 0; r < st.rowsCount; r++) {
+        var cellsHtml = '';
+        for (var c = 0; c < st.seatsPerRow; c++) {
+          var shouldSit = (st.mode === 'full') ? true : ((r % 2 === 0) ? (c % 2 === 0) : (c % 2 === 1));
+          var stu = (!st.cleared && shouldSit && stuIdx < st.students.length) ? st.students[stuIdx++] : null;
+
+          if (stu) {
+            var cardBg = stu.isMakeUp
+              ? 'background:#fff7ed;border:2px solid #f97316;color:#9a3412;'
+              : 'background:#ecfdf5;border:2px solid #10b981;color:#065f46;';
+            var subText = stu.isMakeUp ? (stu.id + ' · Bù ' + stu.className) : stu.id;
+
+            cellsHtml +=
+              '<div style="' + cardBg + 'border-radius:12px;padding:8px 6px;text-align:center;min-height:54px;display:flex;flex-direction:column;justify-content:center;">' +
+                '<div style="font-weight:900;font-size:12.5px;color:#0f172a;line-height:1.2;">' + shortName(stu.name) + '</div>' +
+                '<div style="font-size:10.5px;font-weight:700;opacity:0.85;margin-top:2px;">' + subText + '</div>' +
+              '</div>';
+          } else {
+            cellsHtml += '<div style="background:#f8fafc;border:1.5px dashed #e2e8f0;border-radius:12px;min-height:54px;"></div>';
+          }
+        }
+        rowsHtml += '<div style="display:grid;grid-template-columns:repeat(' + st.seatsPerRow + ',minmax(0,1fr));gap:8px;margin-bottom:8px;">' + cellsHtml + '</div>';
+      }
+
+      groupsHtml +=
+        '<div style="flex:1;min-width:260px;">' +
+          '<div style="font-size:12px;font-weight:800;color:#64748b;margin-bottom:8px;">Dãy ' + (g + 1) + '</div>' +
+          rowsHtml +
+        '</div>';
+    }
+
+    box.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #f1f5f9;padding-bottom:8px;">' +
+        '<div>' +
+          '<div style="font-size:15px;font-weight:900;color:#0f172a;text-transform:uppercase;">' + examTitle + ' — LỚP ' + st.className + '</div>' +
+          '<div style="font-size:11.5px;color:#64748b;font-weight:600;">Ngày: ' + fmtDay(st.dStr) + ' · Sĩ số có mặt: ' + st.students.length + ' học sinh (' + st.colsGroup + ' dãy × ' + st.rowsCount + ' bàn × ' + st.seatsPerRow + ' chỗ)</div>' +
+        '</div>' +
+        '<div style="font-size:11px;font-weight:800;color:#059669;">LỚP TOÁN THẦY VY</div>' +
+      '</div>' +
+      '<div style="background:#0f172a;color:#ffffff;text-align:center;padding:9px;border-radius:10px;font-weight:800;font-size:12.5px;margin-bottom:16px;">Bảng / bục giảng</div>' +
+      '<div style="display:flex;gap:24px;flex-wrap:wrap;">' + groupsHtml + '</div>';
+  };
+
+  window.exportSeatingToImage = function() {
+    var target = document.getElementById('seatingCaptureArea');
+    if (!target) return;
+    var st = window.__seatingState;
+
+    function runCapture() {
+      window.html2canvas(target, { scale: 2, backgroundColor: '#ffffff' }).then(function(canvas) {
+        var link = document.createElement('a');
+        link.download = 'So_Do_Cho_Ngoi_' + st.className + '_' + st.dStr + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        if (typeof window.showToast === 'function') window.showToast('Đã tải ảnh sơ đồ chỗ ngồi thành công!');
+      });
+    }
+
+    if (typeof window.html2canvas === 'function') {
+      runCapture();
+    } else {
+      if (typeof window.showToast === 'function') window.showToast('Đang tạo ảnh, vui lòng đợi 1 giây...');
+      var sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      sc.onload = runCapture;
+      document.head.appendChild(sc);
+    }
+  };
+
+  // 2. MỞ MODAL VÒNG QUAY MAY MẮN SIÊU TỐC (~1.35 GIÂY)
+  window.openLuckyWheelModal = window.openLuckyWheelModalForDate = function(dStr) {
+    var list = window.getPresentStudentsForOverviewDate(dStr);
+    if (list.length === 0) {
+      if (typeof window.showToast === 'function') window.showToast('Không có học sinh nào có mặt trong ngày này!', true);
+      else alert('Không có học sinh nào có mặt trong ngày này!');
+      return;
+    }
+
+    var ws = window.__wheelState;
+    ws.dStr = dStr;
+    ws.students = list.slice();
+    ws.remaining = list.slice();
+    ws.spinning = false;
+    ws.currentDeg = 0;
+
+    var old = document.getElementById('luckyWheelModal');
+    if (old) old.remove();
+
+    var modal = document.createElement('div');
+    modal.id = 'luckyWheelModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,0.65);padding:12px;';
+    modal.innerHTML =
+      '<div style="background:#fff;width:100%;max-width:640px;border-radius:24px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);border:1px solid #e2e8f0;overflow:hidden;display:flex;flex-direction:column;">' +
+        '<div style="padding:16px 24px;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:space-between;">' +
+          '<div>' +
+            '<h3 style="font-size:15px;font-weight:900;text-transform:uppercase;color:#fcd34d;margin:0;">🎡 Vòng quay may mắn — Ngày ' + fmtDay(dStr) + '</h3>' +
+            '<p id="wheelSubCount" style="font-size:12px;color:#cbd5e1;font-weight:600;margin:2px 0 0 0;">Danh sách trong vòng quay: ' + ws.remaining.length + ' học sinh có mặt</p>' +
+          '</div>' +
+          '<button type="button" onclick="document.getElementById(\'luckyWheelModal\').remove()" style="width:32px;height:32px;border-radius:50%;background:#1e293b;border:none;color:#fff;font-weight:900;cursor:pointer;">✕</button>' +
+        '</div>' +
+        '<div style="padding:24px;display:flex;flex-direction:column;align-items:center;gap:16px;background:linear-gradient(to bottom,#f8fafc,#eef2ff);">' +
+          '<div style="position:relative;display:flex;align-items:center;justify-content:center;padding:8px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#fde047,#f59e0b);box-shadow:0 12px 24px rgba(0,0,0,0.18);">' +
+            '<canvas id="luckyWheelCanvas" width="360" height="360" style="border-radius:50%;background:#fff;display:block;"></canvas>' +
+            '<div style="position:absolute;right:-12px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:15px solid transparent;border-bottom:15px solid transparent;border-right:30px solid #e11d48;filter:drop-shadow(0 3px 5px rgba(0,0,0,0.35));"></div>' +
+          '</div>' +
+          '<div style="width:100%;max-width:440px;background:#1e1b4b;color:#fff;border-radius:18px;padding:14px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.15);">' +
+            '<div style="font-size:11px;text-transform:uppercase;color:#a5b4fc;font-weight:800;">Học sinh được chọn</div>' +
+            '<div id="wheelWinnerText" style="font-size:20px;font-weight:900;color:#fcd34d;margin-top:2px;">Bấm "QUAY NHANH" để chọn!</div>' +
+          '</div>' +
+          '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;">' +
+            '<button type="button" onclick="window.spinLuckyWheelNow()" style="padding:10px 28px;border-radius:999px;background:linear-gradient(to right,#e11d48,#f59e0b);color:#fff;border:none;font-weight:900;font-size:14px;cursor:pointer;text-transform:uppercase;box-shadow:0 4px 10px rgba(225,29,72,0.3);">' +
+              '⚡ Quay Nhanh' +
+            '</button>' +
+            '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:#334155;background:#fff;padding:8px 12px;border-radius:12px;border:1px solid #cbd5e1;cursor:pointer;">' +
+              '<input type="checkbox" id="chkRemoveAfterSpin" checked> Loại tên đã quay' +
+            '</label>' +
+            '<button type="button" onclick="window.resetLuckyWheelList()" style="padding:8px 14px;border-radius:12px;background:#fff;color:#334155;border:1px solid #cbd5e1;font-weight:800;font-size:12px;cursor:pointer;">' +
+              'Làm mới (' + ws.students.length + ')' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(modal);
+    window.drawLuckyWheelCanvas();
+  };
+
+  window.drawLuckyWheelCanvas = function() {
+    var canvas = document.getElementById('luckyWheelCanvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var ws = window.__wheelState;
+    var items = ws.remaining;
+    var n = items.length;
+    var cx = canvas.width / 2;
+    var cy = canvas.height / 2;
+    var radius = cx - 8;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (n === 0) return;
+
+    var palette = ['#4f46e5', '#059669', '#d97706', '#e11d48', '#7c3aed', '#0284c7', '#db2777', '#0d9488'];
+    var arc = (2 * Math.PI) / n;
+    var startOffset = (ws.currentDeg * Math.PI) / 180;
+
+    for (var i = 0; i < n; i++) {
+      var angle = startOffset + i * arc;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, radius, angle, angle + arc);
+      ctx.closePath();
+      ctx.fillStyle = palette[i % palette.length];
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle + arc / 2);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = (n > 24 ? 'bold 9.5px' : 'bold 11.5px') + ' sans-serif';
+      var label = shortName(items[i].name) + ' (' + items[i].id + ')';
+      ctx.fillText(label, radius - 14, 4);
+      ctx.restore();
+    }
+
+    for (var d = 0; d < 24; d++) {
+      var dAngle = (d * Math.PI) / 12;
+      ctx.beginPath();
+      ctx.arc(cx + (radius - 3) * Math.cos(dAngle), cy + (radius - 3) * Math.sin(dAngle), 2.5, 0, 2 * Math.PI);
+      ctx.fillStyle = '#fef08a';
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 26, 0, 2 * Math.PI);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#fbbf24';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 9, 0, 2 * Math.PI);
+    ctx.fillStyle = '#fbbf24';
+    ctx.fill();
+  };
+
+  window.spinLuckyWheelNow = function() {
+    var ws = window.__wheelState;
+    if (ws.spinning) return;
+    if (ws.remaining.length === 0) {
+      if (typeof window.showToast === 'function') window.showToast('Đã quay hết danh sách! Bấm "Làm mới" để quay lại.', true);
+      return;
+    }
+
+    ws.spinning = true;
+    var winnerEl = document.getElementById('wheelWinnerText');
+    if (winnerEl) winnerEl.textContent = 'Đang chọn...';
+
+    var extraSpins = (3 + Math.floor(Math.random() * 2)) * 360;
+    var randomAngle = Math.floor(Math.random() * 360);
+    var totalDelta = extraSpins + randomAngle;
+    var startDeg = ws.currentDeg;
+    var duration = 1350; // Quay siêu tốc 1.35 giây
+    var startTime = null;
+
+    function animateWheel(ts) {
+      if (!startTime) startTime = ts;
+      var elapsed = ts - startTime;
+      var progress = Math.min(elapsed / duration, 1);
+      var easeOut = 1 - Math.pow(1 - progress, 3);
+      ws.currentDeg = startDeg + totalDelta * easeOut;
+      window.drawLuckyWheelCanvas();
+
+      if (progress < 1) {
+        requestAnimationFrame(animateWheel);
+      } else {
+        ws.spinning = false;
+        ws.currentDeg = ws.currentDeg % 360;
+        var n = ws.remaining.length;
+        var sliceDeg = 360 / n;
+        var normalized = (360 - (ws.currentDeg % 360)) % 360;
+        var winIdx = Math.floor(normalized / sliceDeg) % n;
+        var winner = ws.remaining[winIdx];
+
+        if (winnerEl && winner) {
+          winnerEl.innerHTML = '🎉 ' + winner.name + ' <span style="font-size:13px;color:#fde68a;">(' + winner.id + (winner.isMakeUp ? ' · Đi bù ' + winner.className : '') + ')</span>';
+        }
+
+        var chk = document.getElementById('chkRemoveAfterSpin');
+        if (chk && chk.checked && ws.remaining.length > 1) {
+          setTimeout(function() {
+            ws.remaining.splice(winIdx, 1);
+            var sub = document.getElementById('wheelSubCount');
+            if (sub) sub.textContent = 'Danh sách trong vòng quay: ' + ws.remaining.length + ' học sinh có mặt';
+            window.drawLuckyWheelCanvas();
+          }, 400);
+        }
+      }
+    }
+
+    requestAnimationFrame(animateWheel);
+  };
+
+  window.resetLuckyWheelList = function() {
+    var ws = window.__wheelState;
+    ws.remaining = ws.students.slice();
+    ws.currentDeg = 0;
+    var sub = document.getElementById('wheelSubCount');
+    if (sub) sub.textContent = 'Danh sách trong vòng quay: ' + ws.remaining.length + ' học sinh có mặt';
+    var winnerEl = document.getElementById('wheelWinnerText');
+    if (winnerEl) winnerEl.textContent = 'Đã làm mới! Bấm "QUAY NHANH" để bắt đầu.';
+    window.drawLuckyWheelCanvas();
+  };
+})();
+</script>
+
 </body>
 </html>
