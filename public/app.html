@@ -7105,7 +7105,7 @@ function exportTuitionExcel() {
         });
       }
 
-      // Bước 1: Gom các bản ghi điểm danh chính khóa của lớp đang chọn (VD: 12A)
+      // Bước 1: Gom các bản ghi điểm danh chính khóa của lớp đang chọn
       var dateMap = {};
       records.forEach(function(r) {
         var dStr = toStandardDateStr(r.date);
@@ -7118,11 +7118,10 @@ function exportTuitionExcel() {
         var mClass = (cFilter === 'ALL' || origClass === cFilter);
 
         if (mGrade && mClass) {
-          // Nếu đang lọc riêng 1 lớp (VD: 12B) mà học sinh chỉ có bản ghi "Học bù" sang lớp khác -> không tạo ngày lẻ loi ở 12B
+          // Không tạo ngày lẻ loi ở lớp gốc nếu hôm đó chỉ có học sinh đi học bù sang lớp khác
           if (cFilter !== 'ALL' && stStatus === 'Học bù') {
             var targetCl = String(r.grade || r.className || '').replace(/^Lớp\s+/i, '').trim();
             if (targetCl && targetCl !== cFilter) return;
-            // Kiểm tra xem ngày hôm đó lớp 12B có học chính khóa không (có ai Có mặt / Vắng không)
             var hasMainSessionForThisClass = records.some(function(other) {
               if (toStandardDateStr(other.date) !== dStr) return false;
               if (String(other.status || '').trim() === 'Học bù') return false;
@@ -7136,16 +7135,14 @@ function exportTuitionExcel() {
           dateMap[dStr].push({
             record: r,
             studentName: student.name,
-            origClass: origClass,
-            isMakeUpFromOtherClass: false
+            origClass: origClass
           });
         }
       });
 
-      // Bước 2: Nếu đang xem 1 lớp cụ thể (VD: 12A), tự động gộp các học sinh lớp khác (VD: 12B) đi "Học bù" vào ngày có ca học của lớp 12A
+      // Bước 2: Gộp học sinh lớp khác đi "Học bù" vào ngày có ca học của lớp đang xem
       if (cFilter !== 'ALL') {
         Object.keys(dateMap).forEach(function(dStr) {
-          // Chỉ gộp vào những ngày lớp 12A thực sự có buổi điểm danh chính khóa
           if (dateMap[dStr].length === 0) return;
 
           records.forEach(function(r) {
@@ -7156,10 +7153,9 @@ function exportTuitionExcel() {
             if (!student) return;
 
             var origClass = String(student.className || student.grade || '').trim();
-            if (origClass === cFilter) return; // Đã có trong danh sách lớp gốc
+            if (origClass === cFilter) return;
 
             var recTargetClass = String(r.grade || r.className || '').replace(/^Lớp\s+/i, '').trim();
-            // Nếu bản ghi Học bù ghi rõ lớp học bù là cFilter (12A), hoặc cùng khối đi học bù vào ngày có ca của 12A
             var sameGradePrefix = origClass.replace(/\D/g, '') === cFilter.replace(/\D/g, '');
             if (recTargetClass === cFilter || ((!recTargetClass || recTargetClass === origClass) && sameGradePrefix)) {
               var alreadyAdded = dateMap[dStr].some(function(x) {
@@ -7169,8 +7165,7 @@ function exportTuitionExcel() {
                 dateMap[dStr].push({
                   record: r,
                   studentName: student.name,
-                  origClass: origClass,
-                  isMakeUpFromOtherClass: true
+                  origClass: origClass
                 });
               }
             }
@@ -7187,7 +7182,7 @@ function exportTuitionExcel() {
 
       container.innerHTML = sortedDates.map(function(dStr) {
         var dayRecords = dateMap[dStr];
-        var groups = { 'Có mặt': [], 'Báo bù': [], 'Học bù': [], 'Vắng CP': [], 'Vắng KP': [] };
+        var groups = { 'Có mặt': [], 'Báo bù': [], 'Vắng CP': [], 'Vắng KP': [] };
         var makeUpCount = 0;
 
         dayRecords.forEach(function(item) {
@@ -7198,14 +7193,11 @@ function exportTuitionExcel() {
           if (st === 'Học bù') {
             makeUpCount++;
             var classTag = item.origClass ? (' - ' + item.origClass) : '';
-            // 1. Vẫn đưa vào danh sách "Có mặt" nhưng hiển thị chữ MÀU TÍM ĐẬM và ghi rõ "(Đi bù - 12B)"
+            // Đưa trực tiếp vào danh sách "Có mặt" với nhãn màu tím (bỏ cột Học bù riêng ở giữa)
             var purplePresentHtml = '<span class="text-purple-700 font-extrabold bg-purple-100/80 px-1.5 py-0.5 rounded border border-purple-200 inline-block my-0.5">' +
               item.studentName + ' (Đi bù' + classTag + ')' + noteText +
             '</span>';
             groups['Có mặt'].push(purplePresentHtml);
-
-            // 2. Đồng thời đưa vào khối "🟣 Học bù" riêng để thống kê rõ ràng
-            groups['Học bù'].push('<span class="text-purple-800 font-bold">' + item.studentName + (item.origClass ? ' (Lớp ' + item.origClass + ')' : '') + noteText + '</span>');
           } else if (groups[st] !== undefined) {
             groups[st].push(item.studentName + noteText);
           }
@@ -7213,23 +7205,65 @@ function exportTuitionExcel() {
 
         var blocksHtml = [];
 
+        // 1. CỘT CÓ MẶT (Bao gồm cả học sinh chính khóa + học sinh đi bù màu tím)
         if (groups['Có mặt'].length > 0) {
           var presentTitle = makeUpCount > 0
             ? '🟢 Có mặt (' + groups['Có mặt'].length + ': ' + (groups['Có mặt'].length - makeUpCount) + ' chính + ' + makeUpCount + ' bù)'
             : '🟢 Có mặt (' + groups['Có mặt'].length + ')';
-          blocksHtml.push('<div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 space-y-1 flex-1 min-w-[160px]"><div class="font-bold text-emerald-800 border-b border-emerald-200 pb-1">' + presentTitle + '</div><div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' + groups['Có mặt'].map(function(n) { return '• ' + n; }).join('<br>') + '</div></div>');
+          blocksHtml.push(
+            '<div class="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-1.5 flex-1 min-w-[240px]">' +
+              '<div class="font-bold text-emerald-800 border-b border-emerald-200 pb-1.5">' + presentTitle + '</div>' +
+              '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
+                groups['Có mặt'].map(function(n) { return '• ' + n; }).join('<br>') +
+              '</div>' +
+            '</div>'
+          );
         }
-        if (groups['Báo bù'].length > 0) {
-          blocksHtml.push('<div class="bg-blue-50 p-3 rounded-xl border border-blue-200 space-y-1 flex-1 min-w-[160px]"><div class="font-bold text-blue-800 border-b border-blue-200 pb-1">🔵 Báo bù (' + groups['Báo bù'].length + ')</div><div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' + groups['Báo bù'].map(function(n) { return '• ' + n; }).join('<br>') + '</div></div>');
-        }
-        if (groups['Học bù'].length > 0) {
-          blocksHtml.push('<div class="bg-purple-50 p-3 rounded-xl border border-purple-200 space-y-1 flex-1 min-w-[160px]"><div class="font-bold text-purple-800 border-b border-purple-200 pb-1">🟣 Học bù (' + groups['Học bù'].length + ')</div><div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' + groups['Học bù'].map(function(n) { return '• ' + n; }).join('<br>') + '</div></div>');
-        }
-        if (groups['Vắng CP'].length > 0) {
-          blocksHtml.push('<div class="bg-amber-50 p-3 rounded-xl border border-amber-200 space-y-1 flex-1 min-w-[160px]"><div class="font-bold text-amber-800 border-b border-amber-200 pb-1">🟡 Vắng CP (' + groups['Vắng CP'].length + ')</div><div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' + groups['Vắng CP'].map(function(n) { return '• ' + n; }).join('<br>') + '</div></div>');
-        }
-        if (groups['Vắng KP'].length > 0) {
-          blocksHtml.push('<div class="bg-red-50 p-3 rounded-xl border border-red-200 space-y-1 flex-1 min-w-[160px]"><div class="font-bold text-red-800 border-b border-red-200 pb-1">🔴 Vắng KP (' + groups['Vắng KP'].length + ')</div><div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' + groups['Vắng KP'].map(function(n) { return '• ' + n; }).join('<br>') + '</div></div>');
+
+        // 2. CỘT VẮNG (Gộp chung vào 1 cột, bên trong phân biệt rõ Vắng có phép & Vắng không phép)
+        var totalAbsent = groups['Vắng CP'].length + groups['Vắng KP'].length + groups['Báo bù'].length;
+        if (totalAbsent > 0) {
+          var absentSubSections = [];
+
+          if (groups['Vắng CP'].length > 0) {
+            absentSubSections.push(
+              '<div class="bg-amber-50/90 p-2.5 rounded-lg border border-amber-200 space-y-1">' +
+                '<div class="font-bold text-amber-800 text-[11px]">🟡 Vắng có phép (' + groups['Vắng CP'].length + ')</div>' +
+                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
+                  groups['Vắng CP'].map(function(n) { return '• ' + n; }).join('<br>') +
+                '</div>' +
+              '</div>'
+            );
+          }
+
+          if (groups['Vắng KP'].length > 0) {
+            absentSubSections.push(
+              '<div class="bg-red-50/90 p-2.5 rounded-lg border border-red-200 space-y-1">' +
+                '<div class="font-bold text-red-800 text-[11px]">🔴 Vắng không phép (' + groups['Vắng KP'].length + ')</div>' +
+                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
+                  groups['Vắng KP'].map(function(n) { return '• ' + n; }).join('<br>') +
+                '</div>' +
+              '</div>'
+            );
+          }
+
+          if (groups['Báo bù'].length > 0) {
+            absentSubSections.push(
+              '<div class="bg-blue-50/90 p-2.5 rounded-lg border border-blue-200 space-y-1">' +
+                '<div class="font-bold text-blue-800 text-[11px]">🔵 Báo bù (' + groups['Báo bù'].length + ')</div>' +
+                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
+                  groups['Báo bù'].map(function(n) { return '• ' + n; }).join('<br>') +
+                '</div>' +
+              '</div>'
+            );
+          }
+
+          blocksHtml.push(
+            '<div class="bg-rose-50/40 p-3.5 rounded-xl border border-rose-200 space-y-2.5 flex-1 min-w-[240px]">' +
+              '<div class="font-bold text-rose-800 border-b border-rose-200 pb-1.5">🔴 Vắng (' + totalAbsent + ')</div>' +
+              '<div class="space-y-2">' + absentSubSections.join('') + '</div>' +
+            '</div>'
+          );
         }
 
         var totalText = makeUpCount > 0
@@ -7241,7 +7275,7 @@ function exportTuitionExcel() {
             '<h3 class="font-black text-brand-dark text-base uppercase flex items-center gap-2"><i class="fa-solid fa-calendar-day text-emerald-600"></i> Ngày ' + formatDateWithDay(dStr) + '</h3>' +
             '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">' + totalText + '</span>' +
           '</div>' +
-          '<div class="flex flex-wrap gap-3 text-xs">' +
+          '<div class="flex flex-wrap gap-4 text-xs items-start">' +
             blocksHtml.join('') +
           '</div>' +
         '</div>';
