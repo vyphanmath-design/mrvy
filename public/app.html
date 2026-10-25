@@ -10280,536 +10280,571 @@ function applyGuestStudentLock() {
 
 //lát nữa lỗi xóa từ đây xuống
 
-    // =========================================================
-    // BỘ HOÀN CHỈNH ĐỘC LẬP 100%:
-    // 1. CHÈN MỤC "3. KẾT QUẢ ĐIỂM KIỂM TRA" VÀO GIỮA MỤC 2 VÀ 3
-    // 2. NÚT "XUẤT PDF HỒ SƠ" ĐẦY ĐỦ 5 PHẦN (CẠNH NÚT SỬA THÔNG TIN HS)
-    // =========================================================
+  
+    
+  </script>
 
-    // Lấy danh sách điểm kiểm tra của riêng 1 học sinh từ mọi cấu trúc lưu trữ trong appData
-    function getPersonalExamScoresOfStudent(stuId) {
-      var cId = formatStudentId(stuId);
-      var rawSources = [
-        appData.examScores,
-        appData.diemKiemTra,
-        appData.scores,
-        appData.tests,
-        window.examScoresData
-      ];
-      var list = [];
+  <script>
+// =========================================================================
+// KHỐI SCRIPT ĐỘC LẬP 100%:
+// CHÈN MỤC 3 (ĐIỂM CÁ NHÂN) & NÚT XUẤT PDF VÀO HỒ SƠ CHI TIẾT HỌC SINH
+// =========================================================================
+(function() {
+  function padId3(id) {
+    if (typeof window.formatStudentId === 'function') return window.formatStudentId(id);
+    var s = String(id || '').trim().replace(/\D/g, '');
+    return s ? ('000' + s).slice(-3) : String(id || '').trim();
+  }
 
-      rawSources.forEach(function(src) {
-        if (!Array.isArray(src)) return;
-        src.forEach(function(item) {
-          if (!item) return;
-          // Kiểu 1: Mỗi dòng là 1 điểm của 1 học sinh (ma_hs / studentId, ten_bai / testName, diem / score)
-          var rowStuId = item.studentId || item.ma_hs || item.student_id || item.maHS || item.id_hs || '';
-          if (rowStuId && formatStudentId(rowStuId) === cId) {
-            var st = String(item.status || item.trang_thai || '').toLowerCase();
-            if (st === 'draft' || st === 'nháp' || st === 'nhap') return;
-            var scVal = item.score !== undefined ? item.score : (item.diem !== undefined ? item.diem : item.so_diem);
-            if (scVal !== undefined && scVal !== null && String(scVal).trim() !== '') {
+  function fmtMoneyVN(val) {
+    if (typeof window.formatMoney === 'function') return window.formatMoney(val);
+    var n = Number(val) || 0;
+    return n.toLocaleString('vi-VN');
+  }
+
+  // 1. Quét lấy toàn bộ điểm kiểm tra của học sinh từ mọi nguồn (appData + Bảng điểm trên giao diện)
+  function collectStudentExamScores(stuId) {
+    var cId = padId3(stuId);
+    var list = [];
+    var d = window.appData || {};
+
+    var rawArrays = [
+      d.examScores, d.diemKiemTra, d.scores, d.tests, d.exams,
+      window.examScoresData, window.diemKiemTraData
+    ];
+
+    // Quét tất cả các mảng trong appData xem mảng nào chứa điểm kiểm tra
+    Object.keys(d).forEach(function(k) {
+      if (Array.isArray(d[k]) && rawArrays.indexOf(d[k]) === -1 && k !== 'students' && k !== 'attendance' && k !== 'tuition') {
+        rawArrays.push(d[k]);
+      }
+    });
+
+    rawArrays.forEach(function(arr) {
+      if (!Array.isArray(arr)) return;
+      arr.forEach(function(item) {
+        if (!item || typeof item !== 'object') return;
+
+        // Dạng 1: Từng dòng điểm (ma_hs / studentId, ten_bai / testName, diem / score)
+        var rowStuId = item.studentId || item.ma_hs || item.student_id || item.maHS || item.id_hs || item.code || '';
+        var hasScoreField = (item.score !== undefined || item.diem !== undefined || item.so_diem !== undefined || item.point !== undefined);
+
+        if (rowStuId && hasScoreField && padId3(rowStuId) === cId) {
+          var st = String(item.status || item.trang_thai || '').toLowerCase();
+          if (st === 'draft' || st === 'nháp' || st === 'nhap') return;
+          var scVal = item.score !== undefined ? item.score : (item.diem !== undefined ? item.diem : (item.so_diem !== undefined ? item.so_diem : item.point));
+          if (scVal !== undefined && scVal !== null && String(scVal).trim() !== '') {
+            list.push({
+              testName: item.testName || item.ten_bai || item.ten_bai_kiem_tra || item.name || item.title || 'Bài kiểm tra',
+              term: item.term || item.dot || item.hoc_ky || item.semester || '',
+              date: item.date || item.ngay || item.testDate || '',
+              score: String(scVal).trim(),
+              note: item.note || item.ghi_chu || ''
+            });
+          }
+        }
+        // Dạng 2: Object bài kiểm tra chứa map scores[ma_hs]
+        else if (item.scores && typeof item.scores === 'object') {
+          var st2 = String(item.status || '').toLowerCase();
+          if (st2 === 'draft' || st2 === 'nháp') return;
+          var entry = item.scores[cId] || item.scores[stuId] || item.scores[parseInt(cId, 10)];
+          if (entry !== undefined && entry !== null) {
+            var val2 = (typeof entry === 'object') ? (entry.score !== undefined ? entry.score : entry.diem) : entry;
+            var note2 = (typeof entry === 'object') ? (entry.note || entry.ghi_chu || '') : '';
+            if (val2 !== undefined && val2 !== null && String(val2).trim() !== '') {
               list.push({
                 testName: item.testName || item.ten_bai || item.name || item.title || 'Bài kiểm tra',
-                term: item.term || item.dot || item.hoc_ky || item.semester || '',
-                date: item.date || item.ngay || item.testDate || '',
-                score: String(scVal).trim(),
-                note: item.note || item.ghi_chu || ''
+                term: item.term || item.dot || item.semester || '',
+                date: item.date || item.ngay || '',
+                score: String(val2).trim(),
+                note: note2
               });
             }
           }
-          // Kiểu 2: Object bài kiểm tra chứa bảng điểm con (scores / results)
-          else if (item.scores && typeof item.scores === 'object') {
-            var st2 = String(item.status || '').toLowerCase();
-            if (st2 === 'draft' || st2 === 'nháp') return;
-            var entry = item.scores[cId] || item.scores[stuId] || item.scores[parseInt(cId, 10)];
-            if (entry !== undefined && entry !== null) {
-              var val2 = (typeof entry === 'object') ? (entry.score !== undefined ? entry.score : entry.diem) : entry;
-              var note2 = (typeof entry === 'object') ? (entry.note || entry.ghi_chu || '') : '';
-              if (val2 !== undefined && val2 !== null && String(val2).trim() !== '') {
-                list.push({
-                  testName: item.testName || item.ten_bai || item.name || item.title || 'Bài kiểm tra',
-                  term: item.term || item.dot || item.semester || '',
-                  date: item.date || item.ngay || '',
-                  score: String(val2).trim(),
-                  note: note2
-                });
-              }
-            }
-          }
-        });
-      });
-
-      // Loại bỏ trùng lặp nếu có
-      var unique = [];
-      var seen = {};
-      list.forEach(function(it) {
-        var key = (it.testName + '|' + it.date + '|' + it.score).toLowerCase();
-        if (!seen[key]) {
-          seen[key] = true;
-          unique.push(it);
         }
       });
-      return unique;
+    });
+
+    // Loại bỏ bản ghi trùng
+    var unique = [];
+    var seen = {};
+    list.forEach(function(it) {
+      var k = (it.testName + '|' + it.date + '|' + it.score).toUpperCase();
+      if (!seen[k]) {
+        seen[k] = true;
+        unique.push(it);
+      }
+    });
+    return unique;
+  }
+
+  // 2. Tạo HTML cho Mục 3: Kết quả điểm kiểm tra cá nhân
+  function createSection3ScoreCardHtml(stuId, stuName, stuClass) {
+    var cId = padId3(stuId);
+    var scores = collectStudentExamScores(cId);
+
+    var validNums = [];
+    scores.forEach(function(s) {
+      var cleanSc = String(s.score || '').trim().replace(',', '.');
+      if (cleanSc && cleanSc.toLowerCase() !== 'v') {
+        var n = parseFloat(cleanSc);
+        if (!isNaN(n)) validNums.push(n);
+      }
+    });
+
+    var avgText = '—';
+    var rankText = 'Chưa xếp loại';
+    var rankStyle = 'background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;';
+
+    if (validNums.length > 0) {
+      var avg = validNums.reduce(function(a, b) { return a + b; }, 0) / validNums.length;
+      avgText = avg.toFixed(2).replace('.', ',');
+      if (avg >= 8.0) {
+        rankText = 'Giỏi';
+        rankStyle = 'background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;';
+      } else if (avg >= 6.5) {
+        rankText = 'Khá';
+        rankStyle = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
+      } else if (avg >= 5.0) {
+        rankText = 'Trung bình';
+        rankStyle = 'background:#fffbeb;color:#b45309;border:1px solid #fde68a;';
+      } else {
+        rankText = 'Cần cố gắng';
+        rankStyle = 'background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;';
+      }
     }
 
-    // Tạo giao diện Mục 3: Kết quả điểm kiểm tra cá nhân
-    function renderSection3PersonalScoresHtml(stuId, stuName, stuClass) {
-      var cId = formatStudentId(stuId);
-      var scores = getPersonalExamScoresOfStudent(cId);
-
-      var validNums = [];
-      scores.forEach(function(s) {
-        var cleanSc = String(s.score || '').trim().replace(',', '.');
-        if (cleanSc && cleanSc.toLowerCase() !== 'v') {
-          var n = parseFloat(cleanSc);
-          if (!isNaN(n)) validNums.push(n);
-        }
-      });
-
-      var avgText = '—';
-      var rankText = 'Chưa có ĐTB';
-      var rankClass = 'bg-slate-100 text-slate-600 border-slate-200';
-
-      if (validNums.length > 0) {
-        var avg = validNums.reduce(function(a, b) { return a + b; }, 0) / validNums.length;
-        avgText = avg.toFixed(2).replace('.', ',');
-        if (avg >= 8.0) {
-          rankText = 'Giỏi';
-          rankClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        } else if (avg >= 6.5) {
-          rankText = 'Khá';
-          rankClass = 'bg-blue-50 text-blue-700 border-blue-200';
-        } else if (avg >= 5.0) {
-          rankText = 'Trung bình';
-          rankClass = 'bg-amber-50 text-amber-700 border-amber-200';
-        } else {
-          rankText = 'Cần cố gắng';
-          rankClass = 'bg-rose-50 text-rose-700 border-rose-200';
-        }
-      }
-
-      var bodyHtml = '';
-      if (scores.length === 0) {
-        bodyHtml =
-          '<div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-center text-xs text-slate-400 italic">' +
-            'Chưa có điểm bài kiểm tra nào của học sinh này. Bấm vào đây để chuyển sang Bảng điểm lớp.' +
-          '</div>';
-      } else {
-        bodyHtml = '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">' +
-          scores.map(function(sc) {
-            var isV = String(sc.score).toLowerCase() === 'v';
-            var num = parseFloat(String(sc.score).replace(',', '.'));
-            var badgeCol = 'bg-slate-100 text-slate-700 border-slate-200';
-            if (isV) badgeCol = 'bg-rose-50 text-rose-600 border-rose-200';
-            else if (!isNaN(num)) {
-              if (num >= 8) badgeCol = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-              else if (num >= 6.5) badgeCol = 'bg-blue-50 text-blue-700 border-blue-200';
-              else if (num >= 5) badgeCol = 'bg-amber-50 text-amber-700 border-amber-200';
-              else badgeCol = 'bg-rose-50 text-rose-600 border-rose-200';
-            }
-
-            return '<div class="p-3 rounded-2xl bg-slate-50/90 border border-slate-200/80 flex items-center justify-between gap-2">' +
-              '<div>' +
-                '<div class="font-black text-slate-800 text-xs sm:text-sm uppercase">' + sc.testName + '</div>' +
-                '<div class="text-[11px] text-slate-400 font-medium">' +
-                  (sc.term ? (sc.term + (sc.date ? ' · ' : '')) : '') + (sc.date || '') +
-                  (sc.note ? (' · <span class="text-slate-600 italic">' + sc.note + '</span>') : '') +
-                '</div>' +
-              '</div>' +
-              '<div class="px-3 py-1 rounded-xl border font-black text-sm ' + badgeCol + '">' +
-                (isV ? 'Vắng' : sc.score) +
-              '</div>' +
-            '</div>';
-          }).join('') +
+    var bodyHtml = '';
+    if (scores.length === 0) {
+      bodyHtml =
+        '<div style="padding:14px;border-radius:14px;background:#f8fafc;border:1px dashed #cbd5e1;text-align:center;font-size:12px;color:#64748b;font-style:italic;">' +
+          'Chưa có điểm bài kiểm tra nào của học sinh này. Bấm vào đây để chuyển tới Bảng điểm lớp.' +
         '</div>';
-      }
+    } else {
+      bodyHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;">' +
+        scores.map(function(sc) {
+          var isV = String(sc.score).toLowerCase() === 'v';
+          var num = parseFloat(String(sc.score).replace(',', '.'));
+          var pillStyle = 'background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;';
+          if (isV) pillStyle = 'background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;';
+          else if (!isNaN(num)) {
+            if (num >= 8) pillStyle = 'background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;';
+            else if (num >= 6.5) pillStyle = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;';
+            else if (num >= 5) pillStyle = 'background:#fffbeb;color:#b45309;border:1px solid #fde68a;';
+            else pillStyle = 'background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;';
+          }
 
-      var safeClass = String(stuClass || '').replace(/'/g, "\\'");
-      var safeName = String(stuName || '').replace(/'/g, "\\'");
-
-      return '<div onclick="jumpFromProfileToScoreTab(\'' + cId + '\', \'' + safeName + '\', \'' + safeClass + '\')" ' +
-                  'class="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200 space-y-3 cursor-pointer hover:border-indigo-400 transition group">' +
-        '<div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">' +
-          '<h4 class="text-xs sm:text-sm font-black text-slate-800 uppercase flex items-center gap-2">' +
-            '<i class="fa-solid fa-star text-indigo-600"></i>' +
-            '<span>3. ĐIỂM KIỂM TRA CÁ NHÂN (' + scores.length + ' BÀI)</span>' +
-          '</h4>' +
-          '<div class="flex items-center gap-2">' +
-            (validNums.length > 0
-              ? '<span class="px-2.5 py-1 rounded-xl border text-xs font-black ' + rankClass + '">ĐTB: ' + avgText + ' · ' + rankText + '</span>'
-              : '') +
-            '<span class="px-2.5 py-1 rounded-xl bg-indigo-50 group-hover:bg-indigo-600 text-indigo-700 group-hover:text-white text-xs font-bold transition inline-flex items-center gap-1">' +
-              '<span>Mở Bảng điểm</span>' +
-              '<i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>' +
-            '</span>' +
-          '</div>' +
-        '</div>' +
-        bodyHtml +
+          return '<div style="padding:10px 14px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;">' +
+            '<div>' +
+              '<div style="font-weight:900;color:#0f172a;font-size:13px;text-transform:uppercase;">' + sc.testName + '</div>' +
+              '<div style="font-size:11px;color:#64748b;margin-top:2px;">' +
+                (sc.term ? (sc.term + (sc.date ? ' · ' : '')) : '') + (sc.date || '') +
+                (sc.note ? (' · <i style="color:#475569;">' + sc.note + '</i>') : '') +
+              '</div>' +
+            '</div>' +
+            '<div style="padding:4px 12px;border-radius:10px;font-weight:900;font-size:14px;' + pillStyle + '">' +
+              (isV ? 'Vắng' : sc.score) +
+            '</div>' +
+          '</div>';
+        }).join('') +
       '</div>';
     }
 
-    // Khi bấm vào khung Điểm kiểm tra -> chuyển tới Tab Bảng Điểm Lớp và lọc đúng học sinh đó
-    function jumpFromProfileToScoreTab(stuId, stuName, stuClass) {
-      var cId = formatStudentId(stuId);
-      var role = currentUser ? String(currentUser.role || '').toUpperCase() : 'GUEST';
+    var safeClass = String(stuClass || '').replace(/'/g, "\\'");
+    var safeName = String(stuName || '').replace(/'/g, "\\'");
 
-      // Đóng modal Hồ sơ chi tiết nếu đang mở
-      Array.from(document.querySelectorAll('.fixed.inset-0')).forEach(function(m) {
-        if ((m.textContent || '').includes('TÌNH TRẠNG HỌC PHÍ')) {
-          m.classList.add('hidden');
-        }
+    return '<div onclick="window.__openStudentScoreTab(\'' + cId + '\', \'' + safeName + '\', \'' + safeClass + '\')" ' +
+                'style="background:#ffffff;padding:20px 24px;border-radius:24px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,0.03);margin-bottom:20px;cursor:pointer;transition:all 0.2s;" ' +
+                'onmouseover="this.style.borderColor=\'#6366f1\'" onmouseout="this.style.borderColor=\'#e2e8f0\'">' +
+      '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #f1f5f9;padding-bottom:12px;margin-bottom:14px;">' +
+        '<div style="font-size:14px;font-weight:900;color:#0f172a;text-transform:uppercase;display:flex;align-items:center;gap:8px;">' +
+          '<i class="fa-solid fa-graduation-cap" style="color:#4f46e5;"></i>' +
+          '<span>3. KẾT QUẢ ĐIỂM KIỂM TRA CÁ NHÂN (' + scores.length + ' BÀI)</span>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          (validNums.length > 0
+            ? '<span style="padding:4px 10px;border-radius:10px;font-size:12px;font-weight:900;' + rankStyle + '">ĐTB: ' + avgText + ' (' + rankText + ')</span>'
+            : '') +
+          '<span style="padding:5px 12px;border-radius:10px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:800;display:inline-flex;align-items:center;gap:6px;">' +
+            '<span>Xem tại Bảng điểm</span>' +
+            '<i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;"></i>' +
+          '</span>' +
+        '</div>' +
+      '</div>' +
+      bodyHtml +
+    '</div>';
+  }
+
+  // 3. Hàm nhảy từ Hồ sơ sang Tab Bảng điểm lớp & lọc đúng học sinh đó
+  window.__openStudentScoreTab = function(stuId, stuName, stuClass) {
+    var cId = padId3(stuId);
+    var role = (window.currentUser && window.currentUser.role) ? String(window.currentUser.role).toUpperCase() : 'GUEST';
+
+    // Đóng modal Hồ sơ chi tiết
+    Array.from(document.querySelectorAll('.fixed')).forEach(function(m) {
+      var t = (m.textContent || '').toUpperCase();
+      if (t.includes('HỒ SƠ CHI TIẾT HỌC SINH') || t.includes('TÌNH TRẠNG HỌC PHÍ')) {
+        m.classList.add('hidden');
+      }
+    });
+
+    if (typeof window.switchTab === 'function') window.switchTab('hoso');
+
+    setTimeout(function() {
+      var btnScore = Array.from(document.querySelectorAll('button')).find(function(b) {
+        return (b.textContent || '').toUpperCase().includes('BẢNG ĐIỂM LỚP');
       });
-
-      if (typeof switchTab === 'function') switchTab('hoso');
+      if (btnScore) btnScore.click();
 
       setTimeout(function() {
-        var btnScore = Array.from(document.querySelectorAll('button')).find(function(b) {
-          return (b.textContent || '').toUpperCase().includes('BẢNG ĐIỂM LỚP');
-        });
-        if (btnScore) btnScore.click();
+        if (stuClass) {
+          Array.from(document.querySelectorAll('select')).forEach(function(sel) {
+            var opt = Array.from(sel.options).find(function(o) {
+              return o.value === stuClass || (o.text || '').includes(stuClass);
+            });
+            if (opt) {
+              sel.value = opt.value;
+              sel.dispatchEvent(new Event('change'));
+            }
+          });
+        }
 
         setTimeout(function() {
-          if (stuClass) {
-            Array.from(document.querySelectorAll('select')).forEach(function(sel) {
-              var opt = Array.from(sel.options).find(function(o) {
-                return o.value === stuClass || (o.text || '').includes(stuClass);
-              });
-              if (opt) {
-                sel.value = opt.value;
-                sel.dispatchEvent(new Event('change'));
-              }
-            });
-          }
-
-          setTimeout(function() {
-            var searchInp = document.querySelector('input[placeholder*="Tìm học sinh trong bảng điểm"]');
-            if (searchInp) {
-              searchInp.value = cId;
-              searchInp.dispatchEvent(new Event('input', { bubbles: true }));
-              searchInp.dispatchEvent(new Event('keyup', { bubbles: true }));
-              if (role === 'GUEST') {
-                searchInp.readOnly = true;
-                searchInp.disabled = true;
-              }
+          var searchInp = document.querySelector('input[placeholder*="Tìm học sinh trong bảng điểm"]');
+          if (searchInp) {
+            searchInp.value = cId;
+            searchInp.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInp.dispatchEvent(new Event('keyup', { bubbles: true }));
+            if (role === 'GUEST') {
+              searchInp.readOnly = true;
+              searchInp.disabled = true;
             }
-          }, 120);
-        }, 100);
-      }, 80);
-    }
-
-    // Xuất PDF toàn bộ 5 phần của Học sinh (Chuẩn A4 gọn gàng)
-    function exportStudentProfileFullPDF(stuId) {
-      var cId = formatStudentId(stuId);
-      var stu = (appData.students || []).find(function(s) {
-        return formatStudentId(s.id) === cId;
-      });
-      if (!stu) return showToast('Không tìm thấy thông tin học sinh ' + cId + '!', true);
-
-      var curMonth = typeof getCurrentMonthStr === 'function' ? getCurrentMonthStr() : '';
-      var debtObj = typeof getStudentDebtDetails === 'function'
-        ? getStudentDebtDetails(stu, curMonth)
-        : { totalDebt: 0, unpaidMonths: [], details: [] };
-
-      var qrImg = document.querySelector('img[src*="vietqr.io"]');
-      var qrSrc = qrImg ? qrImg.src : '';
-      if (!qrSrc && debtObj.totalDebt > 0) {
-        var info = encodeURIComponent('HP ' + cId + ' ' + removeVietnameseTones(stu.name));
-        qrSrc = 'https://img.vietqr.io/image/MB-0981864442-compact2.png?amount=' + debtObj.totalDebt + '&addInfo=' + info + '&accountName=PHAN%20HOAI%20VY';
-      }
-
-      // Điểm cá nhân
-      var exams = getPersonalExamScoresOfStudent(cId);
-      var nums = [];
-      exams.forEach(function(e) {
-        var n = parseFloat(String(e.score || '').replace(',', '.'));
-        if (!isNaN(n)) nums.push(n);
-      });
-      var avgStr = nums.length > 0
-        ? (nums.reduce(function(a, b) { return a + b; }, 0) / nums.length).toFixed(2).replace('.', ',')
-        : '—';
-
-      // Giao dịch đã đóng
-      var payments = (appData.tuition || []).filter(function(p) {
-        return formatStudentId(p.studentId) === cId;
-      });
-
-      // Điểm danh
-      var atts = (appData.attendance || []).filter(function(a) {
-        return formatStudentId(a.studentId) === cId;
-      });
-      var counts = { 'Có mặt': 0, 'Báo bù': 0, 'Học bù': 0, 'Vắng CP': 0, 'Vắng KP': 0 };
-      var attByMonth = {};
-      atts.forEach(function(a) {
-        var st = a.status || 'Có mặt';
-        if (counts[st] !== undefined) counts[st]++;
-        var dStr = toStandardDateStr(a.date);
-        var p = dStr.split('-');
-        var mKey = (p.length >= 2) ? ('Tháng ' + parseInt(p[1], 10) + '/' + p[0]) : 'Khác';
-        var shortD = (p.length === 3) ? (p[2] + '/' + p[1]) : dStr;
-        if (!attByMonth[mKey]) attByMonth[mKey] = [];
-        attByMonth[mKey].push({ d: shortD, st: st, note: a.note || '' });
-      });
-
-      var examTableHtml = exams.length === 0
-        ? '<div class="empty">Chưa có điểm bài kiểm tra nào.</div>'
-        : '<table><thead><tr><th style="width:36px;text-align:center;">STT</th><th>Bài kiểm tra</th><th>Đợt / Ngày</th><th>Điểm số</th><th>Ghi chú</th></tr></thead><tbody>' +
-          exams.map(function(e, i) {
-            return '<tr><td style="text-align:center;">' + (i + 1) + '</td><td style="font-weight:700;">' + e.testName + '</td><td>' + (e.term || '') + (e.date ? (' (' + e.date + ')') : '') + '</td><td style="font-weight:800;color:#047857;">' + e.score + '</td><td>' + (e.note || '-') + '</td></tr>';
-          }).join('') + '</tbody></table>';
-
-      var payTableHtml = payments.length === 0
-        ? '<div class="empty">Chưa có giao dịch đóng học phí.</div>'
-        : '<table><thead><tr><th style="width:36px;text-align:center;">STT</th><th>Ngày đóng</th><th>Đóng cho tháng</th><th>Số tiền</th><th>Hình thức / Ghi chú</th></tr></thead><tbody>' +
-          payments.map(function(p, i) {
-            return '<tr><td style="text-align:center;">' + (i + 1) + '</td><td>' + (p.date || '-') + '</td><td style="font-weight:700;color:#1d4ed8;">' + (p.month || '-') + '</td><td style="font-weight:800;color:#047857;">' + formatMoney(p.amount || 0) + ' đ</td><td>' + (p.method || p.note || 'Tiền mặt') + '</td></tr>';
-          }).join('') + '</tbody></table>';
-
-      var mKeys = Object.keys(attByMonth);
-      var attGridHtml = mKeys.length === 0
-        ? '<div class="empty">Chưa có dữ liệu điểm danh.</div>'
-        : '<div class="att-grid">' + mKeys.map(function(mk) {
-            var arr = attByMonth[mk];
-            var chips = arr.map(function(x) {
-              var bg = '#ecfdf5'; var col = '#047857';
-              if (x.st === 'Vắng KP') { bg = '#fef2f2'; col = '#dc2626'; }
-              else if (x.st === 'Vắng CP') { bg = '#fffbeb'; col = '#b45309'; }
-              else if (x.st === 'Học bù') { bg = '#f3e8ff'; col = '#7e22ce'; }
-              else if (x.st === 'Báo bù') { bg = '#eff6ff'; col = '#1d4ed8'; }
-              return '<span class="chip" style="background:' + bg + ';color:' + col + ';"><b>' + x.d + ':</b> ' + x.st + (x.note ? (' (' + x.note + ')') : '') + '</span>';
-            }).join('');
-            return '<div class="att-box"><div class="att-m">' + mk.toUpperCase() + ' (' + arr.length + ' buổi)</div><div class="chips">' + chips + '</div></div>';
-          }).join('') + '</div>';
-
-      var debtDetailStr = '';
-      if (debtObj.totalDebt > 0) {
-        if (Array.isArray(debtObj.unpaidMonths) && debtObj.unpaidMonths.length > 0) {
-          debtDetailStr = debtObj.unpaidMonths.map(function(m) {
-            return (m.month || m) + (m.amount ? (': ' + formatMoney(m.amount) + ' đ') : '');
-          }).join(' | ');
-        } else if (debtObj.detailStr || debtObj.text) {
-          debtDetailStr = debtObj.detailStr || debtObj.text;
-        }
-      }
-
-      var todayVN = new Date().toLocaleDateString('vi-VN');
-      var w = window.open('', '_blank', 'width=920,height=860');
-      if (!w) return showToast('Vui lòng bật cho phép Pop-up trên trình duyệt để xuất PDF!', true);
-
-      var html = '<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8">' +
-        '<title>Ho_So_Hoc_Sinh_' + cId + '_' + (stu.name || '') + '</title>' +
-        '<style>' +
-          '@page { size: A4 portrait; margin: 9mm 11mm; }' +
-          '* { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }' +
-          'body { margin: 0; padding: 0; color: #0f172a; font-size: 11px; line-height: 1.35; background: #fff; }' +
-          '.top { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #059669; padding-bottom: 5px; margin-bottom: 8px; }' +
-          '.top-t { font-size: 14px; font-weight: 900; color: #065f46; text-transform: uppercase; }' +
-          '.top-s { font-size: 10px; color: #64748b; font-weight: 600; }' +
-          '.sec { border: 1px solid #cbd5e1; border-radius: 8px; padding: 7px 9px; margin-bottom: 7px; page-break-inside: avoid; }' +
-          '.sec-h { font-size: 10.5px; font-weight: 900; text-transform: uppercase; color: #0f172a; border-bottom: 1px dashed #e2e8f0; padding-bottom: 3px; margin-bottom: 5px; display: flex; justify-content: space-between; }' +
-          '.grid6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }' +
-          '.cell { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 6px; }' +
-          '.lb { font-size: 9px; color: #64748b; font-weight: 600; }' +
-          '.val { font-size: 11px; font-weight: 800; color: #0f172a; }' +
-          '.fee-box { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; background: ' + (debtObj.totalDebt > 0 ? '#fff1f2' : '#ecfdf5') + '; border: 1px solid ' + (debtObj.totalDebt > 0 ? '#fecdd3' : '#a7f3d0') + '; }' +
-          '.fee-num { font-size: 16px; font-weight: 900; color: ' + (debtObj.totalDebt > 0 ? '#e11d48' : '#047857') + '; margin: 1px 0; }' +
-          '.qr { background: #fff; padding: 3px; border-radius: 6px; border: 1px solid #e2e8f0; text-align: center; }' +
-          '.qr img { width: 84px; height: 84px; display: block; margin: 0 auto; object-fit: contain; }' +
-          'table { width: 100%; border-collapse: collapse; font-size: 10.5px; }' +
-          'th { background: #f1f5f9; color: #475569; font-weight: 800; text-align: left; padding: 3.5px 6px; border: 1px solid #cbd5e1; font-size: 9.5px; text-transform: uppercase; }' +
-          'td { padding: 3.5px 6px; border: 1px solid #cbd5e1; }' +
-          '.empty { font-style: italic; color: #64748b; font-size: 10.5px; }' +
-          '.att-sum { display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px; font-weight: 700; margin-bottom: 5px; }' +
-          '.att-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }' +
-          '.att-box { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 6px; background: #fcfcfd; }' +
-          '.att-m { font-size: 10px; font-weight: 800; color: #065f46; margin-bottom: 3px; }' +
-          '.chips { display: flex; flex-wrap: wrap; gap: 3px; }' +
-          '.chip { font-size: 9.5px; padding: 1.5px 4.5px; border-radius: 4px; }' +
-          '.no-print { text-align: right; margin-bottom: 6px; }' +
-          '.btn-p { background: #e11d48; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-weight: 800; cursor: pointer; font-size: 11.5px; }' +
-          '@media print { .no-print { display: none !important; } }' +
-        '</style></head><body>' +
-        '<div class="no-print"><button class="btn-p" onclick="window.print()">🖨️ Lưu file PDF / In hồ sơ</button></div>' +
-        '<div class="top">' +
-          '<div><div class="top-t">LỚP TOÁN THẦY VY — PHIẾU HỒ SƠ CHI TIẾT HỌC SINH</div><div class="top-s">Giáo viên: Thầy Phan Hoài Vy · Ngày xuất: ' + todayVN + '</div></div>' +
-          '<div style="font-weight:900;font-size:12px;">Mã HS: <span style="color:#059669;">' + cId + '</span></div>' +
-        '</div>' +
-
-        '<div class="sec"><div class="sec-h"><span>1. THÔNG TIN HỌC SINH</span></div><div class="grid6">' +
-          '<div class="cell"><div class="lb">Họ và Tên</div><div class="val">' + (stu.name || '-') + '</div></div>' +
-          '<div class="cell"><div class="lb">Mã Học Sinh</div><div class="val" style="color:#059669;">' + cId + '</div></div>' +
-          '<div class="cell"><div class="lb">Lớp / Khối</div><div class="val" style="color:#1d4ed8;">' + (stu.className || stu.grade || '-') + '</div></div>' +
-          '<div class="cell"><div class="lb">Trường Học</div><div class="val">' + (stu.school || '-') + '</div></div>' +
-          '<div class="cell"><div class="lb">SĐT Học Sinh</div><div class="val">' + formatPhoneDisplay(stu.phone) + '</div></div>' +
-          '<div class="cell"><div class="lb">SĐT Phụ Huynh</div><div class="val">' + formatPhoneDisplay(stu.parentPhone) + '</div></div>' +
-        '</div></div>' +
-
-        '<div class="sec"><div class="sec-h"><span>2. TÌNH TRẠNG HỌC PHÍ HIỆN TẠI</span></div><div class="fee-box">' +
-          '<div>' +
-            '<div style="font-size:9.5px;font-weight:800;color:' + (debtObj.totalDebt > 0 ? '#be123c' : '#047857') + ';">' + (debtObj.totalDebt > 0 ? ('HỌC PHÍ CÒN NỢ TÍNH ĐẾN ' + curMonth) : 'ĐÃ ĐÓNG ĐỦ HỌC PHÍ') + '</div>' +
-            '<div class="fee-num">' + (debtObj.totalDebt > 0 ? (formatMoney(debtObj.totalDebt) + ' đ') : '0 đ (Hoàn thành)') + '</div>' +
-            (debtDetailStr ? ('<div style="font-size:10px;font-weight:700;color:#9f1239;">Chi tiết: ' + debtDetailStr + '</div>') : '') +
-            '<div style="font-size:10px;color:#334155;">STK: <b style="color:#1d4ed8;">0981864442</b> - MB Bank (<b>PHAN HOAI VY</b>)</div>' +
-          '</div>' +
-          (qrSrc ? ('<div class="qr"><img src="' + qrSrc + '" alt="QR"><div style="font-size:8px;color:#64748b;">Quét QR đóng học phí</div></div>') : '') +
-        '</div></div>' +
-
-        '<div class="sec"><div class="sec-h"><span>3. ĐIỂM KIỂM TRA CÁ NHÂN (' + exams.length + ' BÀI)</span><span>Điểm TB: <b style="color:#1d4ed8;">' + avgStr + '</b></span></div>' + examTableHtml + '</div>' +
-
-        '<div class="sec"><div class="sec-h"><span>4. CÁC GIAO DỊCH ĐÃ ĐÓNG (' + payments.length + ' LẦN)</span></div>' + payTableHtml + '</div>' +
-
-        '<div class="sec"><div class="sec-h"><span>5. CHI TIẾT ĐIỂM DANH (' + atts.length + ' BUỔI)</span></div>' +
-          '<div class="att-sum">' +
-            '<span style="color:#047857;">● Có mặt: ' + counts['Có mặt'] + '</span>' +
-            '<span style="color:#1d4ed8;">● Báo bù: ' + counts['Báo bù'] + '</span>' +
-            '<span style="color:#7e22ce;">● Học bù: ' + counts['Học bù'] + '</span>' +
-            '<span style="color:#b45309;">● Vắng CP: ' + counts['Vắng CP'] + '</span>' +
-            '<span style="color:#dc2626;">● Vắng KP: ' + counts['Vắng KP'] + '</span>' +
-          '</div>' + attGridHtml +
-        '</div>' +
-        '<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 350); };<\/script>' +
-      '</body></html>';
-
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
-    }
-
-    // Quét chính xác từ thẻ tiêu đề nhỏ nhất (không bao giờ lấy nhầm thẻ #app ngoài cùng)
-    function applyScoreAndPdfToProfileViews() {
-      // Tìm tất cả các thẻ tiêu đề trực tiếp có chữ "LỊCH SỬ CÁC LẦN ĐÓNG TIỀN"
-      var candidates = Array.from(document.querySelectorAll('h2, h3, h4, h5, div, span')).filter(function(el) {
-        var t = (el.textContent || '').trim();
-        return (t.includes('3. LỊCH SỬ CÁC LẦN ĐÓNG TIỀN') || t.includes('4. LỊCH SỬ CÁC LẦN ĐÓNG TIỀN')) &&
-               el.querySelectorAll('div, table').length === 0;
-      });
-
-      candidates.forEach(function(paymentHeading) {
-        // Tìm đúng thẻ Card trắng bao quanh bảng Lịch sử đóng tiền
-        var paymentCard = paymentHeading.parentElement;
-        while (paymentCard && paymentCard.parentElement) {
-          var cls = String(paymentCard.className || '');
-          if (cls.includes('bg-white') && cls.includes('rounded') && paymentCard.querySelector('table')) {
-            break;
           }
-          paymentCard = paymentCard.parentElement;
-        }
-        if (!paymentCard || !paymentCard.parentElement) return;
+        }, 120);
+      }, 100);
+    }, 80);
+  };
 
-        var profileBody = paymentCard.parentElement;
-
-        // Tìm Mã Học Sinh của hồ sơ này:
-        var stuId = '';
-        // Cách 1: Đọc từ thanh tiêu đề Modal (VD: "HỒ SƠ CHI TIẾT HỌC SINH: KỲ ANH (095)")
-        var modalRoot = profileBody.closest('.fixed') || document.body;
-        var titleBanner = Array.from(modalRoot.querySelectorAll('h2, h3, h4, div, span')).find(function(el) {
-          var t = (el.textContent || '').trim();
-          return t.includes('HỒ SƠ CHI TIẾT HỌC SINH:') && el.children.length <= 2;
-        });
-        if (titleBanner) {
-          var m = (titleBanner.textContent || '').match(/\(([0-9]+)\)/);
-          if (m && m[1]) stuId = formatStudentId(m[1]);
-        }
-
-        // Cách 2: Đọc từ ô "Mã Học Sinh" trong Mục 1
-        if (!stuId) {
-          var codeLb = Array.from(profileBody.querySelectorAll('div, span, p')).find(function(el) {
-            return el.children.length === 0 && (el.textContent || '').trim() === 'Mã Học Sinh';
-          });
-          if (codeLb && codeLb.nextElementSibling) {
-            stuId = formatStudentId((codeLb.nextElementSibling.textContent || '').trim());
-          }
-        }
-        if (!stuId) return;
-
-        var stuObj = (appData.students || []).find(function(s) { return formatStudentId(s.id) === stuId; });
-        var stuName = stuObj ? stuObj.name : '';
-        var stuClass = stuObj ? (stuObj.className || stuObj.grade) : '';
-
-        // 1. GẮN NÚT "XUẤT PDF HỒ SƠ" NGAY CẠNH NÚT "SỬA THÔNG TIN HS" (HOẶC TRONG MỤC 1)
-        var editBtn = Array.from(modalRoot.querySelectorAll('button')).find(function(b) {
-          return (b.textContent || '').includes('Sửa thông tin HS');
-        });
-        if (editBtn && editBtn.parentElement) {
-          var existingPdfBtn = editBtn.parentElement.querySelector('.btn-export-profile-pdf');
-          if (!existingPdfBtn) {
-            existingPdfBtn = document.createElement('button');
-            existingPdfBtn.type = 'button';
-            existingPdfBtn.className = 'btn-export-profile-pdf px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-sm transition cursor-pointer inline-flex items-center gap-1.5 mr-2';
-            existingPdfBtn.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Xuất PDF';
-            editBtn.parentElement.insertBefore(existingPdfBtn, editBtn);
-          }
-          existingPdfBtn.onclick = function(e) {
-            e.stopPropagation();
-            exportStudentProfileFullPDF(stuId);
-          };
-        }
-
-        // Thêm luôn 1 nút Xuất PDF ở góc phải tiêu đề "1. THÔNG TIN HỌC SINH" (dành cho cả chế độ Học sinh tra cứu không có nút Sửa)
-        var sec1Heading = Array.from(profileBody.querySelectorAll('h2, h3, h4, div, span')).find(function(el) {
-          return (el.textContent || '').trim().includes('1. THÔNG TIN HỌC SINH') && el.querySelectorAll('div').length === 0;
-        });
-        if (sec1Heading && sec1Heading.parentElement) {
-          var sec1Card = sec1Heading.closest('.bg-white');
-          if (sec1Card && !sec1Card.querySelector('.btn-export-profile-pdf-sec1')) {
-            sec1Heading.parentElement.style.display = 'flex';
-            sec1Heading.parentElement.style.alignItems = 'center';
-            sec1Heading.parentElement.style.justifyContent = 'space-between';
-            var btnSec1 = document.createElement('button');
-            btnSec1.type = 'button';
-            btnSec1.className = 'btn-export-profile-pdf-sec1 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-xs transition cursor-pointer inline-flex items-center gap-1.5';
-            btnSec1.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Xuất PDF toàn bộ hồ sơ';
-            btnSec1.onclick = function(e) {
-              e.stopPropagation();
-              exportStudentProfileFullPDF(stuId);
-            };
-            sec1Heading.parentElement.appendChild(btnSec1);
-          }
-        }
-
-        // 2. ĐỔI SỐ THỨ TỰ 3 -> 4 (LỊCH SỬ ĐÓNG TIỀN) VÀ 4 -> 5 (CHI TIẾT ĐIỂM DANH)
-        if (paymentHeading.innerHTML.includes('3. LỊCH SỬ')) {
-          paymentHeading.innerHTML = paymentHeading.innerHTML.replace('3. LỊCH SỬ', '4. LỊCH SỬ');
-        }
-        Array.from(profileBody.querySelectorAll('h2, h3, h4, div, span')).forEach(function(el) {
-          if (el.querySelectorAll('div').length === 0 && el.innerHTML.includes('4. CHI TIẾT ĐIỂM DANH')) {
-            el.innerHTML = el.innerHTML.replace('4. CHI TIẾT ĐIỂM DANH', '5. CHI TIẾT ĐIỂM DANH');
-          }
-        });
-
-        // 3. CHÈN KHUNG "3. ĐIỂM KIỂM TRA CÁ NHÂN" VÀO NGAY TRƯỚC THẺ LỊCH SỬ ĐÓNG TIỀN
-        var oldInjected = profileBody.querySelector('.injected-personal-score-card');
-        if (oldInjected && oldInjected.getAttribute('data-stuid') === stuId) return;
-        if (oldInjected) oldInjected.remove();
-
-        var scoreDiv = document.createElement('div');
-        scoreDiv.className = 'injected-personal-score-card';
-        scoreDiv.setAttribute('data-stuid', stuId);
-        scoreDiv.innerHTML = renderSection3PersonalScoresHtml(stuId, stuName, stuClass);
-
-        profileBody.insertBefore(scoreDiv, paymentCard);
-      });
-    }
-
-    // Bắt trực tiếp vào hàm mở Hồ sơ chi tiết của hệ thống để chạy ngay lập tức khi bấm mở
-    var _origOpenProfileStaff = window.openFullStudentProfileStaff;
-    if (typeof _origOpenProfileStaff === 'function') {
-      window.openFullStudentProfileStaff = function(id) {
-        _origOpenProfileStaff.apply(this, arguments);
-        setTimeout(applyScoreAndPdfToProfileViews, 50);
-        setTimeout(applyScoreAndPdfToProfileViews, 200);
-      };
-    }
-
-    var _profileCompleteObserver = new MutationObserver(function() {
-      applyScoreAndPdfToProfileViews();
+  // 4. Hàm Xuất PDF toàn bộ 5 phần của Học sinh (Chuẩn A4 gọn gàng)
+  window.__exportFullStudentPdfNow = function(stuId) {
+    var cId = padId3(stuId);
+    var d = window.appData || {};
+    var stu = (d.students || []).find(function(s) {
+      return padId3(s.id) === cId;
     });
-    _profileCompleteObserver.observe(document.body, { childList: true, subtree: true });
 
-    setTimeout(applyScoreAndPdfToProfileViews, 300);
+    // Dự phòng nếu chưa tìm thấy trong appData.students thì đọc ngay trên giao diện
+    if (!stu) {
+      stu = { id: cId, name: 'Học sinh ' + cId, className: '', school: '-', phone: '-', parentPhone: '-' };
+    }
 
-    
-  </script>
+    var curMonth = (typeof window.getCurrentMonthStr === 'function') ? window.getCurrentMonthStr() : 'Tháng 10/2026';
+    var debtObj = (typeof window.getStudentDebtDetails === 'function')
+      ? window.getStudentDebtDetails(stu, curMonth)
+      : { totalDebt: 0, unpaidMonths: [], details: [] };
+
+    var qrImg = document.querySelector('img[src*="vietqr.io"]');
+    var qrSrc = qrImg ? qrImg.src : '';
+    if (!qrSrc && debtObj.totalDebt > 0) {
+      qrSrc = 'https://img.vietqr.io/image/MB-0981864442-compact2.png?amount=' + debtObj.totalDebt + '&addInfo=' + encodeURIComponent('HP ' + cId) + '&accountName=PHAN%20HOAI%20VY';
+    }
+
+    var exams = collectStudentExamScores(cId);
+    var nums = [];
+    exams.forEach(function(e) {
+      var n = parseFloat(String(e.score || '').replace(',', '.'));
+      if (!isNaN(n)) nums.push(n);
+    });
+    var avgStr = nums.length > 0
+      ? (nums.reduce(function(a, b) { return a + b; }, 0) / nums.length).toFixed(2).replace('.', ',')
+      : '—';
+
+    var payments = (d.tuition || []).filter(function(p) {
+      return padId3(p.studentId) === cId;
+    });
+
+    var atts = (d.attendance || []).filter(function(a) {
+      return padId3(a.studentId) === cId;
+    });
+    var counts = { 'Có mặt': 0, 'Báo bù': 0, 'Học bù': 0, 'Vắng CP': 0, 'Vắng KP': 0 };
+    var attByMonth = {};
+    atts.forEach(function(a) {
+      var st = a.status || 'Có mặt';
+      if (counts[st] !== undefined) counts[st]++;
+      var dStr = (typeof window.toStandardDateStr === 'function') ? window.toStandardDateStr(a.date) : String(a.date || '');
+      var p = dStr.split('-');
+      var mKey = (p.length >= 2) ? ('Tháng ' + parseInt(p[1], 10) + '/' + p[0]) : 'Khác';
+      var shortD = (p.length === 3) ? (p[2] + '/' + p[1]) : dStr;
+      if (!attByMonth[mKey]) attByMonth[mKey] = [];
+      attByMonth[mKey].push({ d: shortD, st: st, note: a.note || '' });
+    });
+
+    var examTableHtml = exams.length === 0
+      ? '<div class="empty">Chưa có điểm bài kiểm tra nào.</div>'
+      : '<table><thead><tr><th style="width:36px;text-align:center;">STT</th><th>Bài kiểm tra</th><th>Đợt / Ngày</th><th>Điểm số</th><th>Ghi chú</th></tr></thead><tbody>' +
+        exams.map(function(e, i) {
+          return '<tr><td style="text-align:center;">' + (i + 1) + '</td><td style="font-weight:700;">' + e.testName + '</td><td>' + (e.term || '') + (e.date ? (' (' + e.date + ')') : '') + '</td><td style="font-weight:800;color:#047857;">' + e.score + '</td><td>' + (e.note || '-') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+
+    var payTableHtml = payments.length === 0
+      ? '<div class="empty">Chưa có giao dịch đóng học phí.</div>'
+      : '<table><thead><tr><th style="width:36px;text-align:center;">STT</th><th>Ngày đóng</th><th>Đóng cho tháng</th><th>Số tiền</th><th>Hình thức / Ghi chú</th></tr></thead><tbody>' +
+        payments.map(function(p, i) {
+          return '<tr><td style="text-align:center;">' + (i + 1) + '</td><td>' + (p.date || '-') + '</td><td style="font-weight:700;color:#1d4ed8;">' + (p.month || '-') + '</td><td style="font-weight:800;color:#047857;">' + fmtMoneyVN(p.amount || 0) + ' đ</td><td>' + (p.method || p.note || 'Tiền mặt') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+
+    var mKeys = Object.keys(attByMonth);
+    var attGridHtml = mKeys.length === 0
+      ? '<div class="empty">Chưa có dữ liệu điểm danh.</div>'
+      : '<div class="att-grid">' + mKeys.map(function(mk) {
+          var arr = attByMonth[mk];
+          var chips = arr.map(function(x) {
+            var bg = '#ecfdf5'; var col = '#047857';
+            if (x.st === 'Vắng KP') { bg = '#fef2f2'; col = '#dc2626'; }
+            else if (x.st === 'Vắng CP') { bg = '#fffbeb'; col = '#b45309'; }
+            else if (x.st === 'Học bù') { bg = '#f3e8ff'; col = '#7e22ce'; }
+            else if (x.st === 'Báo bù') { bg = '#eff6ff'; col = '#1d4ed8'; }
+            return '<span class="chip" style="background:' + bg + ';color:' + col + ';"><b>' + x.d + ':</b> ' + x.st + (x.note ? (' (' + x.note + ')') : '') + '</span>';
+          }).join('');
+          return '<div class="att-box"><div class="att-m">' + mk.toUpperCase() + ' (' + arr.length + ' buổi)</div><div class="chips">' + chips + '</div></div>';
+        }).join('') + '</div>';
+
+    var debtDetailStr = '';
+    if (debtObj.totalDebt > 0) {
+      if (Array.isArray(debtObj.unpaidMonths) && debtObj.unpaidMonths.length > 0) {
+        debtDetailStr = debtObj.unpaidMonths.map(function(m) {
+          return (m.month || m) + (m.amount ? (': ' + fmtMoneyVN(m.amount) + ' đ') : '');
+        }).join(' | ');
+      } else if (debtObj.detailStr || debtObj.text) {
+        debtDetailStr = debtObj.detailStr || debtObj.text;
+      }
+    }
+
+    var phoneStu = (typeof window.formatPhoneDisplay === 'function') ? window.formatPhoneDisplay(stu.phone) : (stu.phone || '-');
+    var phonePar = (typeof window.formatPhoneDisplay === 'function') ? window.formatPhoneDisplay(stu.parentPhone) : (stu.parentPhone || '-');
+    var todayVN = new Date().toLocaleDateString('vi-VN');
+
+    var w = window.open('', '_blank', 'width=920,height=860');
+    if (!w) {
+      alert('Vui lòng cho phép mở cửa sổ Pop-up trên trình duyệt để xuất PDF!');
+      return;
+    }
+
+    var html = '<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8">' +
+      '<title>Ho_So_Hoc_Sinh_' + cId + '_' + (stu.name || '') + '</title>' +
+      '<style>' +
+        '@page { size: A4 portrait; margin: 9mm 11mm; }' +
+        '* { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }' +
+        'body { margin: 0; padding: 0; color: #0f172a; font-size: 11px; line-height: 1.35; background: #fff; }' +
+        '.top { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #059669; padding-bottom: 5px; margin-bottom: 8px; }' +
+        '.top-t { font-size: 14px; font-weight: 900; color: #065f46; text-transform: uppercase; }' +
+        '.top-s { font-size: 10px; color: #64748b; font-weight: 600; }' +
+        '.sec { border: 1px solid #cbd5e1; border-radius: 8px; padding: 7px 9px; margin-bottom: 7px; page-break-inside: avoid; }' +
+        '.sec-h { font-size: 10.5px; font-weight: 900; text-transform: uppercase; color: #0f172a; border-bottom: 1px dashed #e2e8f0; padding-bottom: 3px; margin-bottom: 5px; display: flex; justify-content: space-between; }' +
+        '.grid6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }' +
+        '.cell { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 6px; }' +
+        '.lb { font-size: 9px; color: #64748b; font-weight: 600; }' +
+        '.val { font-size: 11px; font-weight: 800; color: #0f172a; }' +
+        '.fee-box { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; background: ' + (debtObj.totalDebt > 0 ? '#fff1f2' : '#ecfdf5') + '; border: 1px solid ' + (debtObj.totalDebt > 0 ? '#fecdd3' : '#a7f3d0') + '; }' +
+        '.fee-num { font-size: 16px; font-weight: 900; color: ' + (debtObj.totalDebt > 0 ? '#e11d48' : '#047857') + '; margin: 1px 0; }' +
+        '.qr { background: #fff; padding: 3px; border-radius: 6px; border: 1px solid #e2e8f0; text-align: center; }' +
+        '.qr img { width: 84px; height: 84px; display: block; margin: 0 auto; object-fit: contain; }' +
+        'table { width: 100%; border-collapse: collapse; font-size: 10.5px; }' +
+        'th { background: #f1f5f9; color: #475569; font-weight: 800; text-align: left; padding: 3.5px 6px; border: 1px solid #cbd5e1; font-size: 9.5px; text-transform: uppercase; }' +
+        'td { padding: 3.5px 6px; border: 1px solid #cbd5e1; }' +
+        '.empty { font-style: italic; color: #64748b; font-size: 10.5px; }' +
+        '.att-sum { display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px; font-weight: 700; margin-bottom: 5px; }' +
+        '.att-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }' +
+        '.att-box { border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 6px; background: #fcfcfd; }' +
+        '.att-m { font-size: 10px; font-weight: 800; color: #065f46; margin-bottom: 3px; }' +
+        '.chips { display: flex; flex-wrap: wrap; gap: 3px; }' +
+        '.chip { font-size: 9.5px; padding: 1.5px 4.5px; border-radius: 4px; }' +
+        '.no-print { text-align: right; margin-bottom: 6px; }' +
+        '.btn-p { background: #e11d48; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-weight: 800; cursor: pointer; font-size: 11.5px; }' +
+        '@media print { .no-print { display: none !important; } }' +
+      '</style></head><body>' +
+      '<div class="no-print"><button class="btn-p" onclick="window.print()">🖨️ Lưu file PDF / In hồ sơ</button></div>' +
+      '<div class="top">' +
+        '<div><div class="top-t">LỚP TOÁN THẦY VY — PHIẾU HỒ SƠ CHI TIẾT HỌC SINH</div><div class="top-s">Giáo viên: Thầy Phan Hoài Vy · Ngày xuất: ' + todayVN + '</div></div>' +
+        '<div style="font-weight:900;font-size:12px;">Mã HS: <span style="color:#059669;">' + cId + '</span></div>' +
+      '</div>' +
+
+      '<div class="sec"><div class="sec-h"><span>1. THÔNG TIN HỌC SINH</span></div><div class="grid6">' +
+        '<div class="cell"><div class="lb">Họ và Tên</div><div class="val">' + (stu.name || '-') + '</div></div>' +
+        '<div class="cell"><div class="lb">Mã Học Sinh</div><div class="val" style="color:#059669;">' + cId + '</div></div>' +
+        '<div class="cell"><div class="lb">Lớp / Khối</div><div class="val" style="color:#1d4ed8;">' + (stu.className || stu.grade || '-') + '</div></div>' +
+        '<div class="cell"><div class="lb">Trường Học</div><div class="val">' + (stu.school || '-') + '</div></div>' +
+        '<div class="cell"><div class="lb">SĐT Học Sinh</div><div class="val">' + phoneStu + '</div></div>' +
+        '<div class="cell"><div class="lb">SĐT Phụ Huynh</div><div class="val">' + phonePar + '</div></div>' +
+      '</div></div>' +
+
+      '<div class="sec"><div class="sec-h"><span>2. TÌNH TRẠNG HỌC PHÍ HIỆN TẠI</span></div><div class="fee-box">' +
+        '<div>' +
+          '<div style="font-size:9.5px;font-weight:800;color:' + (debtObj.totalDebt > 0 ? '#be123c' : '#047857') + ';">' + (debtObj.totalDebt > 0 ? ('HỌC PHÍ CÒN NỢ TÍNH ĐẾN ' + curMonth) : 'ĐÃ ĐÓNG ĐỦ HỌC PHÍ') + '</div>' +
+          '<div class="fee-num">' + (debtObj.totalDebt > 0 ? (fmtMoneyVN(debtObj.totalDebt) + ' đ') : '0 đ (Hoàn thành)') + '</div>' +
+          (debtDetailStr ? ('<div style="font-size:10px;font-weight:700;color:#9f1239;">Chi tiết: ' + debtDetailStr + '</div>') : '') +
+          '<div style="font-size:10px;color:#334155;">STK: <b style="color:#1d4ed8;">0981864442</b> - MB Bank (<b>PHAN HOAI VY</b>)</div>' +
+        '</div>' +
+        (qrSrc ? ('<div class="qr"><img src="' + qrSrc + '" alt="QR"><div style="font-size:8px;color:#64748b;">Quét QR đóng học phí</div></div>') : '') +
+      '</div></div>' +
+
+      '<div class="sec"><div class="sec-h"><span>3. ĐIỂM KIỂM TRA CÁ NHÂN (' + exams.length + ' BÀI)</span><span>Điểm TB: <b style="color:#1d4ed8;">' + avgStr + '</b></span></div>' + examTableHtml + '</div>' +
+
+      '<div class="sec"><div class="sec-h"><span>4. CÁC GIAO DỊCH ĐÃ ĐÓNG (' + payments.length + ' LẦN)</span></div>' + payTableHtml + '</div>' +
+
+      '<div class="sec"><div class="sec-h"><span>5. CHI TIẾT ĐIỂM DANH (' + atts.length + ' BUỔI)</span></div>' +
+        '<div class="att-sum">' +
+          '<span style="color:#047857;">● Có mặt: ' + counts['Có mặt'] + '</span>' +
+          '<span style="color:#1d4ed8;">● Báo bù: ' + counts['Báo bù'] + '</span>' +
+          '<span style="color:#7e22ce;">● Học bù: ' + counts['Học bù'] + '</span>' +
+          '<span style="color:#b45309;">● Vắng CP: ' + counts['Vắng CP'] + '</span>' +
+          '<span style="color:#dc2626;">● Vắng KP: ' + counts['Vắng KP'] + '</span>' +
+        '</div>' + attGridHtml +
+      '</div>' +
+      '<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 350); };<\/script>' +
+    '</body></html>';
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
+  // 5. Hàm quét không phân biệt hoa/thường & không phụ thuộc thẻ <table> để chèn 100% thành công
+  function scanAndInjectProfileEnhancements() {
+    // Tìm mọi thẻ tiêu đề có chữ "2. TÌNH TRẠNG HỌC PHÍ" (luôn xuất hiện ngay trên màn hình như trong ảnh của thầy)
+    var allElements = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, div, span, p'));
+
+    var sec2Titles = allElements.filter(function(el) {
+      if (el.querySelectorAll('div, table').length > 0) return false;
+      var txt = (el.textContent || '').trim().toUpperCase();
+      return txt.includes('2. TÌNH TRẠNG HỌC PHÍ');
+    });
+
+    sec2Titles.forEach(function(sec2Title) {
+      // Đi ngược từ tiêu đề "2. TÌNH TRẠNG HỌC PHÍ" lên thẻ Card trắng của Mục 2
+      var sec2Card = sec2Title.parentElement;
+      while (sec2Card && sec2Card.parentElement) {
+        var parentChildren = Array.from(sec2Card.parentElement.children);
+        var hasSec1Sibling = parentChildren.some(function(sib) {
+          return sib !== sec2Card && (sib.textContent || '').toUpperCase().includes('1. THÔNG TIN HỌC SINH');
+        });
+        if (hasSec1Sibling) break;
+        sec2Card = sec2Card.parentElement;
+      }
+      if (!sec2Card || !sec2Card.parentElement) return;
+
+      var profileContainer = sec2Card.parentElement;
+
+      // Tìm Mã Học Sinh (VD: "095" từ "HỒ SƠ CHI TIẾT HỌC SINH: KỲ ANH (095)" hoặc từ ô "Mã Học Sinh")
+      var stuId = '';
+      var modalWrapper = profileContainer.closest('.fixed') || document.body;
+
+      var headerText = (modalWrapper.textContent || '');
+      var matchHeader = headerText.match(/HỒ SƠ CHI TIẾT HỌC SINH:[^(]*\(([0-9]+)\)/i);
+      if (matchHeader && matchHeader[1]) {
+        stuId = padId3(matchHeader[1]);
+      }
+
+      if (!stuId) {
+        var codeLabel = Array.from(profileContainer.querySelectorAll('div, span, p')).find(function(el) {
+          return el.children.length === 0 && (el.textContent || '').trim().toUpperCase() === 'MÃ HỌC SINH';
+        });
+        if (codeLabel && codeLabel.nextElementSibling) {
+          stuId = padId3((codeLabel.nextElementSibling.textContent || '').trim());
+        }
+      }
+      if (!stuId) return;
+
+      var d = window.appData || {};
+      var stuObj = (d.students || []).find(function(s) { return padId3(s.id) === stuId; });
+      var stuName = stuObj ? stuObj.name : '';
+      var stuClass = stuObj ? (stuObj.className || stuObj.grade) : '';
+
+      // A. GẮN NÚT "📄 XUẤT PDF HỒ SƠ" NGAY CẠNH NÚT "SỬA THÔNG TIN HS" Ở THANH TRÊN CÙNG
+      var editBtn = Array.from(modalWrapper.querySelectorAll('button')).find(function(b) {
+        return (b.textContent || '').toUpperCase().includes('SỬA THÔNG TIN HS');
+      });
+      if (editBtn && editBtn.parentElement) {
+        var pdfBtnTop = editBtn.parentElement.querySelector('.btn-pdf-top-modal');
+        if (!pdfBtnTop) {
+          pdfBtnTop = document.createElement('button');
+          pdfBtnTop.type = 'button';
+          pdfBtnTop.className = 'btn-pdf-top-modal';
+          pdfBtnTop.style.cssText = 'background:#e11d48;color:#ffffff;padding:7px 14px;border-radius:12px;font-weight:800;font-size:12px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-right:8px;box-shadow:0 1px 2px rgba(0,0,0,0.15);';
+          pdfBtnTop.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Xuất PDF Hồ sơ';
+          editBtn.parentElement.insertBefore(pdfBtnTop, editBtn);
+        }
+        pdfBtnTop.onclick = function(e) {
+          e.stopPropagation();
+          window.__exportFullStudentPdfNow(stuId);
+        };
+      }
+
+      // Gắn thêm 1 nút Xuất PDF ngay góc phải tiêu đề "1. THÔNG TIN HỌC SINH" (cho cả chế độ Khách tra cứu)
+      var sec1Title = Array.from(profileContainer.querySelectorAll('h1, h2, h3, h4, div, span')).find(function(el) {
+        return el.querySelectorAll('div').length === 0 && (el.textContent || '').toUpperCase().includes('1. THÔNG TIN HỌC SINH');
+      });
+      if (sec1Title && sec1Title.parentElement) {
+        var row1 = sec1Title.parentElement;
+        if (!row1.querySelector('.btn-pdf-sec1-inline')) {
+          row1.style.display = 'flex';
+          row1.style.alignItems = 'center';
+          row1.style.justifyContent = 'space-between';
+          row1.style.flexWrap = 'wrap';
+          var btn1 = document.createElement('button');
+          btn1.type = 'button';
+          btn1.className = 'btn-pdf-sec1-inline';
+          btn1.style.cssText = 'background:#e11d48;color:#ffffff;padding:6px 12px;border-radius:10px;font-weight:800;font-size:11.5px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;';
+          btn1.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Xuất PDF';
+          btn1.onclick = function(e) {
+            e.stopPropagation();
+            window.__exportFullStudentPdfNow(stuId);
+          };
+          row1.appendChild(btn1);
+        }
+      }
+
+      // B. CHÈN KHUNG "3. KẾT QUẢ ĐIỂM KIỂM TRA CÁ NHÂN" NGAY BÊN DƯỚI CARD MỤC 2 (TÌNH TRẠNG HỌC PHÍ)
+      var existingSec3 = profileContainer.querySelector('.independent-sec3-score-box');
+      if (!existingSec3 || existingSec3.getAttribute('data-stuid') !== stuId) {
+        if (existingSec3) existingSec3.remove();
+        var sec3Wrapper = document.createElement('div');
+        sec3Wrapper.className = 'independent-sec3-score-box';
+        sec3Wrapper.setAttribute('data-stuid', stuId);
+        sec3Wrapper.innerHTML = createSection3ScoreCardHtml(stuId, stuName, stuClass);
+
+        if (sec2Card.nextSibling) {
+          profileContainer.insertBefore(sec3Wrapper, sec2Card.nextSibling);
+        } else {
+          profileContainer.appendChild(sec3Wrapper);
+        }
+      }
+
+      // C. ĐỔI SỐ THỨ TỰ MỤC 3 -> 4 (LỊCH SỬ ĐÓNG TIỀN) VÀ MỤC 4 -> 5 (CHI TIẾT ĐIỂM DANH)
+      Array.from(profileContainer.querySelectorAll('h1, h2, h3, h4, div, span')).forEach(function(el) {
+        if (el.querySelectorAll('div, table').length > 0) return;
+        var rawHtml = el.innerHTML || '';
+        if (/3\.\s*LỊCH SỬ/i.test(rawHtml)) {
+          el.innerHTML = rawHtml.replace(/3\.\s*(LỊCH SỬ)/i, '4. $1');
+        } else if (/4\.\s*CHI TIẾT ĐIỂM DANH/i.test(rawHtml)) {
+          el.innerHTML = rawHtml.replace(/4\.\s*(CHI TIẾT ĐIỂM DANH)/i, '5. $1');
+        }
+      });
+    });
+  }
+
+  // Chạy liên tục mỗi 400ms + MutationObserver để đảm bảo cứ mở Hồ sơ lên là hiển thị ngay lập tức
+  setInterval(scanAndInjectProfileEnhancements, 400);
+  var obs = new MutationObserver(scanAndInjectProfileEnhancements);
+  if (document.body) {
+    obs.observe(document.body, { childList: true, subtree: true });
+  } else {
+    window.addEventListener('DOMContentLoaded', function() {
+      obs.observe(document.body, { childList: true, subtree: true });
+    });
+  }
+})();
+</script>
 
 
   <!-- POPUP LỊCH THÁNG & ĐẾM BUỔI HỌC -->
