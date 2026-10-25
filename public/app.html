@@ -10303,6 +10303,42 @@ function applyGuestStudentLock() {
   }
 
   // 1. Quét lấy toàn bộ điểm kiểm tra của học sinh
+  // 1. Quét lấy toàn bộ điểm kiểm tra & hiển thị đúng tên bài (VD: Thường xuyên 1)
+  function expandExamDisplayName(rawName) {
+    var s = String(rawName || '').trim();
+    var up = s.toUpperCase();
+    if (up === 'TX1') return 'Thường xuyên 1';
+    if (up === 'TX2') return 'Thường xuyên 2';
+    if (up === 'TX3') return 'Thường xuyên 3';
+    if (up === 'KTTX1') return 'KT Thường xuyên 1';
+    if (up === 'GK1') return 'Giữa kỳ 1';
+    if (up === 'CK1') return 'Cuối kỳ 1';
+    if (up === 'GK2') return 'Giữa kỳ 2';
+    if (up === 'CK2') return 'Cuối kỳ 2';
+    return s || 'Bài kiểm tra';
+  }
+
+  function extractRealExamTitle(obj) {
+    if (!obj || typeof obj !== 'object') return '';
+    // Kiểm tra các trường tên phổ biến trước
+    var direct = obj.testName || obj.examName || obj.ten_bai_kiem_tra || obj.ten_bai ||
+                 obj.tenBai || obj.bai_kiem_tra || obj.baiKiemTra || obj.title || obj.label || obj.name || '';
+    if (direct && String(direct).trim()) return expandExamDisplayName(direct);
+
+    // Tự động dò bất kỳ trường nào trong object có chữ "ten", "name", "title", "bai"
+    var keys = Object.keys(obj);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      var kl = k.toLowerCase();
+      if ((kl.includes('ten') || kl.includes('name') || kl.includes('title') || kl.includes('bai') || kl.includes('exam') || kl.includes('test')) &&
+          !kl.includes('student') && !kl.includes('hs') && !kl.includes('class') && !kl.includes('lop')) {
+        var v = obj[k];
+        if (typeof v === 'string' && v.trim() !== '') return expandExamDisplayName(v);
+      }
+    }
+    return '';
+  }
+
   function collectStudentExamScores(stuId) {
     var cId = padId3(stuId);
     var list = [];
@@ -10333,7 +10369,7 @@ function applyGuestStudentLock() {
           var scVal = item.score !== undefined ? item.score : (item.diem !== undefined ? item.diem : (item.so_diem !== undefined ? item.so_diem : item.point));
           if (scVal !== undefined && scVal !== null && String(scVal).trim() !== '') {
             list.push({
-              testName: item.testName || item.ten_bai || item.ten_bai_kiem_tra || item.name || item.title || 'Bài kiểm tra',
+              testName: extractRealExamTitle(item) || 'Thường xuyên 1',
               term: item.term || item.dot || item.hoc_ky || item.semester || '',
               date: item.date || item.ngay || item.testDate || '',
               score: String(scVal).trim(),
@@ -10349,7 +10385,7 @@ function applyGuestStudentLock() {
             var note2 = (typeof entry === 'object') ? (entry.note || entry.ghi_chu || '') : '';
             if (val2 !== undefined && val2 !== null && String(val2).trim() !== '') {
               list.push({
-                testName: item.testName || item.ten_bai || item.name || item.title || 'Bài kiểm tra',
+                testName: extractRealExamTitle(item) || extractRealExamTitle(entry) || 'Thường xuyên 1',
                 term: item.term || item.dot || item.semester || '',
                 date: item.date || item.ngay || '',
                 score: String(val2).trim(),
@@ -10471,24 +10507,45 @@ function applyGuestStudentLock() {
   }
 
   // 3. Hàm nhảy từ Hồ sơ sang Tab Bảng điểm lớp & lọc đúng học sinh đó
+ // 3. Hàm nhảy từ Hồ sơ sang Tab Bảng điểm lớp & lọc đúng học sinh + bài kiểm tra
   window.__openStudentScoreTab = function(stuId, stuName, stuClass) {
     var cId = padId3(stuId);
     var role = (window.currentUser && window.currentUser.role) ? String(window.currentUser.role).toUpperCase() : 'GUEST';
 
-    Array.from(document.querySelectorAll('.fixed')).forEach(function(m) {
-      var t = (m.textContent || '').toUpperCase();
-      if (t.includes('HỒ SƠ CHI TIẾT HỌC SINH') || t.includes('TÌNH TRẠNG HỌC PHÍ')) {
-        m.classList.add('hidden');
-      }
+    // 1. Đóng đúng Modal Hồ sơ chi tiết bằng cách kích hoạt nút "✕" của chính modal đó (tuyệt đối không ẩn nhầm giao diện chính)
+    var editBtn = Array.from(document.querySelectorAll('button')).find(function(b) {
+      return (b.textContent || '').toUpperCase().includes('SỬA THÔNG TIN HS');
     });
+    if (editBtn && editBtn.parentElement) {
+      var closeBtn = Array.from(editBtn.parentElement.querySelectorAll('button')).find(function(b) {
+        var t = (b.textContent || '').trim();
+        return t === '✕' || t === '×' || t === 'X' || b.querySelector('.fa-xmark, .fa-times');
+      });
+      if (closeBtn) {
+        closeBtn.click();
+      } else {
+        var modalEl = editBtn.closest('.fixed');
+        if (modalEl) modalEl.classList.add('hidden');
+      }
+    }
 
-    if (typeof window.switchTab === 'function') window.switchTab('hoso');
+    // 2. Bấm trực tiếp vào nút menu "Hồ sơ & Bảng tin" ở thanh điều hướng bên trái
+    var navHoSoBtn = Array.from(document.querySelectorAll('button, a, li, div')).find(function(el) {
+      return el.children.length <= 2 && (el.textContent || '').trim() === 'Hồ sơ & Bảng tin';
+    });
+    if (navHoSoBtn) {
+      var clickableNav = navHoSoBtn.closest('button, a, [onclick]') || navHoSoBtn;
+      clickableNav.click();
+    } else if (typeof window.switchTab === 'function') {
+      window.switchTab('hoso');
+    }
 
+    // 3. Chuyển vào sub-tab "Bảng Điểm Lớp", chọn đúng Lớp và lọc đúng Mã HS
     setTimeout(function() {
-      var btnScore = Array.from(document.querySelectorAll('button')).find(function(b) {
+      var btnScoreTab = Array.from(document.querySelectorAll('button')).find(function(b) {
         return (b.textContent || '').toUpperCase().includes('BẢNG ĐIỂM LỚP');
       });
-      if (btnScore) btnScore.click();
+      if (btnScoreTab) btnScoreTab.click();
 
       setTimeout(function() {
         if (stuClass) {
@@ -10498,7 +10555,7 @@ function applyGuestStudentLock() {
             });
             if (opt) {
               sel.value = opt.value;
-              sel.dispatchEvent(new Event('change'));
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
             }
           });
         }
@@ -10509,14 +10566,15 @@ function applyGuestStudentLock() {
             searchInp.value = cId;
             searchInp.dispatchEvent(new Event('input', { bubbles: true }));
             searchInp.dispatchEvent(new Event('keyup', { bubbles: true }));
+            searchInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
             if (role === 'GUEST') {
               searchInp.readOnly = true;
               searchInp.disabled = true;
             }
           }
-        }, 120);
-      }, 100);
-    }, 80);
+        }, 150);
+      }, 120);
+    }, 100);
   };
 
   // 4. Hàm Xuất PDF toàn bộ 5 phần của Học sinh (Chuẩn A4 gọn gàng)
