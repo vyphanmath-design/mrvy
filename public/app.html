@@ -10284,10 +10284,10 @@ function applyGuestStudentLock() {
     
   </script>
 
-  <script>
+ <script>
 // =========================================================================
 // KHỐI SCRIPT ĐỘC LẬP 100%:
-// CHÈN MỤC 3 (ĐIỂM CÁ NHÂN) & NÚT XUẤT PDF VÀO HỒ SƠ CHI TIẾT HỌC SINH
+// CHÈN MỤC 3 (ĐIỂM CÁ NHÂN) & 1 NÚT XUẤT PDF TRÊN THANH TIÊU ĐỀ MODAL
 // =========================================================================
 (function() {
   function padId3(id) {
@@ -10302,7 +10302,7 @@ function applyGuestStudentLock() {
     return n.toLocaleString('vi-VN');
   }
 
-  // 1. Quét lấy toàn bộ điểm kiểm tra của học sinh từ mọi nguồn (appData + Bảng điểm trên giao diện)
+  // 1. Quét lấy toàn bộ điểm kiểm tra của học sinh
   function collectStudentExamScores(stuId) {
     var cId = padId3(stuId);
     var list = [];
@@ -10313,7 +10313,6 @@ function applyGuestStudentLock() {
       window.examScoresData, window.diemKiemTraData
     ];
 
-    // Quét tất cả các mảng trong appData xem mảng nào chứa điểm kiểm tra
     Object.keys(d).forEach(function(k) {
       if (Array.isArray(d[k]) && rawArrays.indexOf(d[k]) === -1 && k !== 'students' && k !== 'attendance' && k !== 'tuition') {
         rawArrays.push(d[k]);
@@ -10325,7 +10324,6 @@ function applyGuestStudentLock() {
       arr.forEach(function(item) {
         if (!item || typeof item !== 'object') return;
 
-        // Dạng 1: Từng dòng điểm (ma_hs / studentId, ten_bai / testName, diem / score)
         var rowStuId = item.studentId || item.ma_hs || item.student_id || item.maHS || item.id_hs || item.code || '';
         var hasScoreField = (item.score !== undefined || item.diem !== undefined || item.so_diem !== undefined || item.point !== undefined);
 
@@ -10342,9 +10340,7 @@ function applyGuestStudentLock() {
               note: item.note || item.ghi_chu || ''
             });
           }
-        }
-        // Dạng 2: Object bài kiểm tra chứa map scores[ma_hs]
-        else if (item.scores && typeof item.scores === 'object') {
+        } else if (item.scores && typeof item.scores === 'object') {
           var st2 = String(item.status || '').toLowerCase();
           if (st2 === 'draft' || st2 === 'nháp') return;
           var entry = item.scores[cId] || item.scores[stuId] || item.scores[parseInt(cId, 10)];
@@ -10365,7 +10361,6 @@ function applyGuestStudentLock() {
       });
     });
 
-    // Loại bỏ bản ghi trùng
     var unique = [];
     var seen = {};
     list.forEach(function(it) {
@@ -10480,7 +10475,6 @@ function applyGuestStudentLock() {
     var cId = padId3(stuId);
     var role = (window.currentUser && window.currentUser.role) ? String(window.currentUser.role).toUpperCase() : 'GUEST';
 
-    // Đóng modal Hồ sơ chi tiết
     Array.from(document.querySelectorAll('.fixed')).forEach(function(m) {
       var t = (m.textContent || '').toUpperCase();
       if (t.includes('HỒ SƠ CHI TIẾT HỌC SINH') || t.includes('TÌNH TRẠNG HỌC PHÍ')) {
@@ -10533,7 +10527,6 @@ function applyGuestStudentLock() {
       return padId3(s.id) === cId;
     });
 
-    // Dự phòng nếu chưa tìm thấy trong appData.students thì đọc ngay trên giao diện
     if (!stu) {
       stu = { id: cId, name: 'Học sinh ' + cId, className: '', school: '-', phone: '-', parentPhone: '-' };
     }
@@ -10709,9 +10702,8 @@ function applyGuestStudentLock() {
     w.document.close();
   };
 
-  // 5. Hàm quét không phân biệt hoa/thường & không phụ thuộc thẻ <table> để chèn 100% thành công
+  // 5. Quét & chèn: Chỉ giữ 1 nút Xuất PDF Hồ sơ ở thanh trên cùng, giữ nguyên bố cục khung Mục 1
   function scanAndInjectProfileEnhancements() {
-    // Tìm mọi thẻ tiêu đề có chữ "2. TÌNH TRẠNG HỌC PHÍ" (luôn xuất hiện ngay trên màn hình như trong ảnh của thầy)
     var allElements = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, div, span, p'));
 
     var sec2Titles = allElements.filter(function(el) {
@@ -10721,7 +10713,6 @@ function applyGuestStudentLock() {
     });
 
     sec2Titles.forEach(function(sec2Title) {
-      // Đi ngược từ tiêu đề "2. TÌNH TRẠNG HỌC PHÍ" lên thẻ Card trắng của Mục 2
       var sec2Card = sec2Title.parentElement;
       while (sec2Card && sec2Card.parentElement) {
         var parentChildren = Array.from(sec2Card.parentElement.children);
@@ -10735,7 +10726,6 @@ function applyGuestStudentLock() {
 
       var profileContainer = sec2Card.parentElement;
 
-      // Tìm Mã Học Sinh (VD: "095" từ "HỒ SƠ CHI TIẾT HỌC SINH: KỲ ANH (095)" hoặc từ ô "Mã Học Sinh")
       var stuId = '';
       var modalWrapper = profileContainer.closest('.fixed') || document.body;
 
@@ -10760,7 +10750,11 @@ function applyGuestStudentLock() {
       var stuName = stuObj ? stuObj.name : '';
       var stuClass = stuObj ? (stuObj.className || stuObj.grade) : '';
 
-      // A. GẮN NÚT "📄 XUẤT PDF HỒ SƠ" NGAY CẠNH NÚT "SỬA THÔNG TIN HS" Ở THANH TRÊN CÙNG
+      // GỠ BỎ NÚT DƯ BÊN DƯỚI (NẾU CÓ) ĐỂ TRẢ LẠI KHUNG MỤC 1 NGUYÊN BẢN
+      var oldInlineBtn = profileContainer.querySelector('.btn-pdf-sec1-inline');
+      if (oldInlineBtn) oldInlineBtn.remove();
+
+      // A. CHỈ GẮN 1 NÚT "📄 XUẤT PDF HỒ SƠ" DUY NHẤT Ở THANH TIÊU ĐỀ TRÊN CÙNG
       var editBtn = Array.from(modalWrapper.querySelectorAll('button')).find(function(b) {
         return (b.textContent || '').toUpperCase().includes('SỬA THÔNG TIN HS');
       });
@@ -10780,31 +10774,7 @@ function applyGuestStudentLock() {
         };
       }
 
-      // Gắn thêm 1 nút Xuất PDF ngay góc phải tiêu đề "1. THÔNG TIN HỌC SINH" (cho cả chế độ Khách tra cứu)
-      var sec1Title = Array.from(profileContainer.querySelectorAll('h1, h2, h3, h4, div, span')).find(function(el) {
-        return el.querySelectorAll('div').length === 0 && (el.textContent || '').toUpperCase().includes('1. THÔNG TIN HỌC SINH');
-      });
-      if (sec1Title && sec1Title.parentElement) {
-        var row1 = sec1Title.parentElement;
-        if (!row1.querySelector('.btn-pdf-sec1-inline')) {
-          row1.style.display = 'flex';
-          row1.style.alignItems = 'center';
-          row1.style.justifyContent = 'space-between';
-          row1.style.flexWrap = 'wrap';
-          var btn1 = document.createElement('button');
-          btn1.type = 'button';
-          btn1.className = 'btn-pdf-sec1-inline';
-          btn1.style.cssText = 'background:#e11d48;color:#ffffff;padding:6px 12px;border-radius:10px;font-weight:800;font-size:11.5px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;';
-          btn1.innerHTML = '<i class="fa-solid fa-file-pdf"></i> Xuất PDF';
-          btn1.onclick = function(e) {
-            e.stopPropagation();
-            window.__exportFullStudentPdfNow(stuId);
-          };
-          row1.appendChild(btn1);
-        }
-      }
-
-      // B. CHÈN KHUNG "3. KẾT QUẢ ĐIỂM KIỂM TRA CÁ NHÂN" NGAY BÊN DƯỚI CARD MỤC 2 (TÌNH TRẠNG HỌC PHÍ)
+      // B. CHÈN KHUNG "3. KẾT QUẢ ĐIỂM KIỂM TRA CÁ NHÂN" NGAY BÊN DƯỚI CARD MỤC 2
       var existingSec3 = profileContainer.querySelector('.independent-sec3-score-box');
       if (!existingSec3 || existingSec3.getAttribute('data-stuid') !== stuId) {
         if (existingSec3) existingSec3.remove();
@@ -10833,7 +10803,6 @@ function applyGuestStudentLock() {
     });
   }
 
-  // Chạy liên tục mỗi 400ms + MutationObserver để đảm bảo cứ mở Hồ sơ lên là hiển thị ngay lập tức
   setInterval(scanAndInjectProfileEnhancements, 400);
   var obs = new MutationObserver(scanAndInjectProfileEnhancements);
   if (document.body) {
