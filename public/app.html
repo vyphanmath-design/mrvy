@@ -4789,6 +4789,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var studentIdLimit = isStudent ? currentUser.username : null;
 
       if (isGuest) {
+        applyGuestStudentLock(); // <--
         if (selectedGuestStudentId) {
           var lockedStu = (getActiveStudents() || []).find(function(s) {
             return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
@@ -9004,6 +9005,7 @@ function applyGuestStudentLock() {
       var isGuest = (role === 'GUEST');
       var searchInp = document.getElementById('overviewSearch');
       var filterTopBar = searchInp ? searchInp.closest('.bg-white') : null;
+      var monthSel = document.getElementById('overviewMonthFilter');
       var scoreClassSel = document.getElementById('scoreClassSelect');
       var postGradeSel = document.getElementById('filterPostGrade');
       var navSidebar = document.querySelector('aside');
@@ -9011,12 +9013,26 @@ function applyGuestStudentLock() {
       var navBtnDiemDanh = document.querySelector('[onclick*="tab-diemdanh"]');
       var navBtnHoSo = document.querySelector('[onclick*="tab-hoso"]');
 
-      // 1. NẾU LÀ ADMIN / TRỢ GIẢNG -> HIỆN ĐẦY ĐỦ MỌI THỨ BÌNH THƯỜNG
+      // Tìm các phần tử xung quanh ô tìm kiếm gốc để ẩn/hiện tùy theo vai trò
+      var classDirBox = filterTopBar ? filterTopBar.querySelector('[id*="Class"], .inline-flex, div:first-child') : null;
+      var monthWrap = monthSel ? (monthSel.parentElement !== filterTopBar ? monthSel.parentElement : monthSel) : null;
+      var guideBanner = document.getElementById('parentSearchGuideText');
+
+      // 1. NẾU LÀ ADMIN / TRỢ GIẢNG -> KHÔI PHỤC LẠI KÍCH CỠ BÌNH THƯỜNG & HIỆN ĐỦ BỘ LỌC
       if (!isGuest) {
         if (navSidebar) navSidebar.style.display = '';
         if (navBtnDiemDanh) navBtnDiemDanh.style.display = '';
         if (navBtnHoSo) navBtnHoSo.style.display = '';
-        if (filterTopBar) filterTopBar.style.display = '';
+        if (filterTopBar) {
+          filterTopBar.style.display = '';
+          Array.from(filterTopBar.children).forEach(function(ch) { ch.style.display = ''; });
+        }
+        if (monthWrap) monthWrap.style.display = '';
+        if (guideBanner) guideBanner.style.display = 'none';
+        if (searchInp) {
+          searchInp.className = 'w-full pl-9 pr-4 py-2 text-xs font-bold border-2 border-emerald-600 rounded-full focus:outline-none';
+          if (searchInp.parentElement) searchInp.parentElement.style.cssText = '';
+        }
         if (scoreClassSel) {
           scoreClassSel.disabled = false;
           scoreClassSel.style.display = '';
@@ -9027,7 +9043,7 @@ function applyGuestStudentLock() {
         return;
       }
 
-      // Kiểm tra xem Khách đã chọn học sinh hợp lệ chưa
+      // Kiểm tra xem Phụ huynh đã chọn học sinh hợp lệ chưa
       var stu = null;
       if (selectedGuestStudentId) {
         stu = (getActiveStudents() || []).find(function(s) {
@@ -9035,14 +9051,51 @@ function applyGuestStudentLock() {
         });
       }
 
-      // 2. NẾU LÀ KHÁCH NHƯNG CHƯA CHỌN HỌC SINH -> ẨN HẾT CÁC TAB MENU, ÉP Ở LẠI MÀN HÌNH TÌM KIẾM
+      // 2. NẾU LÀ PHỤ HUYNH CHƯA CHỌN HỌC SINH -> ẨN "CHỌN LỚP" & "THÁNG", PHÓNG TO Ô TÌM KIẾM GỐC
       if (!stu) {
         if (navSidebar) navSidebar.style.display = 'none';
         if (navBtnDiemDanh) navBtnDiemDanh.style.display = 'none';
         if (navBtnHoSo) navBtnHoSo.style.display = 'none';
-        if (filterTopBar) filterTopBar.style.display = '';
 
-        // Ép quay về màn hình tìm kiếm học sinh, ẩn nội dung các tab khác
+        if (filterTopBar) {
+          filterTopBar.style.display = 'block';
+          filterTopBar.style.padding = '24px';
+
+          // Ẩn cụm "CHỌN LỚP: Tất cả", nút Xem HS/Ngày, các nút trạng thái và ô chọn Tháng
+          Array.from(filterTopBar.querySelectorAll('select, button')).forEach(function(el) {
+            var box = el.closest('div');
+            if (box && !box.contains(searchInp)) box.style.display = 'none';
+            else if (el !== searchInp) el.style.display = 'none';
+          });
+          if (monthSel) {
+            monthSel.style.display = 'none';
+            if (monthSel.parentElement && !monthSel.parentElement.contains(searchInp)) {
+              monthSel.parentElement.style.display = 'none';
+            }
+          }
+
+          // Phóng to chính ô tìm kiếm gốc (#overviewSearch) to, rõ, đẹp
+          if (searchInp) {
+            var searchWrap = searchInp.parentElement;
+            if (searchWrap) {
+              searchWrap.style.cssText = 'width:100%;max-width:720px;margin:0 auto;display:block;position:relative;';
+            }
+            searchInp.placeholder = '🔍 Nhập Họ và tên học sinh, Mã HS (3 số) hoặc Số điện thoại để tra cứu...';
+            searchInp.style.cssText = 'width:100%;padding:14px 20px 14px 44px;font-size:15px;font-weight:700;border:2px solid #059669;border-radius:16px;background:#f8fafc;color:#0f172a;box-shadow:0 4px 12px rgba(5,150,105,0.08);outline:none;';
+
+            // Thêm 1 dòng hướng dẫn nhỏ gọn ngay phía dưới ô tìm kiếm
+            if (!guideBanner && searchWrap) {
+              guideBanner = document.createElement('div');
+              guideBanner.id = 'parentSearchGuideText';
+              guideBanner.style.cssText = 'text-align:center;font-size:12.5px;color:#475569;margin-top:10px;font-weight:600;';
+              guideBanner.innerHTML = '💡 <b>Hướng dẫn dành cho Phụ huynh:</b> Nhập <b>Họ tên con</b> (VD: <i>Kỳ Anh</i>), <b>Mã HS</b> (VD: <i>095</i>) hoặc <b>SĐT</b> vào ô trên rồi bấm vào tên con để xem toàn bộ hồ sơ.';
+              searchWrap.parentElement.appendChild(guideBanner);
+            } else if (guideBanner) {
+              guideBanner.style.display = 'block';
+            }
+          }
+        }
+
         var tabDD = document.getElementById('tab-diemdanh');
         var tabHS = document.getElementById('tab-hoso');
         if (tabHS) tabHS.classList.add('hidden');
@@ -9050,17 +9103,15 @@ function applyGuestStudentLock() {
         return;
       }
 
-      // 3. KHI KHÁCH ĐÃ CHỌN HỌC SINH XONG -> HIỆN CÁC TAB MENU & KHÓA CHẶT BỘ LỌC THEO HỌC SINH ĐÓ
+      // 3. KHI PHỤ HUYNH ĐÃ CHỌN HỌC SINH XONG -> ẨN THANH TÌM KIẾM ĐỂ XEM TRỌN VẸN HỒ SƠ
       if (navSidebar) navSidebar.style.display = '';
       if (navBtnDiemDanh) navBtnDiemDanh.style.display = '';
       if (navBtnHoSo) navBtnHoSo.style.display = '';
 
-      // Ẩn thanh tìm kiếm ở tab Điểm danh
       if (filterTopBar) {
         filterTopBar.style.display = 'none';
       }
 
-      // Khóa chặt Lớp ở Bảng Điểm Lớp và ẩn hoàn toàn ô chọn lớp
       var stuClass = String(stu.className || stu.grade || '').trim();
       if (scoreClassSel && stuClass) {
         scoreClassSel.innerHTML = '<option value="' + stuClass + '">Lớp ' + stuClass + '</option>';
@@ -9070,7 +9121,6 @@ function applyGuestStudentLock() {
         if (typeof updateScoreClassHeaderTitle === 'function') updateScoreClassHeaderTitle();
       }
 
-      // Khóa chặt Khối ở Bảng Tin và ẩn hoàn toàn bộ lọc Khối
       var rawGrade = String(stu.grade || stuClass.replace(/\D/g, '') || '').trim();
       var gradeLabel = rawGrade.toLowerCase().includes('khối') ? rawGrade : ('Khối ' + rawGrade);
       if (postGradeSel && rawGrade) {
