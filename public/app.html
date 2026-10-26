@@ -3961,11 +3961,12 @@ function getStudentDebtDetails(student, targetMonthStr) {
       renderAttendanceTable();
     }
 
-    function renderAttendanceTable() {
+  function renderAttendanceTable() {
       var tbody = document.getElementById('attendanceTableBody');
       if (!tbody) return;
       var dateVal = toStandardDateStr(document.getElementById('attendanceDate') ? document.getElementById('attendanceDate').value : '');
-      var search = document.getElementById('attendanceSearch') ? document.getElementById('attendanceSearch').value.toLowerCase().trim() : '';
+      var rawSearch = document.getElementById('attendanceSearch') ? document.getElementById('attendanceSearch').value.trim() : '';
+      var search = cleanName(rawSearch);
       var grade = document.getElementById('attendanceGradeFilter') ? document.getElementById('attendanceGradeFilter').value : 'NONE';
       var cName = document.getElementById('attendanceClassFilter') ? document.getElementById('attendanceClassFilter').value : 'ALL';
 
@@ -3973,7 +3974,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         tbody.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-500 font-bold bg-slate-50/50">' +
           '<div class="flex flex-col items-center justify-center gap-2">' +
             '<i class="fa-solid fa-filter text-2xl text-emerald-600 mb-1"></i>' +
-            '<span class="text-sm text-slate-700">Vui lòng chọn <b class="text-emerald-700">Khối</b>, <b class="text-emerald-700">Lớp chi tiết</b> hoặc dùng ô <b class="text-purple-700">Thêm học bù</b> bên trên!</span>' +
+            '<span class="text-sm text-slate-700">Vui lòng chọn <b class="text-emerald-700">Khối</b>, <b class="text-emerald-700">Lớp chi tiết</b> hoặc dùng ô <b class="text-purple-700">Tìm kiếm / Thêm học bù</b> bên trên!</span>' +
           '</div>' +
         '</td></tr>';
         return;
@@ -3981,13 +3982,18 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
       var list = [];
 
-      if (danhSachHocBuThem.length > 0) {
+      if (danhSachHocBuThem.length > 0 && !search && (grade === 'NONE' || cName === 'ALL')) {
         list = danhSachHocBuThem;
       } else {
         list = (getActiveStudents() || []).filter(function(s) {
           var isWaiting = String(s.className || '').toUpperCase().includes('ĐỢI') || String(s.className || '').toUpperCase().includes('DOI') || String(s.className || '').toUpperCase().includes('TẠM');
           if (isWaiting) return false;
-          return (!search || cleanName(s.name).includes(search) || String(s.id).includes(search)) && (grade === 'ALL' || grade === 'NONE' || s.grade === grade) && (cName === 'ALL' || s.className === cName);
+          var sCode = formatStudentId(s.id);
+          var matchSearch = !search || cleanName(s.name).includes(search) || String(s.id).toLowerCase().includes(rawSearch.toLowerCase()) || sCode.includes(rawSearch);
+          // Nếu đang gõ tìm kiếm cá nhân thì tìm xuyên qua tất cả các lớp, ngược lại lọc theo Khối/Lớp đang chọn
+          var matchGrade = search ? true : (grade === 'ALL' || grade === 'NONE' || s.grade === grade);
+          var matchClass = search ? true : (cName === 'ALL' || s.className === cName);
+          return matchSearch && matchGrade && matchClass;
         });
       }
 
@@ -4003,6 +4009,12 @@ function getStudentDebtDetails(student, targetMonthStr) {
         }
       }
 
+      // Cập nhật nhãn Tổng số HS đang hiển thị (nếu có trên giao diện)
+      var totalCountBadge = document.getElementById('attendanceTotalCount') || document.getElementById('attStudentCountBadge');
+      if (totalCountBadge) {
+        totalCountBadge.innerText = 'Tổng: ' + list.length + ' HS';
+      }
+
       if (list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-400 font-medium">Không tìm thấy học sinh nào</td></tr>';
         return;
@@ -4010,9 +4022,31 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
       tbody.innerHTML = list.map(function(s, idx) {
         var formattedId = formatStudentId(s.id);
-        var currentState = currentAttendanceState[s.id] || { status: 'Có mặt', note: '' };
+
+        // Ưu tiên 1: Trạng thái vừa tích trong bộ nhớ tạm (currentAttendanceState) của đúng ngày đang chọn
+        var stateFromMem = currentAttendanceState[s.id] || currentAttendanceState[formattedId];
+        if (stateFromMem && stateFromMem.date && toStandardDateStr(stateFromMem.date) !== dateVal) {
+          stateFromMem = null;
+        }
+
+        // Ưu tiên 2: Dữ liệu đã lưu của học sinh đó trong ngày dateVal (ví dụ vừa điểm danh cá nhân trước đó, giờ bấm sang Lớp)
+        var savedRecOnDate = dateRecords.find(function(a) {
+          return formatStudentId(a.studentId) === formattedId || cleanName(a.studentName) === cleanName(s.name);
+        });
+
+        var currentState = stateFromMem || savedRecOnDate || { status: 'Có mặt', note: '' };
         var curStatus = currentState.status || 'Có mặt';
         var curNote = currentState.note || '';
+
+        // Đồng bộ lại vào currentAttendanceState để khi bấm Lưu không bị sót
+        currentAttendanceState[s.id] = {
+          date: dateVal,
+          studentName: s.name,
+          studentId: s.id,
+          grade: s.className || s.grade,
+          status: curStatus,
+          note: curNote
+        };
 
         // Thứ tự mới: Có -> CP -> KP -> Báo bù -> Bù
         var statusOptions = [
@@ -4026,7 +4060,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var radiosHtml = statusOptions.map(function(opt) {
           var isChecked = (curStatus.toLowerCase() === opt.val.toLowerCase()) ? 'checked' : '';
           return '<label class="flex items-center gap-0.5 cursor-pointer bg-white px-1.5 py-1 rounded-md ' + opt.class + ' font-bold text-[10px] sm:text-[11px] hover:bg-slate-50 transition border border-slate-200/70 shadow-xs whitespace-nowrap">' +
-            '<input type="radio" name="att_' + s.id + '" value="' + opt.val + '" ' + isChecked + ' onchange="updateAttendanceStatus(\'' + s.id + '\', \'' + opt.val + '\')" class="accent-emerald-600 w-3 h-3 cursor-pointer"> ' + opt.label +
+            '<input type="radio" name="att_' + s.id + '" data-stuid="' + s.id + '" value="' + opt.val + '" ' + isChecked + ' onchange="updateAttendanceStatus(\'' + s.id + '\', \'' + opt.val + '\')" class="accent-emerald-600 w-3 h-3 cursor-pointer"> ' + opt.label +
           '</label>';
         }).join('');
 
@@ -4051,7 +4085,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var dateVal = toStandardDateStr(document.getElementById('attendanceDate').value);
 
       // 1. Lấy các giá trị bộ lọc hiện tại đang chọn trên giao diện
-      var search = document.getElementById('attendanceSearch') ? document.getElementById('attendanceSearch').value.toLowerCase().trim() : '';
+      var rawSearch = document.getElementById('attendanceSearch') ? document.getElementById('attendanceSearch').value.trim() : '';
+      var search = cleanName(rawSearch);
       var grade = document.getElementById('attendanceGradeFilter') ? document.getElementById('attendanceGradeFilter').value : 'NONE';
       var cName = document.getElementById('attendanceClassFilter') ? document.getElementById('attendanceClassFilter').value : 'ALL';
 
@@ -4060,9 +4095,10 @@ function getStudentDebtDetails(student, targetMonthStr) {
         if (isWaiting) return;
 
         // 2. Chỉ kiểm tra những học sinh khớp với bộ lọc (đang hiển thị trên màn hình)
-        var matchSearch = !search || cleanName(s.name).includes(search) || String(s.id).includes(search);
-        var matchGrade = (grade === 'ALL' || grade === 'NONE' || s.grade === grade);
-        var matchClass = (cName === 'ALL' || s.className === cName);
+        var sCode = formatStudentId(s.id);
+        var matchSearch = !search || cleanName(s.name).includes(search) || String(s.id).toLowerCase().includes(rawSearch.toLowerCase()) || sCode.includes(rawSearch);
+        var matchGrade = search ? true : (grade === 'ALL' || grade === 'NONE' || s.grade === grade);
+        var matchClass = search ? true : (cName === 'ALL' || s.className === cName);
 
         // 3. Nếu khớp bộ lọc, mới đưa vào danh sách đánh dấu "Có mặt"
         if (matchSearch && matchGrade && matchClass) {
@@ -4084,29 +4120,67 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var isWaiting = String(s.className || '').toUpperCase().includes('ĐỢI') || String(s.className || '').toUpperCase().includes('DOI') || String(s.className || '').toUpperCase().includes('TẠM');
         return !isWaiting;
       });
-      
+
+      var stuMap = {};
       activeList.forEach(function(s) {
-        var radioChecked = document.querySelector('input[name="att_' + s.id + '"]:checked');
-        var noteInput = document.getElementById('note_' + s.id);
-        
-        if (radioChecked) {
-          currentAttendanceState[s.id] = {
-            date: dateVal,
-            studentName: s.name,
-            studentId: s.id,
-            grade: s.className || s.grade,
-            status: radioChecked.value,
-            note: noteInput ? noteInput.value.trim() : ''
-          };
-        }
+        stuMap[String(s.id).trim()] = s;
+        stuMap[formatStudentId(s.id)] = s;
       });
 
-      var records = Object.values(currentAttendanceState).filter(function(r) {
-        var isWaiting = String(r.grade || '').toUpperCase().includes('ĐỢI') || String(r.grade || '').toUpperCase().includes('DOI') || String(r.grade || '').toUpperCase().includes('TẠM');
-        return !isWaiting;
+      // Chỉ lưu đúng những học sinh đang hiển thị và được tích trên bảng hiện tại (hỗ trợ cả điểm danh 1 cá nhân lẫn cả lớp)
+      var records = [];
+      var seenIds = {};
+      var checkedInputs = document.querySelectorAll('#attendanceTableBody input[type="radio"]:checked');
+
+      checkedInputs.forEach(function(radio) {
+        var rawStuId = radio.getAttribute('data-stuid') || String(radio.name || '').replace(/^att_/, '');
+        var s = stuMap[String(rawStuId).trim()] || stuMap[formatStudentId(rawStuId)];
+        if (!s) return;
+
+        var cId = formatStudentId(s.id);
+        if (seenIds[cId]) return;
+        seenIds[cId] = true;
+
+        var noteInput = document.getElementById('note_' + s.id) || document.getElementById('note_' + cId);
+        var noteVal = noteInput ? noteInput.value.trim() : '';
+
+        var recObj = {
+          date: dateVal,
+          studentName: s.name,
+          studentId: s.id,
+          grade: s.className || s.grade,
+          status: radio.value,
+          note: noteVal
+        };
+
+        currentAttendanceState[s.id] = recObj;
+        records.push(recObj);
       });
 
       if (records.length === 0) return showToast('Chưa có học sinh nào được tích điểm danh!', true);
+
+      // Đồng bộ tức thì vào appData.attendance để khi chuyển sang chọn Lớp, ô radio tự động nhảy đúng dữ liệu vừa điểm danh
+      if (!appData.attendance) appData.attendance = [];
+      records.forEach(function(r) {
+        var cId = formatStudentId(r.studentId);
+        var existingIdx = appData.attendance.findIndex(function(a) {
+          return formatStudentId(a.studentId) === cId && toStandardDateStr(a.date) === dateVal;
+        });
+        if (existingIdx >= 0) {
+          appData.attendance[existingIdx].status = r.status;
+          appData.attendance[existingIdx].note = r.note;
+          appData.attendance[existingIdx].grade = r.grade;
+        } else {
+          appData.attendance.push({
+            date: r.date,
+            studentId: r.studentId,
+            studentName: r.studentName,
+            grade: r.grade,
+            status: r.status,
+            note: r.note
+          });
+        }
+      });
 
       var btn = document.getElementById('btnSaveAttendance');
       if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xs"></i> <span>Lưu...</span>';
@@ -4134,6 +4208,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
+    
     function onOverviewGradeChange() {
       var grade = document.getElementById('overviewGradeFilter') ? document.getElementById('overviewGradeFilter').value : 'NONE';
       var select = document.getElementById('overviewClassFilter');
