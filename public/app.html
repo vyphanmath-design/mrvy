@@ -9103,16 +9103,15 @@ function applyGuestStudentLock() {
         return;
       }
 
-      // 3. KHI PHỤ HUYNH ĐÃ CHỌN HỌC SINH XONG -> ẨN THANH TÌM KIẾM ĐỂ XEM TRỌN VẸN HỒ SƠ
+      // 3. KHI PHỤ HUYNH ĐÃ CHỌN HỌC SINH XONG -> ẨN HẲN THANH TÌM KIẾM VÀ KHUNG CHỌN LỚP ĐỂ XEM TRỌN VẸN HỒ SƠ
+      if (filterTopBar) {
+        filterTopBar.style.display = 'none'; // <-- Thêm dòng này để ẩn hoàn toàn khung phía trên khi đã chọn học sinh
+      }
+
       if (navSidebar) navSidebar.style.display = '';
       if (navBtnDiemDanh) navBtnDiemDanh.style.display = '';
       if (navBtnHoSo) navBtnHoSo.style.display = '';
 
-      if (filterTopBar) {
-        filterTopBar.style.display = 'none';
-      }
-
-      var stuClass = String(stu.className || stu.grade || '').trim();
       if (scoreClassSel && stuClass) {
         scoreClassSel.innerHTML = '<option value="' + stuClass + '">Lớp ' + stuClass + '</option>';
         scoreClassSel.value = stuClass;
