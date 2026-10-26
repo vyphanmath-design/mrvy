@@ -9103,9 +9103,13 @@ function applyGuestStudentLock() {
         return;
       }
 
-      // 3. KHI PHỤ HUYNH ĐÃ CHỌN HỌC SINH XONG -> ẨN HẲN THANH TÌM KIẾM VÀ KHUNG CHỌN LỚP ĐỂ XEM TRỌN VẸN HỒ SƠ
+     // 3. KHI PHỤ HUYNH ĐÃ CHỌN HỌC SINH XONG -> ẨN SẠCH KHUNG TÌM KIẾM, CHỌN LỚP VÀ HƯỚNG DẪN ĐỂ XEM HỒ SƠ
       if (filterTopBar) {
-        filterTopBar.style.display = 'none'; // <-- Thêm dòng này để ẩn hoàn toàn khung phía trên khi đã chọn học sinh
+        filterTopBar.style.display = 'none'; // Ẩn hoàn toàn khung CHỌN LỚP
+      }
+      var guideBannerEl = document.getElementById('parentSearchGuideText');
+      if (guideBannerEl) {
+        guideBannerEl.style.display = 'none'; // Ẩn dòng hướng dẫn
       }
 
       if (navSidebar) navSidebar.style.display = '';
