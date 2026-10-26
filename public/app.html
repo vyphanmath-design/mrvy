@@ -4477,7 +4477,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
               '<div class="text-xs font-bold text-slate-700">Chi tiết: <span class="text-red-700">' + detailText + '</span></div>' +
               '<div class="text-[11px] text-slate-600 pt-1">STK: <b class="font-mono text-blue-700">0981864442</b> - MB Bank (<b>PHAN HOAI VY</b>)</div>' +
               '<div class="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-2">' +
-                '<button type="button" onclick="previewNoticeOnly(\'' + s.id + '\')" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-md flex items-center gap-2 active:scale-95 cursor-pointer">' +
+                '<button type="button" onclick="event.stopPropagation(); closeStaffFullProfileModal(); previewNoticeOnly(\'' + s.id + '\')" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-md flex items-center gap-2 active:scale-95 cursor-pointer">' +
                   '<i class="fa-solid fa-download"></i> Xem & Tải Phiếu Thông Báo Học Phí (.JPG)' +
                 '</button>' +
               '</div>' +
@@ -9146,7 +9146,7 @@ function applyGuestStudentLock() {
       if (!modal) {
         modal = document.createElement('div');
         modal.id = 'staffFullProfileModal';
-        modal.className = 'hidden fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto';
+        modal.className = 'hidden fixed inset-0 bg-slate-900/65 backdrop-blur-xs z-40 flex items-center justify-center p-2 sm:p-4 overflow-y-auto';
         document.body.appendChild(modal);
       }
 
