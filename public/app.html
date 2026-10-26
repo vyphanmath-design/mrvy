@@ -9103,25 +9103,13 @@ function applyGuestStudentLock() {
         return;
       }
 
-     // 3. KHI PHỤ HUYNH ĐÃ CHỌN HỌC SINH XONG -> ẨN SẠCH CẢ KHUNG CHỌN LỚP VÀ HƯỚNG DẪN
-      
-      // Ẩn trực tiếp khối chứa thanh lọc ở phía trên (tìm theo các class hoặc vị trí của nó)
-      var topBarFilterBox = document.querySelector('#overviewSearch') ? document.querySelector('#overviewSearch').closest('.bg-white') : null;
-      if (topBarFilterBox) {
-        topBarFilterBox.style.display = 'none';
+     // 3. KHI PHỤ HUYNH ĐÃ CHỌN HỌC SINH XONG -> ẨN SẠCH KHUNG TÌM KIẾM, CHỌN LỚP VÀ HƯỚNG DẪN ĐỂ XEM HỒ SƠ
+      if (filterTopBar) {
+        filterTopBar.style.display = 'none'; // Ẩn hoàn toàn khung CHỌN LỚP
       }
-      
-      // Dự phòng tìm theo chữ "CHỌN LỚP" để ẩn luôn nếu có khối khác bao ngoài
-      var allWhiteCards = document.querySelectorAll('#tab-diemdanh > div, .tab-content > div');
-      allWhiteCards.forEach(function(card) {
-        if (card.innerText && card.innerText.includes('CHỌN LỚP')) {
-          card.style.display = 'none';
-        }
-      });
-
       var guideBannerEl = document.getElementById('parentSearchGuideText');
       if (guideBannerEl) {
-        guideBannerEl.style.display = 'none';
+        guideBannerEl.style.display = 'none'; // Ẩn dòng hướng dẫn
       }
 
       if (navSidebar) navSidebar.style.display = '';
