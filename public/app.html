@@ -9880,7 +9880,6 @@ function applyGuestStudentLock() {
       refreshAllClassDirectoriesUI();
     };
 
-
 // =========================================================
     // BẢNG ĐIỂM DANH NGÀY CHUẨN 1 HÀNG + MẶC ĐỊNH TÍCH "CÓ"
     // + CỘNG DỒN HỌC SINH BÙ + NÚT LƯU TRỰC TIẾP LÊN SUPABASE
@@ -9908,8 +9907,8 @@ function applyGuestStudentLock() {
       var radios = tabDD.querySelectorAll('input[type="radio"]:checked');
       radios.forEach(function(r) {
         var nameAttr = r.getAttribute('name') || '';
-        if (nameAttr.startsWith('status_')) {
-          var sId = formatStudentId(nameAttr.replace('status_', ''));
+        if (nameAttr.startsWith('status_') || nameAttr.startsWith('att_')) {
+          var sId = formatStudentId(nameAttr.replace(/^status_|^att_/, ''));
           if (!_customAttStateMap[sId]) _customAttStateMap[sId] = {};
           _customAttStateMap[sId].status = r.value;
         }
@@ -9936,15 +9935,19 @@ function applyGuestStudentLock() {
       var rawDate = getCurrentAttDateInputs();
       var stdDate = toStandardDateStr(rawDate);
 
-      var searchInp = document.getElementById('searchAttendance') ||
-                      tabDD.querySelector('input[placeholder*="Tìm tên"]');
+      // Lấy đúng ô tìm kiếm cá nhân (hỗ trợ cả id="attendanceSearch" và "searchAttendance")
+      var searchInp = document.getElementById('attendanceSearch') ||
+                      document.getElementById('searchAttendance') ||
+                      tabDD.querySelector('input[placeholder*="Tìm"], input[placeholder*="Nhập"]');
       var searchVal = searchInp ? cleanName(searchInp.value) : '';
       var searchNoTone = removeVietnameseTones(searchVal);
 
-      // 1. Lấy danh sách học sinh của Lớp chính đang chọn (VD: 17 bạn lớp 8A)
+      // 1. Lấy danh sách học sinh:
+      // - Nếu đã chọn Lớp: lấy học sinh của Lớp đó
+      // - Nếu CHƯA chọn Lớp ('NONE') nhưng đang gõ tên tìm kiếm cá nhân: lấy từ toàn bộ học sinh để điểm danh lẻ
       var activeStus = (typeof getActiveStudents === 'function' ? getActiveStudents() : appData.students) || [];
       var mainClassList = [];
-      if (selectedClass === 'ALL') {
+      if (selectedClass === 'ALL' || (selectedClass === 'NONE' && searchVal)) {
         mainClassList = sortStudentsByClassThenId(activeStus);
       } else if (selectedClass !== 'NONE') {
         mainClassList = sortStudentsByClassThenId(
@@ -10004,7 +10007,7 @@ function applyGuestStudentLock() {
         });
       }
 
-      // Nhãn tổng số học sinh trực quan (VD: Tổng: 19 HS (17 chính + 2 bù))
+      // Nhãn tổng số học sinh trực quan
       var countBadge = document.getElementById('dailyAttCountBadge');
       if (searchInp && searchInp.parentElement) {
         if (!countBadge) {
@@ -10015,18 +10018,18 @@ function applyGuestStudentLock() {
         }
         var makeUpCount = _customMakeUpList.length;
         countBadge.innerHTML = '<i class="fa-solid fa-users text-emerald-600"></i> Tổng: ' + combinedList.length + ' HS' +
-          (makeUpCount > 0 ? ' <span class="text-purple-700">(' + mainClassList.length + ' chính + ' + makeUpCount + ' bù)</span>' : '');
+          (makeUpCount > 0 && !searchVal ? ' <span class="text-purple-700">(' + mainClassList.length + ' chính + ' + makeUpCount + ' bù)</span>' : '');
       }
 
       if (combinedList.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-slate-400 font-medium">' +
           '<i class="fa-solid fa-filter text-2xl text-emerald-600 mb-2 block"></i>' +
-          'Vui lòng chọn <b>Khối, Lớp chi tiết</b> hoặc dùng ô <b>Thêm học bù</b> bên trên!' +
+          'Vui lòng chọn <b>Lớp</b>, gõ <b>Tên học sinh</b> để điểm danh lẻ hoặc dùng ô <b>Thêm học bù</b> bên trên!' +
         '</td></tr>';
         return;
       }
 
-      // 4. Vẽ từng dòng: Mặc định tất cả lớp chính đều tích sẵn "Có mặt" (giống hệt logic gốc của thầy), HS bù tích sẵn "Học bù"
+      // 4. Vẽ từng dòng: Nếu học sinh đã được điểm danh cá nhân trước đó trong ngày (savedMap[cId]) thì tự động nhảy đúng ô đó!
       tbody.innerHTML = combinedList.map(function(s, idx) {
         var cId = formatStudentId(s.id);
         var isMakeUpStu = _customMakeUpList.some(function(m) { return formatStudentId(m.id) === cId; });
@@ -10037,14 +10040,13 @@ function applyGuestStudentLock() {
         if (_customAttStateMap[cId] && _customAttStateMap[cId].status !== undefined) {
           curStatus = _customAttStateMap[cId].status;
         } else if (savedMap[cId]) {
+          // Đã có dữ liệu điểm danh trong ngày (VD: vừa điểm danh cá nhân trước đó) -> nhảy đúng sang trạng thái đã lưu
           curStatus = savedMap[cId].status;
         } else if (isMakeUpStu) {
           curStatus = 'Học bù';
         } else {
-          // MẶC ĐỊNH TẤT CẢ HỌC SINH LỚP CHÍNH ĐỀU TÍCH SẴN "CÓ MẶT" RỒI MỚI CHỈNH
           curStatus = 'Có mặt';
         }
-        // Lưu vào stateMap để khi bấm Lưu nhận đủ 100%
         if (!_customAttStateMap[cId]) _customAttStateMap[cId] = {};
         _customAttStateMap[cId].status = curStatus;
 
@@ -10193,7 +10195,11 @@ function applyGuestStudentLock() {
 
         var statusVal = checkedRadio ? checkedRadio.value : ((_customAttStateMap[sId] && _customAttStateMap[sId].status) || 'Có mặt');
         var noteVal = noteInp ? noteInp.value.trim() : ((_customAttStateMap[sId] && _customAttStateMap[sId].note) || '');
-        var gradeForRecord = (selectedClass && selectedClass !== 'ALL' && selectedClass !== 'NONE') ? selectedClass : stuClass;
+        var isMakeUpRow = _customMakeUpList.some(function(m) { return formatStudentId(m.id) === sId; });
+        // Nếu là học sinh đi bù ở lớp đang chọn thì lưu theo lớp đang chọn, còn điểm danh lẻ cá nhân hoặc chính khóa thì lưu đúng lớp của học sinh đó
+        var gradeForRecord = (isMakeUpRow && selectedClass && selectedClass !== 'ALL' && selectedClass !== 'NONE')
+          ? selectedClass
+          : (stuClass || selectedClass);
 
         if (sId && statusVal) {
           records.push({
@@ -10209,6 +10215,28 @@ function applyGuestStudentLock() {
       if (records.length === 0) {
         return showToast('Chưa có học sinh nào được tích điểm danh!', true);
       }
+
+      // Cập nhật tức thì vào appData.attendance trên trình duyệt để khi bấm sang chọn Lớp, ô radio tự động nhảy đúng ngay lập tức
+      if (!appData.attendance) appData.attendance = [];
+      records.forEach(function(rec) {
+        var cId = formatStudentId(rec.studentId);
+        var idx = appData.attendance.findIndex(function(a) {
+          return formatStudentId(a.studentId) === cId && toStandardDateStr(a.date) === stdDate;
+        });
+        if (idx >= 0) {
+          appData.attendance[idx].status = rec.status;
+          appData.attendance[idx].note = rec.note;
+          appData.attendance[idx].grade = rec.grade;
+        } else {
+          appData.attendance.push({
+            date: rec.date,
+            studentId: rec.studentId,
+            status: rec.status,
+            note: rec.note,
+            grade: rec.grade
+          });
+        }
+      });
 
       var oldHtml = btnEl ? btnEl.innerHTML : '';
       if (btnEl) {
@@ -10237,6 +10265,10 @@ function applyGuestStudentLock() {
         .saveAttendance(sessionStorage.getItem('sessionToken'), records);
     }
 
+    // Đồng bộ cả hàm renderAttendanceTable và saveAttendanceData về cùng 1 cơ chế chuẩn duy nhất
+    window.renderAttendanceList = renderDirectDailyAttendanceTable;
+    window.renderAttendanceTable = renderDirectDailyAttendanceTable;
+    window.saveAttendanceData = function() { handleSaveCustomDailyAttendance(null); };
     window.addMakeUpStudent = handleAddMakeUpStudentKeepClass;
     window.addMakeupStudent = handleAddMakeUpStudentKeepClass;
     window.saveAttendanceRecords = function() { handleSaveCustomDailyAttendance(null); };
@@ -10286,7 +10318,10 @@ function applyGuestStudentLock() {
     window.selectClassFromDirectory = function(contextKey, selectionValue) {
       if (contextKey === 'attDailyTab') {
         activeClassSelection.attDailyTab = selectionValue;
-        _customAttStateMap = {}; // Chọn lớp mới thì reset trạng thái để mặc định tích "Có mặt" cho lớp đó
+        _customAttStateMap = {}; // Reset bộ nhớ tạm để lấy dữ liệu đã lưu trong savedMap (nếu đã điểm danh lẻ trước đó) + mặc định "Có mặt" cho các bạn còn lại
+        // Nếu bấm chọn sang Lớp cụ thể thì tự động xóa chữ tìm kiếm cá nhân cũ để hiện đủ cả lớp
+        var searchInp = document.getElementById('attendanceSearch') || document.getElementById('searchAttendance');
+        if (searchInp && searchInp.value) searchInp.value = '';
         renderDirectDailyAttendanceTable();
         refreshAllClassDirectoriesUI();
         return;
@@ -10295,9 +10330,6 @@ function applyGuestStudentLock() {
         _baseSelectClassFromDir(contextKey, selectionValue);
       }
     };
-
-    window.renderAttendanceList = renderDirectDailyAttendanceTable;
-
 // =========================================================
     // THU NHỎ THỐNG KÊ BẢNG ĐIỂM (1 HÀNG GỌN) & CHỐNG ĐÈ TÊN KHI NHẬP ĐIỂM
     // =========================================================
