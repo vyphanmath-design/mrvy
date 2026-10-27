@@ -1896,7 +1896,7 @@
 
       // 4. Nhãn menu
       var label = document.getElementById('navTabHosoLabel');
-      if (label) label.innerText = (isStudent || isGuest) ? "Bảng tin & Bài tập" : "Hồ sơ & Bảng tin";
+      if (label) label.innerText = (isStudent || isGuest) ? "Bảng điểm & Bài tập" : "Hồ sơ & Bảng tin";
 
       var ddLabel = document.getElementById('navTabDiemDanhLabel');
       if (ddLabel) ddLabel.innerText = isStudent ? "Chuyên cần" : "Điểm danh";
@@ -9136,7 +9136,7 @@ function applyGuestStudentLock() {
         if (subEl) subEl.innerText = 'TOÁN ' + stuClass + ' THẦY VY · Phan Hoài Vy';
       }
 
-      // Khóa chặt đúng Khối của con (VD: "Khối 8") cho Bảng Tin & Bài Tập
+      // Khóa chặt đúng Khối của con (VD: "Khối 8") cho Bảng điểm & Bài Tập
       var rawGrade = String(stu.grade || stuClass.replace(/\D/g, '') || '').trim();
       var gradeLabel = rawGrade.toLowerCase().includes('khối') ? rawGrade : ('Khối ' + rawGrade);
       if (postGradeSel && rawGrade) {
