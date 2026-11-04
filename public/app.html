@@ -4479,7 +4479,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var box = document.getElementById('loginStudentSuggestions');
       var passWrap = document.getElementById('loginPasswordWrap');
       var q = cleanName(rawVal || '');
-      var qNoTone = removeVietnameseTones(q);
+      var qNoTone = removeVietnameseTones(q).toLowerCase().trim();
 
       // Nhận diện nếu đang gõ tài khoản Admin / Trợ giảng -> Hiện ngay ô mật khẩu và ẩn gợi ý HS
       var isStaffAccount = (q === 'mrvy' || q === 'admin' || q.startsWith('trogiang') || q.startsWith('tg') || q.startsWith('gv'));
@@ -4504,16 +4504,44 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var currentInput = document.getElementById('loginUsername');
         if (!currentInput || cleanName(currentInput.value) !== q) return;
 
+        var isNumericQuery = /^\d+$/.test(qNoTone);
+        var queryWords = qNoTone.split(/\s+/).filter(Boolean);
+
         var matches = (getActiveStudents() || []).filter(function(s) {
-          var n = cleanName(s.name);
-          var nNo = removeVietnameseTones(n);
-          var cId = formatStudentId(s.id);
+          var cId = formatStudentId(s.id).toLowerCase();
           var pStu = formatPhoneDisplay(s.phone);
           var pPar = formatPhoneDisplay(s.parentPhone);
-          return n.includes(q) || nNo.includes(qNoTone) || cId === q || (q.length >= 3 && (cId.includes(q) || pStu.includes(q) || pPar.includes(q)));
+
+          // 1. Nếu nhập số: Khớp Mã HS hoặc SĐT (từ 3 số trở lên)
+          if (isNumericQuery) {
+            return cId === qNoTone || (qNoTone.length >= 3 && (cId.includes(qNoTone) || pStu.includes(qNoTone) || pPar.includes(qNoTone)));
+          }
+
+          // 2. Nếu nhập chữ (Họ tên): So khớp TRỌN VẸN TỪNG TỪ (không phân biệt hoa thường & dấu)
+          // Ví dụ: "huy" chỉ khớp từ "huy", tuyệt đối không khớp "thuy", "huyen", "huynh"
+          var nameNoTone = removeVietnameseTones(cleanName(s.name)).toLowerCase();
+          var nameWords = nameNoTone.split(/\s+/).filter(Boolean);
+
+          if (queryWords.length === 1) {
+            var targetWord = queryWords[0];
+            return nameWords.some(function(w) { return w === targetWord; });
+          } else {
+            // Nếu gõ nhiều từ (VD: "quoc huy" hoặc "nguyen quoc"): mọi từ gõ vào đều phải khớp trọn vẹn từ trong tên theo đúng thứ tự
+            for (var i = 0; i <= nameWords.length - queryWords.length; i++) {
+              var allMatch = true;
+              for (var j = 0; j < queryWords.length; j++) {
+                if (nameWords[i + j] !== queryWords[j]) {
+                  allMatch = false;
+                  break;
+                }
+              }
+              if (allMatch) return true;
+            }
+            return false;
+          }
         });
 
-        // SẮP XẾP LỚP TỪ NHỎ ĐẾN LỚN (Khối 6 -> 12, trong cùng khối xếp theo tên Lớp A->B->C rồi theo Mã HS)
+        // SẮP XẾP LỚP TỪ NHỎ ĐẾN LỚN (Khối 6 -> 12, trong cùng lớp xếp theo Mã HS)
         matches.sort(function(a, b) {
           var clsA = String(a.className || a.grade || '').trim();
           var clsB = String(b.className || b.grade || '').trim();
@@ -4536,20 +4564,47 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
         if (passWrap) passWrap.classList.add('hidden');
 
+        // GOM NHÓM TÁCH MỖI LỚP THÀNH 1 KHỐI RIÊNG DỄ NHÌN
+        var groupedByClass = {};
+        var classOrder = [];
+        matches.forEach(function(s) {
+          var cls = String(s.className || s.grade || 'Chưa xếp').trim();
+          if (!groupedByClass[cls]) {
+            groupedByClass[cls] = [];
+            classOrder.push(cls);
+          }
+          groupedByClass[cls].push(s);
+        });
+
         if (box) {
-          box.innerHTML =
-            '<div class="px-3 py-1 bg-emerald-50 text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">👇 Bấm vào tên học sinh để xem hồ sơ (' + matches.length + ' em):</div>' +
-            matches.map(function(s) {
+          var groupsHtml = classOrder.map(function(cls) {
+            var stuList = groupedByClass[cls];
+            var rowsHtml = stuList.map(function(s) {
               var cId = formatStudentId(s.id);
-              var cls = s.className || s.grade || '-';
-              return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-3 py-1.5 text-left hover:bg-emerald-50 active:bg-emerald-100 transition flex items-center justify-between gap-2 cursor-pointer">' +
+              return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-3 py-1.5 text-left hover:bg-emerald-50 active:bg-emerald-100 transition flex items-center justify-between gap-2 cursor-pointer bg-white">' +
                 '<div class="min-w-0 flex-1 flex items-center justify-between gap-2 pr-1">' +
                   '<span class="font-bold text-slate-800 text-xs sm:text-[13px] truncate">' + s.name + '</span>' +
-                  '<span class="text-[11px] text-slate-500 whitespace-nowrap flex-shrink-0">Lớp: <b class="text-blue-700">' + cls + '</b> • Mã: <b class="font-mono text-emerald-700">' + cId + '</b></span>' +
+                  '<span class="text-[11px] text-slate-500 whitespace-nowrap flex-shrink-0">Mã: <b class="font-mono text-emerald-700">' + cId + '</b></span>' +
                 '</div>' +
                 '<span class="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap flex-shrink-0">Xem →</span>' +
               '</button>';
             }).join('');
+
+            return '<div class="border border-slate-200 rounded-xl overflow-hidden shadow-2xs bg-white">' +
+              '<div class="bg-slate-100/90 px-3 py-1 text-[11px] font-black text-[#0b2447] uppercase flex items-center justify-between border-b border-slate-200">' +
+                '<span><i class="fa-solid fa-graduation-cap text-emerald-600 mr-1"></i> LỚP ' + cls + '</span>' +
+                '<span class="text-[10px] font-bold text-slate-500">' + stuList.length + ' HS</span>' +
+              '</div>' +
+              '<div class="divide-y divide-slate-100">' + rowsHtml + '</div>' +
+            '</div>';
+          }).join('');
+
+          box.className = 'mt-2 space-y-2.5 text-left';
+          box.innerHTML =
+            '<div class="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider text-center">' +
+              '👇 Bấm vào tên học sinh để xem hồ sơ (' + matches.length + ' em):' +
+            '</div>' +
+            groupsHtml;
           box.classList.remove('hidden');
         }
       });
