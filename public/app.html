@@ -258,25 +258,25 @@
       </div>
       <div class="text-center space-y-1">
         <h2 class="text-3xl font-black text-[#0b2447] tracking-tight uppercase">TOÁN MR VY</h2>
-        <p class="text-xs font-semibold text-slate-400">Giáo viên / Trợ giảng đăng nhập hoặc Phụ huynh tra cứu</p>
+        <p class="text-xs font-semibold text-slate-400">Nhập họ tên hoặc sđt để tra cứu</p>
       </div>
 
       <form onsubmit="handleLoginSubmit(event)" class="w-full space-y-4 pt-2">
         <div class="relative">
-          <input type="text" id="loginUsername" autocomplete="off" oninput="onLoginUsernameInput(this.value)" placeholder="Nhập Tên HS, Mã HS, SĐT (hoặc TK Giáo viên)" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold text-slate-800 placeholder-slate-400 bg-slate-50/50">
+          <input type="text" id="loginUsername" autocomplete="off" oninput="onLoginUsernameInput(this.value)" placeholder="Nhập họ tên hoặc SĐT..." class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold text-slate-800 placeholder-slate-400 bg-slate-50/50">
           <!-- Khung gợi ý học sinh khi Phụ huynh gõ Tên / Mã HS / SĐT -->
           <div id="loginStudentSuggestions" class="hidden absolute left-0 right-0 top-full mt-1.5 bg-white border-2 border-emerald-500 rounded-2xl shadow-2xl max-h-60 overflow-y-auto z-50 divide-y divide-slate-100"></div>
         </div>
-        <div id="loginPasswordWrap">
-          <input type="password" id="loginPassword" onfocus="hideLoginSuggestions()" placeholder="Mật khẩu (Dành cho Giáo viên & Trợ giảng)" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium placeholder-slate-400 bg-slate-50/50">
+        <div id="loginPasswordWrap" class="hidden">
+          <input type="password" id="loginPassword" onfocus="hideLoginSuggestions()" placeholder="Mật khẩu" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium placeholder-slate-400 bg-slate-50/50">
         </div>
         <div id="loginErrorMsg" class="text-xs font-bold text-red-600 text-center hidden bg-red-50 p-3 rounded-xl border border-red-200"></div>
         <button type="submit" id="btnLoginSubmit" class="w-full bg-[#00a65a] hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl text-base transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-95 cursor-pointer">
           Đăng nhập
         </button>
-        <button type="button" onclick="handleGuestLogin()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl text-sm transition border border-slate-300 flex items-center justify-center gap-2 active:scale-95 shadow-sm cursor-pointer">
-          <i class="fa-solid fa-magnifying-glass text-emerald-600"></i> PHỤ HUYNH tra cứu nhanh
-        </button>
+        <a href="tel:0981864442" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl text-sm transition border border-slate-300 flex items-center justify-center gap-2 shadow-sm">
+          <i class="fa-solid fa-phone text-emerald-600"></i> SĐT: 0981864442
+        </a>
       </form>
     </div>
   </div>
@@ -4477,13 +4477,26 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
     function onLoginUsernameInput(rawVal) {
       var box = document.getElementById('loginStudentSuggestions');
-      if (!box) return;
+      var passWrap = document.getElementById('loginPasswordWrap');
       var q = cleanName(rawVal || '');
       var qNoTone = removeVietnameseTones(q);
 
-      // Nếu gõ dưới 2 ký tự hoặc đang gõ tài khoản quản trị/trợ giảng thông dụng thì ẩn gợi ý
-      if (q.length < 2 || q === 'mrvy' || q === 'admin' || q.startsWith('trogiang') || q.startsWith('gv')) {
-        box.classList.add('hidden');
+      // Nhận diện nếu đang gõ tài khoản Admin / Trợ giảng -> Hiện ngay ô mật khẩu và ẩn gợi ý HS
+      var isStaffAccount = (q === 'mrvy' || q === 'admin' || q.startsWith('trogiang') || q.startsWith('tg') || q.startsWith('gv'));
+      if (isStaffAccount) {
+        if (passWrap) passWrap.classList.remove('hidden');
+        if (box) box.classList.add('hidden');
+        return;
+      }
+
+      if (!q) {
+        if (passWrap) passWrap.classList.add('hidden');
+        if (box) box.classList.add('hidden');
+        return;
+      }
+
+      if (q.length < 2) {
+        if (box) box.classList.add('hidden');
         return;
       }
 
@@ -4501,24 +4514,29 @@ function getStudentDebtDetails(student, targetMonthStr) {
         }).slice(0, 8);
 
         if (matches.length === 0) {
-          box.classList.add('hidden');
+          if (box) box.classList.add('hidden');
           return;
         }
 
-        box.innerHTML =
-          '<div class="px-3 py-1.5 bg-emerald-50 text-[11px] font-bold text-emerald-800 uppercase tracking-wider">👇 Phụ huynh bấm vào tên con để xem ngay:</div>' +
-          matches.map(function(s) {
-            var cId = formatStudentId(s.id);
-            var cls = s.className || s.grade || '-';
-            return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-4 py-2.5 text-left hover:bg-emerald-50 transition flex items-center justify-between gap-2 cursor-pointer">' +
-              '<div>' +
-                '<div class="font-black text-slate-800 text-xs sm:text-sm">' + s.name + '</div>' +
-                '<div class="text-[11px] text-slate-500">Mã HS: <b class="font-mono text-emerald-700">' + cId + '</b> • Lớp: <b class="text-blue-700">' + cls + '</b></div>' +
-              '</div>' +
-              '<span class="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">Xem hồ sơ <i class="fa-solid fa-arrow-right text-[10px] ml-0.5"></i></span>' +
-            '</button>';
-          }).join('');
-        box.classList.remove('hidden');
+        // Nếu khớp học sinh -> Ẩn ô mật khẩu để Phụ huynh chỉ thấy danh sách con
+        if (passWrap) passWrap.classList.add('hidden');
+
+        if (box) {
+          box.innerHTML =
+            '<div class="px-3 py-1.5 bg-emerald-50 text-[11px] font-bold text-emerald-800 uppercase tracking-wider">👇 Bấm vào tên học sinh để xem hồ sơ:</div>' +
+            matches.map(function(s) {
+              var cId = formatStudentId(s.id);
+              var cls = s.className || s.grade || '-';
+              return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-4 py-2.5 text-left hover:bg-emerald-50 transition flex items-center justify-between gap-2 cursor-pointer">' +
+                '<div>' +
+                  '<div class="font-black text-slate-800 text-xs sm:text-sm">' + s.name + '</div>' +
+                  '<div class="text-[11px] text-slate-500">Mã HS: <b class="font-mono text-emerald-700">' + cId + '</b> • Lớp: <b class="text-blue-700">' + cls + '</b></div>' +
+                '</div>' +
+                '<span class="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">Xem <i class="fa-solid fa-arrow-right text-[10px] ml-0.5"></i></span>' +
+              '</button>';
+            }).join('');
+          box.classList.remove('hidden');
+        }
       });
     }
 
@@ -5917,9 +5935,19 @@ function getStudentDebtDetails(student, targetMonthStr) {
     function handleLoginSubmit(e) {
       e.preventDefault();
       var u = document.getElementById('loginUsername') ? document.getElementById('loginUsername').value.trim() : '';
-      var p = document.getElementById('loginPassword') ? document.getElementById('loginPassword').value.trim() : '';
+      var passWrap = document.getElementById('loginPasswordWrap');
+      var passInp = document.getElementById('loginPassword');
+      var p = passInp ? passInp.value.trim() : '';
       var errEl = document.getElementById('loginErrorMsg');
       var btn = document.getElementById('btnLoginSubmit');
+
+      // Nếu ô mật khẩu đang ẩn (hoặc chưa nhập mật khẩu) khi bấm Đăng nhập -> Mở ô mật khẩu ra ngay cho Giáo viên / Trợ giảng
+      if (u && (!p || (passWrap && passWrap.classList.contains('hidden')))) {
+        hideLoginSuggestions();
+        if (passWrap) passWrap.classList.remove('hidden');
+        if (passInp) passInp.focus();
+        return;
+      }
 
       if (!u || !p) return;
       if (errEl) errEl.classList.add('hidden');
@@ -5930,37 +5958,37 @@ function getStudentDebtDetails(student, targetMonthStr) {
           if (btn) btn.innerHTML = 'Đăng nhập';
           if (res && res.success && res.token && res.user) {
 
-  // Token do SERVER cấp.
-  sessionStorage.setItem('sessionToken', res.token);
+            // Token do SERVER cấp.
+            sessionStorage.setItem('sessionToken', res.token);
 
-  // User chỉ dùng cho giao diện.
-  // Quyền thật sẽ được server xác nhận lại bằng token.
-  currentUser = res.user;
-  sessionStorage.setItem('currentUser', JSON.stringify(res.user));
+            // User chỉ dùng cho giao diện.
+            // Quyền thật sẽ được server xác nhận lại bằng token.
+            currentUser = res.user;
+            sessionStorage.setItem('currentUser', JSON.stringify(res.user));
 
-  document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('loginScreen').classList.add('hidden');
 
-  if (document.getElementById('headerUserName')) {
-    document.getElementById('headerUserName').innerText =
-      userDisplayName(res.user);
-  }
+            if (document.getElementById('headerUserName')) {
+              document.getElementById('headerUserName').innerText =
+                userDisplayName(res.user);
+            }
 
-  if (document.getElementById('sidebarUserName')) {
-    document.getElementById('sidebarUserName').innerText =
-      userDisplayName(res.user);
-  }
+            if (document.getElementById('sidebarUserName')) {
+              document.getElementById('sidebarUserName').innerText =
+                userDisplayName(res.user);
+            }
 
-  if (document.getElementById('sidebarUserRole')) {
-    document.getElementById('sidebarUserRole').innerText =
-      res.user.role === 'STUDENT'
-        ? ('Mã HS: ' + formatStudentId(res.user.username))
-        : 'Toán THCS & THPT';
-  }
+            if (document.getElementById('sidebarUserRole')) {
+              document.getElementById('sidebarUserRole').innerText =
+                res.user.role === 'STUDENT'
+                  ? ('Mã HS: ' + formatStudentId(res.user.username))
+                  : 'Toán THCS & THPT';
+            }
 
-  applyRolePermissions();
-  syncData();
+            applyRolePermissions();
+            syncData();
 
-} else {
+          } else {
             if (errEl) {
               errEl.innerText = res.message || 'Đăng nhập thất bại!';
               errEl.classList.remove('hidden');
@@ -5968,15 +5996,15 @@ function getStudentDebtDetails(student, targetMonthStr) {
           }
         }).checkLogin(u, p);
       } else {
-  if (errEl) {
-    errEl.innerText = 'Không thể kết nối tới hệ thống đăng nhập.';
-    errEl.classList.remove('hidden');
-  }
+        if (errEl) {
+          errEl.innerText = 'Không thể kết nối tới hệ thống đăng nhập.';
+          errEl.classList.remove('hidden');
+        }
 
-  if (btn) {
-    btn.innerHTML = 'Đăng nhập';
-  }
-}
+        if (btn) {
+          btn.innerHTML = 'Đăng nhập';
+        }
+      }
     }
 
     function userDisplayName(user) {
