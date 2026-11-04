@@ -4575,38 +4575,38 @@ function getStudentDebtDetails(student, targetMonthStr) {
           }
           groupedByClass[cls].push(s);
         });
-
-        if (box) {
+      if (box) {
           var groupsHtml = classOrder.map(function(cls) {
             var stuList = groupedByClass[cls];
             var rowsHtml = stuList.map(function(s) {
               var cId = formatStudentId(s.id);
-              return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-3 py-1.5 text-left hover:bg-emerald-50 active:bg-emerald-100 transition flex items-center justify-between gap-2 cursor-pointer bg-white">' +
-                '<div class="min-w-0 flex-1 flex items-center justify-between gap-2 pr-1">' +
-                  '<span class="font-bold text-slate-800 text-xs sm:text-[13px] truncate">' + s.name + '</span>' +
-                  '<span class="text-[11px] text-slate-500 whitespace-nowrap flex-shrink-0">Mã: <b class="font-mono text-emerald-700">' + cId + '</b></span>' +
+              return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-4 py-3 text-left hover:bg-emerald-50 active:bg-emerald-100 transition flex items-center justify-between gap-3 cursor-pointer bg-white">' +
+                '<div class="min-w-0 flex-1 flex items-center justify-between gap-3 pr-1">' +
+                  '<span class="font-black text-slate-900 text-base sm:text-lg truncate">' + s.name + '</span>' +
+                  '<span class="text-xs text-slate-600 whitespace-nowrap flex-shrink-0 font-medium">Mã: <b class="font-mono text-emerald-700 font-bold">' + cId + '</b></span>' +
                 '</div>' +
-                '<span class="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap flex-shrink-0">Xem →</span>' +
+                '<span class="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 shadow-xs">Xem →</span>' +
               '</button>';
             }).join('');
 
-            return '<div class="border border-slate-200 rounded-xl overflow-hidden shadow-2xs bg-white">' +
-              '<div class="bg-slate-100/90 px-3 py-1 text-[11px] font-black text-[#0b2447] uppercase flex items-center justify-between border-b border-slate-200">' +
-                '<span><i class="fa-solid fa-graduation-cap text-emerald-600 mr-1"></i> LỚP ' + cls + '</span>' +
-                '<span class="text-[10px] font-bold text-slate-500">' + stuList.length + ' HS</span>' +
+            return '<div class="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white">' +
+              '<div class="bg-slate-100/90 px-3.5 py-2 text-xs font-black text-[#0b2447] uppercase flex items-center justify-between border-b border-slate-200">' +
+                '<span><i class="fa-solid fa-graduation-cap text-emerald-600 mr-1.5"></i> LỚP ' + cls + '</span>' +
+                '<span class="text-xs font-bold text-slate-500">' + stuList.length + ' HS</span>' +
               '</div>' +
               '<div class="divide-y divide-slate-100">' + rowsHtml + '</div>' +
             '</div>';
           }).join('');
 
-          box.className = 'mt-2 space-y-2.5 text-left';
+          box.className = 'mt-3 space-y-3 text-left';
           box.innerHTML =
-            '<div class="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider text-center">' +
+            '<div class="px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-extrabold text-emerald-800 uppercase tracking-wider text-center shadow-2xs">' +
               '👇 Bấm vào tên học sinh để xem hồ sơ (' + matches.length + ' em):' +
             '</div>' +
             groupsHtml;
           box.classList.remove('hidden');
         }
+        
       });
     }
 
