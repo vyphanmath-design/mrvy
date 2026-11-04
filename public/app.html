@@ -6780,53 +6780,81 @@ function exportTuitionExcel() {
     var isSwapMode = false;
     var firstSwapCell = null;
 
-    function toggleSwapMode() {
+   function toggleSwapMode() {
       isSwapMode = !isSwapMode;
       var btn = document.getElementById('btnSwapMode');
       var cells = document.querySelectorAll('.tkb-cell-editable');
-      
+      var tds = document.querySelectorAll('#tblFullTKBBody td[data-tkb-td="1"]');
+
       if (isSwapMode) {
-        // Bật chế độ: Đổi màu nút, tắt nhập liệu để không bật bàn phím trên điện thoại
+        // CHẾ ĐỘ ĐỔI CHỖ: Tắt nhập liệu hoàn toàn, bật kéo thả & chạm 2 ô để đổi chỗ
         btn.classList.replace('bg-blue-50', 'bg-blue-600');
         btn.classList.replace('text-blue-700', 'text-white');
         btn.innerHTML = '<i class="fa-solid fa-check"></i> <span class="hidden sm:inline">Đang bật Đổi chỗ</span>';
-        showToast('Chế độ đổi chỗ: Chạm vào 2 ô để hoán đổi vị trí!');
-        
+        showToast('Chế độ đổi chỗ: Chạm 2 ô (hoặc kéo thả) để hoán đổi vị trí!');
+
         cells.forEach(function(el) {
-          el.setAttribute('contenteditable', 'false'); // Khóa gõ phím
-          el.classList.add('cursor-pointer');
+          el.blur();
+          el.setAttribute('contenteditable', 'false');
+          el.classList.add('pointer-events-none', 'select-none');
           el.classList.remove('cursor-text');
         });
+
+        tds.forEach(function(td) {
+          td.setAttribute('draggable', 'true');
+          td.classList.add('cursor-pointer', 'sm:cursor-grab');
+          td.classList.remove('cursor-text');
+        });
       } else {
-        // Tắt chế độ: Khôi phục lại như cũ
+        // CHẾ ĐỘ NHẬP LIỆU: Tắt kéo thả 100%, bấm vào bất kỳ đâu trong ô cũng là nhập chữ
         btn.classList.replace('bg-blue-600', 'bg-blue-50');
         btn.classList.replace('text-white', 'text-blue-700');
         btn.innerHTML = '<i class="fa-solid fa-right-left"></i> <span class="hidden sm:inline">Đổi chỗ</span>';
-        
+
         if (firstSwapCell) {
-          firstSwapCell.classList.remove('ring-4', 'ring-blue-600', 'bg-blue-100');
+          firstSwapCell.classList.remove('ring-4', 'ring-blue-600', 'bg-blue-100', 'z-30', 'relative');
           firstSwapCell = null;
         }
 
         cells.forEach(function(el) {
-          el.setAttribute('contenteditable', 'true'); // Mở lại gõ phím
-          el.classList.remove('cursor-pointer');
+          el.setAttribute('contenteditable', 'true');
+          el.classList.remove('pointer-events-none', 'select-none', 'cursor-pointer');
           el.classList.add('cursor-text');
+        });
+
+        tds.forEach(function(td) {
+          td.setAttribute('draggable', 'false');
+          td.classList.remove('cursor-pointer', 'sm:cursor-grab', 'cursor-grab', 'active:cursor-grabbing');
+          td.classList.add('cursor-text');
         });
       }
     }
 
-    function handleTkbCellClick(tdEl, rIdx, cIdx) {
-      if (!isSwapMode) return; // Nếu chưa bật chế độ thì click như bình thường (hiện bàn phím)
-      
+    function handleTkbCellClick(tdEl, rIdx, cIdx, evt) {
+      // 1. Nếu đang TẮT Đổi chỗ -> Chạm vào bất kỳ viền hay khoảng trống nào của ô cũng tự động Focus để gõ chữ
+      if (!isSwapMode) {
+        var editDiv = tdEl.querySelector('div.tkb-cell-editable');
+        if (editDiv && document.activeElement !== editDiv) {
+          editDiv.focus();
+          // Đưa con trỏ chuột về cuối chữ trong ô để tiện gõ tiếp trên điện thoại
+          if (window.getSelection && document.createRange) {
+            var range = document.createRange();
+            range.selectNodeContents(editDiv);
+            range.collapse(false);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }
+        return;
+      }
+
+      // 2. Nếu đang BẬT Đổi chỗ -> Chạm 2 ô để hoán đổi vị trí
       if (!firstSwapCell) {
-        // Chạm lần 1: Đánh dấu ô đầu tiên (Tạo viền xanh đậm)
         firstSwapCell = tdEl;
         tdEl.classList.add('ring-4', 'ring-blue-600', 'bg-blue-100', 'z-30', 'relative');
       } else {
-        // Chạm lần 2: Đổi chỗ
         if (firstSwapCell === tdEl) {
-          // Chạm lại chính ô đó -> Hủy chọn
           tdEl.classList.remove('ring-4', 'ring-blue-600', 'bg-blue-100', 'z-30', 'relative');
           firstSwapCell = null;
           return;
@@ -6834,8 +6862,8 @@ function exportTuitionExcel() {
 
         var sourceTd = firstSwapCell;
         var targetTd = tdEl;
-        var sourceDiv = sourceTd.querySelector('div[contenteditable]');
-        var targetDiv = targetTd.querySelector('div[contenteditable]');
+        var sourceDiv = sourceTd.querySelector('div.tkb-cell-editable');
+        var targetDiv = targetTd.querySelector('div.tkb-cell-editable');
 
         if (sourceDiv && targetDiv) {
           var sourceVal = sourceDiv.getAttribute('data-val') || '';
@@ -6843,20 +6871,17 @@ function exportTuitionExcel() {
           var sourceFullBg = sourceDiv.getAttribute('data-full') === 'true';
           var targetFullBg = targetDiv.getAttribute('data-full') === 'true';
 
-          // Hoán đổi dữ liệu
           sourceDiv.setAttribute('data-val', targetVal);
           targetDiv.setAttribute('data-val', sourceVal);
           sourceDiv.innerHTML = renderTkbCellHtml(targetVal);
           targetDiv.innerHTML = renderTkbCellHtml(sourceVal);
 
-          // Cập nhật lại màu sắc bảng
           if (typeof onTkbCellBlur === 'function') {
             onTkbCellBlur(sourceDiv, parseInt(sourceDiv.getAttribute('data-r')), parseInt(sourceDiv.getAttribute('data-c')), sourceFullBg);
             onTkbCellBlur(targetDiv, rIdx, cIdx, targetFullBg);
           }
         }
 
-        // Dọn dẹp hiệu ứng sau khi hoán đổi xong
         sourceTd.classList.remove('ring-4', 'ring-blue-600', 'bg-blue-100', 'z-30', 'relative');
         firstSwapCell = null;
         showToast('Đã đổi vị trí!');
@@ -6866,12 +6891,15 @@ function exportTuitionExcel() {
     var draggedTkbCell = null;
 
     function handleTkbDragStart(e, r, c) {
+      // Chặn kéo thả 100% nếu chưa bật nút Đổi chỗ
+      if (!isSwapMode) {
+        e.preventDefault();
+        return false;
+      }
       draggedTkbCell = { r: r, c: c };
       e.dataTransfer.effectAllowed = 'move';
-      
-      // Làm mờ ô đang được kéo để dễ nhìn
-      setTimeout(function() { 
-        e.currentTarget.classList.add('opacity-30', 'border-dashed'); 
+      setTimeout(function() {
+        e.currentTarget.classList.add('opacity-30', 'border-dashed');
       }, 0);
     }
 
@@ -7054,16 +7082,22 @@ function exportTuitionExcel() {
             ? ' border-l-2 border-r-2 !border-[#00a65a] bg-[#00a65a]/10' 
             : ' border-slate-200';
 
+          var canDragAttr = isSwapMode ? 'true' : 'false';
+          var editAttr = isSwapMode ? 'false' : 'true';
+          var tdCursorClass = isSwapMode ? 'cursor-pointer sm:cursor-grab' : 'cursor-text';
+          var divPointerClass = isSwapMode ? 'pointer-events-none select-none' : 'cursor-text';
+
           cells +=
-            '<td draggable="true" ' +
+            '<td data-tkb-td="1" draggable="' + canDragAttr + '" ' +
+                'onclick="handleTkbCellClick(this, ' + rIdx + ', ' + cIdx + ', event)" ' +
                 'ondragstart="handleTkbDragStart(event, ' + rIdx + ', ' + cIdx + ')" ' +
                 'ondragover="handleTkbDragOver(event)" ' +
                 'ondragleave="handleTkbDragLeave(event)" ' +
                 'ondrop="handleTkbDrop(event, ' + rIdx + ', ' + cIdx + ')" ' +
                 'ondragend="handleTkbDragEnd(event)" ' +
-                'class="p-0.5 border whitespace-nowrap text-center align-middle cursor-grab active:cursor-grabbing transition-all' + colHighlightClass + '">' +
+                'class="p-0.5 border whitespace-nowrap text-center align-middle transition-all ' + tdCursorClass + colHighlightClass + '">' +
               '<span class="tkb-badge pointer-events-none ' + styleClass + '">' +
-                '<div contenteditable="true" style="pointer-events: auto;" ' +
+                '<div contenteditable="' + editAttr + '" style="pointer-events: auto;" ' +
                   'data-r="' + rIdx + '" ' +
                   'data-c="' + cIdx + '" ' +
                   'data-full="' + r.isFullBg + '" ' +
@@ -7071,7 +7105,7 @@ function exportTuitionExcel() {
                   'onfocus="onTkbCellFocus(this)" ' +
                   'onblur="onTkbCellBlur(this, ' + rIdx + ', ' + cIdx + ', ' + r.isFullBg + ')" ' +
                   'oninput="onTkbCellInput(this, ' + rIdx + ', ' + cIdx + ', ' + r.isFullBg + ')" ' +
-                  'class="tkb-input tkb-cell-editable text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded font-bold cursor-text">' +
+                  'class="tkb-input tkb-cell-editable w-full text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded font-bold ' + divPointerClass + '">' +
                   renderTkbCellHtml(val) +
                 '</div>' +
               '</span>' +
