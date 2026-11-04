@@ -250,31 +250,32 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden select-none bg-[#0b2447]">
 
-  <!-- MÀN HÌNH ĐĂNG NHẬP -->
+ <!-- MÀN HÌNH ĐĂNG NHẬP -->
   <div id="loginScreen" class="fixed inset-0 bg-[#0b2447] z-50 flex items-center justify-center p-4">
     <div class="bg-white rounded-3xl shadow-2xl w-full max-w-[420px] p-8 flex flex-col items-center space-y-5">
       <div class="w-24 h-24 rounded-full border-4 border-emerald-500/20 p-1 flex items-center justify-center bg-white shadow-md">
         <img id="loginLogo" src="" alt="Toán Mr Vy" class="w-full h-full object-cover rounded-full">
       </div>
-      <div class="text-center space-y-2">
+      <div class="text-center space-y-1">
         <h2 class="text-3xl font-black text-[#0b2447] tracking-tight uppercase">TOÁN MR VY</h2>
+        <p class="text-xs font-semibold text-slate-400">Giáo viên / Trợ giảng đăng nhập hoặc Phụ huynh tra cứu</p>
       </div>
 
-      <form onsubmit="handleLoginSubmit(event)" class="w-full space-y-4 pt-3">
-        <div>
-          <input type="text" id="loginUsername" required placeholder="Tài khoản (mã NV / mã học sinh)" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium placeholder-slate-400 bg-slate-50/50">
+      <form onsubmit="handleLoginSubmit(event)" class="w-full space-y-4 pt-2">
+        <div class="relative">
+          <input type="text" id="loginUsername" autocomplete="off" oninput="onLoginUsernameInput(this.value)" placeholder="Nhập Tên HS, Mã HS, SĐT (hoặc TK Giáo viên)" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold text-slate-800 placeholder-slate-400 bg-slate-50/50">
+          <!-- Khung gợi ý học sinh khi Phụ huynh gõ Tên / Mã HS / SĐT -->
+          <div id="loginStudentSuggestions" class="hidden absolute left-0 right-0 top-full mt-1.5 bg-white border-2 border-emerald-500 rounded-2xl shadow-2xl max-h-60 overflow-y-auto z-50 divide-y divide-slate-100"></div>
         </div>
-        <div>
-          <input type="password" id="loginPassword" required placeholder="Mật khẩu" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium placeholder-slate-400 bg-slate-50/50">
+        <div id="loginPasswordWrap">
+          <input type="password" id="loginPassword" onfocus="hideLoginSuggestions()" placeholder="Mật khẩu (Dành cho Giáo viên & Trợ giảng)" class="w-full px-4 py-3.5 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium placeholder-slate-400 bg-slate-50/50">
         </div>
         <div id="loginErrorMsg" class="text-xs font-bold text-red-600 text-center hidden bg-red-50 p-3 rounded-xl border border-red-200"></div>
-        <button type="submit" id="btnLoginSubmit" class="w-full bg-[#00a65a] hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl text-base transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-95">
+        <button type="submit" id="btnLoginSubmit" class="w-full bg-[#00a65a] hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl text-base transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-95 cursor-pointer">
           Đăng nhập
         </button>
-        <button type="button" onclick="handleGuestLogin()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl text-sm transition border border-slate-300 flex items-center justify-center gap-2 active:scale-95 shadow-sm">
-          <i class="fa-solid fa-user-lock text-emerald-600"></i> PHỤ HUYNH ấn vào đây
-        </button>
-      </form>
+        <button type="button" onclick="handleGuestLogin()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-2xl text-sm transition border border-slate-300 flex items-center justify-center gap-2 active:scale-95 shadow-sm cursor-pointer">
+          <i class="fa-solid fa-magnifying-glass text-emerald-600"></i> PHỤ HUYNH tra cứu nhanh
         </button>
       </form>
     </div>
@@ -1915,12 +1916,12 @@
         btnChangePass.style.display = isGuest ? 'none' : 'flex';
       }
 
-      // 4. Nhãn menu
+// 4. Nhãn menu: Tab dưới luôn là "Điểm và bài tập", Tab trên phân biệt "Thông tin chung" (Phụ huynh) và "Điểm danh" (Admin/Trợ giảng)
       var label = document.getElementById('navTabHosoLabel');
-      if (label) label.innerText = (isStudent || isGuest) ? "Bảng điểm & Bài tập" : "Hồ sơ & Bảng tin";
+      if (label) label.innerText = "Điểm và bài tập";
 
       var ddLabel = document.getElementById('navTabDiemDanhLabel');
-      if (ddLabel) ddLabel.innerText = isStudent ? "Chuyên cần" : "Điểm danh";
+      if (ddLabel) ddLabel.innerText = isGuest ? "Thông tin chung" : (isStudent ? "Chuyên cần" : "Điểm danh");
 
       // 5. Cấu hình Tab mặc định khi đăng nhập
       if (isGuest || isStudent) {
@@ -3909,24 +3910,16 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var btn = document.getElementById('btnSaveBatchStu');
       if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang lưu ' + listToSave.length + ' em...';
 
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
+     if (typeof google !== 'undefined' && google.script && google.script.run) {
         google.script.run
-          google.script.run
           .withSuccessHandler(function(data) {
-            // 1. Phục hồi trạng thái nút
             if (btn) btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Lưu & Đồng Bộ Lên Sheet';
-            
-            // 2. CẬP NHẬT DỮ LIỆU TỪ SERVER: 
-            // Nếu hàm lưu trả về dữ liệu mới (data), ta cập nhật ngay appData
             if (data) {
-                appData = data;
+              appData = data;
             }
-            
-            // 3. LÀM MỚI GIAO DIỆN (TỰ ĐỘNG)
             studentQueue = [];
-            renderStudentQueue(); // Xóa danh sách đợi
-            renderAllViews();     // Tải lại bảng dữ liệu từ appData mới nhất
-            
+            renderStudentQueue();
+            renderAllViews();
             showToast('Đã đồng bộ thành công và làm mới dữ liệu!');
           })
           .withFailureHandler(function(err) {
@@ -4432,9 +4425,126 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-  var selectedGuestStudentId = null;
+  var selectedGuestStudentId = sessionStorage.getItem('lockedGuestStuId') || null;
+    var _guestPreloadPromise = null;
 
-    var selectedGuestStudentId = sessionStorage.getItem('lockedGuestStuId') || null;
+    // Tải ngầm danh sách tra cứu nhẹ khi Phụ huynh bắt đầu gõ ở màn hình Login
+    function ensureGuestDataForLoginSearch() {
+      if (appData && appData.students && appData.students.length > 0) {
+        return Promise.resolve(appData.students);
+      }
+      if (_guestPreloadPromise) return _guestPreloadPromise;
+
+      _guestPreloadPromise = new Promise(function(resolve) {
+        if (typeof google === 'undefined' || !google.script || !google.script.run) {
+          resolve([]);
+          return;
+        }
+        var existingToken = sessionStorage.getItem('sessionToken');
+        if (existingToken) {
+          google.script.run
+            .withSuccessHandler(function(data) {
+              if (data && data.students) appData = data;
+              resolve((appData && appData.students) || []);
+            })
+            .withFailureHandler(function() { resolve([]); })
+            .getInitialData(existingToken);
+        } else {
+          google.script.run
+            .withSuccessHandler(function(res) {
+              if (!res || !res.success || !res.token) { resolve([]); return; }
+              sessionStorage.setItem('sessionToken', res.token);
+              sessionStorage.setItem('guestTempToken', res.token);
+              google.script.run
+                .withSuccessHandler(function(data) {
+                  if (data && data.students) appData = data;
+                  resolve((appData && appData.students) || []);
+                })
+                .withFailureHandler(function() { resolve([]); })
+                .getInitialData(res.token);
+            })
+            .withFailureHandler(function() { resolve([]); })
+            .createGuestSession();
+        }
+      });
+      return _guestPreloadPromise;
+    }
+
+    function hideLoginSuggestions() {
+      var box = document.getElementById('loginStudentSuggestions');
+      if (box) box.classList.add('hidden');
+    }
+
+    function onLoginUsernameInput(rawVal) {
+      var box = document.getElementById('loginStudentSuggestions');
+      if (!box) return;
+      var q = cleanName(rawVal || '');
+      var qNoTone = removeVietnameseTones(q);
+
+      // Nếu gõ dưới 2 ký tự hoặc đang gõ tài khoản quản trị/trợ giảng thông dụng thì ẩn gợi ý
+      if (q.length < 2 || q === 'mrvy' || q === 'admin' || q.startsWith('trogiang') || q.startsWith('gv')) {
+        box.classList.add('hidden');
+        return;
+      }
+
+      ensureGuestDataForLoginSearch().then(function() {
+        var currentInput = document.getElementById('loginUsername');
+        if (!currentInput || cleanName(currentInput.value) !== q) return;
+
+        var matches = (getActiveStudents() || []).filter(function(s) {
+          var n = cleanName(s.name);
+          var nNo = removeVietnameseTones(n);
+          var cId = formatStudentId(s.id);
+          var pStu = formatPhoneDisplay(s.phone);
+          var pPar = formatPhoneDisplay(s.parentPhone);
+          return n.includes(q) || nNo.includes(qNoTone) || cId === q || (q.length >= 3 && (cId.includes(q) || pStu.includes(q) || pPar.includes(q)));
+        }).slice(0, 8);
+
+        if (matches.length === 0) {
+          box.classList.add('hidden');
+          return;
+        }
+
+        box.innerHTML =
+          '<div class="px-3 py-1.5 bg-emerald-50 text-[11px] font-bold text-emerald-800 uppercase tracking-wider">👇 Phụ huynh bấm vào tên con để xem ngay:</div>' +
+          matches.map(function(s) {
+            var cId = formatStudentId(s.id);
+            var cls = s.className || s.grade || '-';
+            return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-4 py-2.5 text-left hover:bg-emerald-50 transition flex items-center justify-between gap-2 cursor-pointer">' +
+              '<div>' +
+                '<div class="font-black text-slate-800 text-xs sm:text-sm">' + s.name + '</div>' +
+                '<div class="text-[11px] text-slate-500">Mã HS: <b class="font-mono text-emerald-700">' + cId + '</b> • Lớp: <b class="text-blue-700">' + cls + '</b></div>' +
+              '</div>' +
+              '<span class="bg-emerald-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">Xem hồ sơ <i class="fa-solid fa-arrow-right text-[10px] ml-0.5"></i></span>' +
+            '</button>';
+          }).join('');
+        box.classList.remove('hidden');
+      });
+    }
+
+    // Khi Phụ huynh bấm vào tên con ở ngay màn hình đăng nhập -> Vào thẳng hồ sơ của con (chỉ 1 bước!)
+    function loginDirectlyAsParentOfStudent(stuId) {
+      hideLoginSuggestions();
+      selectedGuestStudentId = formatStudentId(stuId);
+      sessionStorage.setItem('lockedGuestStuId', selectedGuestStudentId);
+
+      var token = sessionStorage.getItem('sessionToken');
+      if (token && appData && appData.students && appData.students.length > 0) {
+        currentUser = { username: 'guest', name: 'Phụ huynh', role: 'GUEST' };
+        sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+        document.getElementById('loginScreen').classList.add('hidden');
+        if (document.getElementById('headerUserName')) {
+          document.getElementById('headerUserName').innerText = 'Phụ huynh';
+        }
+        applyRolePermissions();
+        initAttendanceState(getActiveStudents());
+        renderAllViews();
+        if (typeof applyGuestStudentLock === 'function') applyGuestStudentLock();
+        showToast('Đã mở hồ sơ học tập của học sinh!');
+      } else {
+        handleGuestLogin();
+      }
+    }
 
     function selectGuestStudent(stuId) {
       selectedGuestStudentId = String(stuId || '').trim();
@@ -4444,7 +4554,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     function clearGuestSelectedStudent() {
-      logout();
+      handleLogout();
     }
 
     function renderGuestFullStudentProfile(s, selectedMonth) {
