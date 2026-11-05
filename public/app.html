@@ -12357,5 +12357,61 @@ function startSpinLuckyWheel(students) {
 })();
 </script>
 
+  <script>
+(function() {
+  function isWaitingText(txt) {
+    if (!txt) return false;
+    var s = String(txt).toUpperCase().trim();
+    return s.includes('ĐỢI') || /\b\d+\s*DOI\b/.test(s) || s.includes('LỚP ĐỢI') || s.includes('TẠM');
+  }
+
+  function isWaitingStu(s) {
+    if (!s) return false;
+    return isWaitingText(s.className) || isWaitingText(s.grade);
+  }
+
+  // 1. Khi đang ở Tab Điểm danh hoặc Học phí -> Tự động lọc sạch học sinh Lớp Đợi khỏi hàm getActiveStudents()
+  var origGetActive = window.getActiveStudents;
+  if (typeof origGetActive === 'function') {
+    window.getActiveStudents = function() {
+      var list = origGetActive() || [];
+      var tabStu = document.getElementById('tab-hocsinh');
+      var isViewingStuTab = tabStu && !tabStu.classList.contains('hidden');
+      // Nếu đang ở Tab Học sinh thì vẫn hiện đầy đủ để quản lý; còn ở Điểm danh / Học phí thì ẩn sạch Lớp Đợi
+      if (isViewingStuTab) return list;
+      return list.filter(function(s) { return !isWaitingStu(s); });
+    };
+  }
+
+  // 2. Ẩn toàn bộ nút chọn lớp (pill buttons) & option có chữ "Đợi" trong Điểm danh và Học phí
+  function hideWaitingClassesUI() {
+    ['tab-diemdanh', 'tab-hocphi', 'setRateModal'].forEach(function(id) {
+      var box = document.getElementById(id);
+      if (!box) return;
+
+      box.querySelectorAll('button, label, span.cursor-pointer').forEach(function(btn) {
+        var txt = (btn.textContent || '').trim();
+        if (txt.length <= 18 && isWaitingText(txt)) {
+          btn.style.display = 'none';
+        }
+      });
+
+      box.querySelectorAll('select option').forEach(function(opt) {
+        if (isWaitingText(opt.value) || isWaitingText(opt.textContent)) {
+          opt.remove();
+        }
+      });
+    });
+  }
+
+  var obs = new MutationObserver(hideWaitingClassesUI);
+  window.addEventListener('DOMContentLoaded', function() {
+    hideWaitingClassesUI();
+    obs.observe(document.body, { childList: true, subtree: true });
+  });
+  hideWaitingClassesUI();
+})();
+</script>
+  
 </body>
 </html>
