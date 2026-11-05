@@ -4509,16 +4509,22 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
         var matches = (getActiveStudents() || []).filter(function(s) {
           var cId = formatStudentId(s.id).toLowerCase();
-          var pStu = formatPhoneDisplay(s.phone);
-          var pPar = formatPhoneDisplay(s.parentPhone);
+          var pStu = formatPhoneDisplay(s.phone).replace(/\D/g, '');
+          var pPar = formatPhoneDisplay(s.parentPhone).replace(/\D/g, '');
 
-          // 1. Nếu nhập số: Khớp Mã HS hoặc SĐT (từ 3 số trở lên)
+          // 1. Nếu nhập số:
+          // - Khớp chính xác Mã HS (3 chữ số, VD: 095)
+          // - Hoặc khớp SĐT từ trái sang phải (startsWith) khi nhập từ 4 chữ số trở lên (dò cả SĐT học sinh và SĐT phụ huynh)
           if (isNumericQuery) {
-            return cId === qNoTone || (qNoTone.length >= 3 && (cId.includes(qNoTone) || pStu.includes(qNoTone) || pPar.includes(qNoTone)));
+            var matchId = (cId === qNoTone);
+            var matchPhone = qNoTone.length >= 4 && (
+              (pStu && pStu.startsWith(qNoTone)) ||
+              (pPar && pPar.startsWith(qNoTone))
+            );
+            return matchId || matchPhone;
           }
 
           // 2. Nếu nhập chữ (Họ tên): So khớp TRỌN VẸN TỪNG TỪ (không phân biệt hoa thường & dấu)
-          // Ví dụ: "huy" chỉ khớp từ "huy", tuyệt đối không khớp "thuy", "huyen", "huynh"
           var nameNoTone = removeVietnameseTones(cleanName(s.name)).toLowerCase();
           var nameWords = nameNoTone.split(/\s+/).filter(Boolean);
 
@@ -4526,7 +4532,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
             var targetWord = queryWords[0];
             return nameWords.some(function(w) { return w === targetWord; });
           } else {
-            // Nếu gõ nhiều từ (VD: "quoc huy" hoặc "nguyen quoc"): mọi từ gõ vào đều phải khớp trọn vẹn từ trong tên theo đúng thứ tự
             for (var i = 0; i <= nameWords.length - queryWords.length; i++) {
               var allMatch = true;
               for (var j = 0; j < queryWords.length; j++) {
@@ -4564,7 +4569,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
         if (passWrap) passWrap.classList.add('hidden');
 
-        // GOM NHÓM TÁCH MỖI LỚP THÀNH 1 KHỐI RIÊNG DỄ NHÌN
+        // GOM NHÓM TÁCH MỖI LỚP THÀNH 1 KHỐI RIÊNG
         var groupedByClass = {};
         var classOrder = [];
         matches.forEach(function(s) {
@@ -4575,14 +4580,15 @@ function getStudentDebtDetails(student, targetMonthStr) {
           }
           groupedByClass[cls].push(s);
         });
-      if (box) {
+
+        if (box) {
           var groupsHtml = classOrder.map(function(cls) {
             var stuList = groupedByClass[cls];
             var rowsHtml = stuList.map(function(s) {
               var cId = formatStudentId(s.id);
-              return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-4 py-3 text-left hover:bg-emerald-50 active:bg-emerald-100 transition flex items-center justify-between gap-3 cursor-pointer bg-white">' +
-                '<div class="min-w-0 flex-1 flex items-center justify-between gap-3 pr-1">' +
-                  '<span class="font-black text-slate-900 text-base sm:text-lg truncate">' + s.name + '</span>' +
+              return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-4 py-3 text-left hover:bg-emerald-50 active:bg-emerald-100 transition flex items-center justify-between gap-2.5 cursor-pointer bg-white">' +
+                '<div class="min-w-0 flex-1 flex items-center justify-between gap-2 pr-1">' +
+                  '<span class="font-black text-slate-900 text-base sm:text-lg leading-snug break-words">' + s.name + '</span>' +
                   '<span class="text-xs text-slate-600 whitespace-nowrap flex-shrink-0 font-medium">Mã: <b class="font-mono text-emerald-700 font-bold">' + cId + '</b></span>' +
                 '</div>' +
                 '<span class="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 shadow-xs">Xem →</span>' +
@@ -4606,7 +4612,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
             groupsHtml;
           box.classList.remove('hidden');
         }
-        
       });
     }
 
