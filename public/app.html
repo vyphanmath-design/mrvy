@@ -4566,7 +4566,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
   var selectedGuestStudentId = sessionStorage.getItem('lockedGuestStuId') || null;
     var _guestPreloadPromise = null;
 
-    // Tải ngầm danh sách tra cứu nhẹ khi Phụ huynh bắt đầu gõ ở màn hình Login
     function ensureGuestDataForLoginSearch() {
       if (appData && appData.students && appData.students.length > 0) {
         return Promise.resolve(appData.students);
@@ -4578,7 +4577,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           resolve([]);
           return;
         }
-        var existingToken = sessionStorage.getItem('sessionToken');
+        var existingToken = sessionStorage.getItem('sessionToken') || sessionStorage.getItem('guestTempToken');
         if (existingToken) {
           google.script.run
             .withSuccessHandler(function(data) {
@@ -4591,7 +4590,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
           google.script.run
             .withSuccessHandler(function(res) {
               if (!res || !res.success || !res.token) { resolve([]); return; }
-              sessionStorage.setItem('sessionToken', res.token);
               sessionStorage.setItem('guestTempToken', res.token);
               google.script.run
                 .withSuccessHandler(function(data) {
@@ -4613,7 +4611,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (box) box.classList.add('hidden');
     }
 
-  function clearLoginUsernameInput() {
+    function clearLoginUsernameInput() {
       var inp = document.getElementById('loginUsername');
       var clr = document.getElementById('btnClearLoginInput');
       if (inp) {
@@ -4628,14 +4626,13 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var menu = document.getElementById('loginPhoneActionMenu');
       if (menu) menu.classList.toggle('hidden');
     }
-    
+
     function onLoginUsernameInput(rawVal) {
       var box = document.getElementById('loginStudentSuggestions');
       var passWrap = document.getElementById('loginPasswordWrap');
       var q = cleanName(rawVal || '');
       var qNoTone = removeVietnameseTones(q).toLowerCase().trim();
 
-      // Nhận diện nếu đang gõ tài khoản Admin / Trợ giảng -> Hiện ngay ô mật khẩu và ẩn gợi ý HS
       var isStaffAccount = (q === 'mrvy' || q === 'admin' || q.startsWith('trogiang') || q.startsWith('tg') || q.startsWith('gv'));
       if (isStaffAccount) {
         if (passWrap) passWrap.classList.remove('hidden');
@@ -4666,9 +4663,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
           var pStu = formatPhoneDisplay(s.phone).replace(/\D/g, '');
           var pPar = formatPhoneDisplay(s.parentPhone).replace(/\D/g, '');
 
-          // 1. Nếu nhập số:
-          // - Khớp chính xác Mã HS (3 chữ số, VD: 095)
-          // - Hoặc khớp SĐT từ trái sang phải (startsWith) khi nhập từ 4 chữ số trở lên (dò cả SĐT học sinh và SĐT phụ huynh)
           if (isNumericQuery) {
             var matchId = (cId === qNoTone);
             var matchPhone = qNoTone.length >= 4 && (
@@ -4678,7 +4672,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
             return matchId || matchPhone;
           }
 
-          // 2. Nếu nhập chữ (Họ tên): So khớp TRỌN VẸN TỪNG TỪ (không phân biệt hoa thường & dấu)
           var nameNoTone = removeVietnameseTones(cleanName(s.name)).toLowerCase();
           var nameWords = nameNoTone.split(/\s+/).filter(Boolean);
 
@@ -4700,7 +4693,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
           }
         });
 
-        // SẮP XẾP LỚP TỪ NHỎ ĐẾN LỚN (Khối 6 -> 12, trong cùng lớp xếp theo Mã HS)
         matches.sort(function(a, b) {
           var clsA = String(a.className || a.grade || '').trim();
           var clsB = String(b.className || b.grade || '').trim();
@@ -4723,7 +4715,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
         if (passWrap) passWrap.classList.add('hidden');
 
-        // GOM NHÓM TÁCH MỖI LỚP THÀNH 1 KHỐI RIÊNG
         var groupedByClass = {};
         var classOrder = [];
         matches.forEach(function(s) {
@@ -4769,14 +4760,14 @@ function getStudentDebtDetails(student, targetMonthStr) {
       });
     }
 
-    // Khi Phụ huynh bấm vào tên con ở ngay màn hình đăng nhập -> Vào thẳng hồ sơ của con (chỉ 1 bước!)
     function loginDirectlyAsParentOfStudent(stuId) {
       hideLoginSuggestions();
       selectedGuestStudentId = formatStudentId(stuId);
       sessionStorage.setItem('lockedGuestStuId', selectedGuestStudentId);
 
-      var token = sessionStorage.getItem('sessionToken');
+      var token = sessionStorage.getItem('sessionToken') || sessionStorage.getItem('guestTempToken');
       if (token && appData && appData.students && appData.students.length > 0) {
+        sessionStorage.setItem('sessionToken', token);
         currentUser = { username: 'guest', name: 'Phụ huynh', role: 'GUEST' };
         sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
         document.getElementById('loginScreen').classList.add('hidden');
@@ -5167,117 +5158,22 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var studentIdLimit = isStudent ? currentUser.username : null;
 
       if (isGuest) {
-        applyGuestStudentLock(); // <--
-        if (selectedGuestStudentId) {
+        if (typeof applyGuestStudentLock === 'function') applyGuestStudentLock();
+        var targetGuestId = selectedGuestStudentId || sessionStorage.getItem('lockedGuestStuId');
+        if (targetGuestId) {
           var lockedStu = (getActiveStudents() || []).find(function(s) {
-            return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
+            return formatStudentId(s.id) === formatStudentId(targetGuestId);
           });
           if (lockedStu) {
-            applyGuestStudentLock();
+            selectedGuestStudentId = formatStudentId(lockedStu.id);
+            if (typeof applyGuestStudentLock === 'function') applyGuestStudentLock();
             container.innerHTML = renderGuestFullStudentProfile(lockedStu, selectedMonth);
             return;
           }
         }
-        if (!search) {
-          selectedGuestStudentId = null;
-          container.innerHTML =
-            '<div class="bg-white p-12 text-center text-slate-400 font-medium rounded-2xl border border-dashed border-slate-200">' +
-              '<i class="fa-solid fa-magnifying-glass text-3xl text-slate-300 mb-2 block"></i>' +
-              'Vui lòng nhập <b>Họ tên, Mã HS hoặc SĐT</b> vào ô tìm kiếm ở trên để tra cứu.' +
-            '</div>';
-          return;
-        }
-
-        var matchedList = (getActiveStudents() || []).filter(function(s) {
-     var pStu = formatPhoneDisplay(s.phone);
-     var pPar = formatPhoneDisplay(s.parentPhone);
-     return cleanName(s.name).includes(search) ||
-            String(s.id).includes(search) ||
-            formatStudentId(s.id).includes(search) ||
-            pStu.includes(search) ||
-            pPar.includes(search);
-   });
-
-   // SẮP XẾP: THEO KHỐI TỪ NHỎ TỚI LỚN, TRONG MỖI KHỐI XẾP THEO MÃ HỌC SINH TĂNG DẦN
-   matchedList.sort(function(a, b) {
-     var gradeNumA = parseInt(String(a.grade || '').replace(/\D/g, ''), 10) || 0;
-     var gradeNumB = parseInt(String(b.grade || '').replace(/\D/g, ''), 10) || 0;
-     if (gradeNumA !== gradeNumB) {
-       return gradeNumA - gradeNumB;
-     }
-     var idNumA = parseInt(String(a.id || '').replace(/\D/g, ''), 10) || 0;
-     var idNumB = parseInt(String(b.id || '').replace(/\D/g, ''), 10) || 0;
-     return idNumA - idNumB;
-   });
-        
-
-        if (matchedList.length === 0) {
-        container.innerHTML = '<div class="bg-white p-8 text-center text-slate-400 font-bold rounded-2xl border">Không tìm thấy học sinh nào khớp với từ khóa "' + searchInput + '"</div>';
+        // Nếu vào quyền Guest mà chưa chọn học sinh ở ngoài khung đăng nhập -> Mở lại khung đăng nhập ngay
+        document.getElementById('loginScreen').classList.remove('hidden');
         return;
-      }
-
-      var chosenStu = null;
-      if (selectedGuestStudentId) {
-        chosenStu = matchedList.find(function(s) {
-          return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
-        });
-      }
-
-      if (chosenStu) {
-        container.innerHTML = renderGuestFullStudentProfile(chosenStu, selectedMonth);
-        return;
-      }
-
-      // PHÂN NHÓM HỌC SINH THEO TỪNG LỚP RIÊNG BIỆT
-      var groupedByClass = {};
-      var classOrder = [];
-
-      matchedList.forEach(function(s) {
-        var cName = String(s.className || s.grade || 'Chưa xếp').trim();
-        if (!groupedByClass[cName]) {
-          groupedByClass[cName] = [];
-          classOrder.push(cName);
-        }
-        groupedByClass[cName].push(s);
-      });
-
-      classOrder.sort(function(a, b) {
-        var numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
-        var numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
-        if (numA !== numB) return numA - numB;
-        return a.localeCompare(b);
-      });
-
-      var groupsHtml = classOrder.map(function(cName) {
-        var studentsInClass = groupedByClass[cName];
-        
-        var cardsHtml = studentsInClass.map(function(s) {
-          var cId = formatStudentId(s.id);
-          return '<button type="button" onclick="selectGuestStudent(\'' + s.id + '\')" class="p-3.5 rounded-xl border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 transition text-left flex items-center justify-between group shadow-2xs cursor-pointer bg-white">' +
-            '<div>' +
-              '<div class="font-black text-slate-800 group-hover:text-emerald-700 text-sm">' + s.name + '</div>' +
-              '<div class="text-xs text-slate-500 mt-0.5">Mã HS: <b class="font-mono text-emerald-700">' + cId + '</b> • Lớp: <b class="text-blue-700">' + (s.className || s.grade || '-') + '</b></div>' +
-            '</div>' +
-            '<span class="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs group-hover:bg-emerald-700 whitespace-nowrap">Xem chi tiết <i class="fa-solid fa-chevron-right text-[10px] ml-0.5"></i></span>' +
-          '</button>';
-        }).join('');
-
-        return '<div class="space-y-2.5 mb-5">' +
-          '<div class="font-black text-brand-dark text-xs uppercase flex items-center gap-1.5 border-l-4 border-emerald-600 pl-2.5 py-0.5">' +
-            '<i class="fa-solid fa-graduation-cap text-emerald-600"></i> TOÁN LỚP ' + cName + ' (' + studentsInClass.length + ' em)' +
-          '</div>' +
-          '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">' + cardsHtml + '</div>' +
-        '</div>';
-      }).join('');
-
-      container.innerHTML =
-        '<div class="bg-white p-5 rounded-2xl shadow-sm border space-y-4">' +
-          '<div class="text-xs font-bold text-slate-600 border-b pb-2 flex items-center justify-between">' +
-            '<span><i class="fa-solid fa-hand-pointer text-emerald-600 mr-1"></i> Tìm thấy <b>' + matchedList.length + '</b> học sinh. Vui lòng <b>bấm vào tên học sinh</b> bên dưới để xem chi tiết:</span>' +
-          '</div>' +
-          groupsHtml +
-        '</div>';
-      return;
       }
 
       if (isAdmin && grade === 'NONE' && !search) {
@@ -6242,127 +6138,109 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     function handleLogout() {
+      if (!confirm('Bạn có chắc chắn muốn đăng xuất?')) {
+        return;
+      }
 
-  if (!confirm('Bạn có chắc chắn muốn đăng xuất?')) {
-    return;
-  }
+      var token = sessionStorage.getItem('sessionToken');
 
-  var token = sessionStorage.getItem('sessionToken');
-
-  function finishLogout() {
-    sessionStorage.removeItem('sessionToken');
-    sessionStorage.removeItem('currentUser');
-    currentUser = null;
-    window.location.reload();
-  }
-
-  if (token &&
-      typeof google !== 'undefined' &&
-      google.script &&
-      google.script.run) {
-
-    google.script.run
-      .withSuccessHandler(function() {
-        finishLogout();
-      })
-      .withFailureHandler(function() {
-        finishLogout();
-      })
-      .logoutSession(token);
-
-  } else {
-    finishLogout();
-  }
-}
-
-    function checkSessionOnLoad() {
-
-  var token = sessionStorage.getItem('sessionToken');
-
-  setAllAvatars(localStorage.getItem('teacherAvatar') || '');
-
-  // Không có token → bắt buộc đăng nhập
-  if (!token) {
-    currentUser = null;
-    sessionStorage.removeItem('currentUser');
-
-    document.getElementById('loginScreen').classList.remove('hidden');
-    return;
-  }
-
-  // Có token → hỏi SERVER xác nhận
-  if (typeof google === 'undefined' ||
-      !google.script ||
-      !google.script.run) {
-
-    currentUser = null;
-    sessionStorage.removeItem('sessionToken');
-    sessionStorage.removeItem('currentUser');
-
-    document.getElementById('loginScreen').classList.remove('hidden');
-    return;
-  }
-
-  google.script.run
-    .withSuccessHandler(function(res) {
-
-      if (!res || !res.success || !res.user) {
-
-        // Token giả / hết hạn / đã logout
+      function finishLogout() {
         sessionStorage.removeItem('sessionToken');
         sessionStorage.removeItem('currentUser');
+        sessionStorage.removeItem('lockedGuestStuId');
+        sessionStorage.removeItem('guestTempToken');
+        selectedGuestStudentId = null;
         currentUser = null;
+        window.location.reload();
+      }
 
+      if (token && typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(function() { finishLogout(); })
+          .withFailureHandler(function() { finishLogout(); })
+          .logoutSession(token);
+      } else {
+        finishLogout();
+      }
+    }
+
+    function checkSessionOnLoad() {
+      var token = sessionStorage.getItem('sessionToken');
+
+      setAllAvatars(localStorage.getItem('teacherAvatar') || '');
+
+      if (!token) {
+        currentUser = null;
+        sessionStorage.removeItem('currentUser');
         document.getElementById('loginScreen').classList.remove('hidden');
         return;
       }
 
-      // QUAN TRỌNG:
-      // Không lấy role từ sessionStorage.
-      // Lấy user do SERVER xác nhận.
-      currentUser = res.user;
-
-      sessionStorage.setItem(
-        'currentUser',
-        JSON.stringify(res.user)
-      );
-
-      document.getElementById('loginScreen').classList.add('hidden');
-
-      if (document.getElementById('headerUserName')) {
-        document.getElementById('headerUserName').innerText =
-          userDisplayName(currentUser);
+      if (typeof google === 'undefined' || !google.script || !google.script.run) {
+        currentUser = null;
+        sessionStorage.removeItem('sessionToken');
+        sessionStorage.removeItem('currentUser');
+        document.getElementById('loginScreen').classList.remove('hidden');
+        return;
       }
 
-      if (document.getElementById('sidebarUserName')) {
-        document.getElementById('sidebarUserName').innerText =
-          userDisplayName(currentUser);
-      }
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (!res || !res.success || !res.user) {
+            sessionStorage.removeItem('sessionToken');
+            sessionStorage.removeItem('currentUser');
+            currentUser = null;
+            document.getElementById('loginScreen').classList.remove('hidden');
+            return;
+          }
 
-      if (document.getElementById('sidebarUserRole')) {
-        document.getElementById('sidebarUserRole').innerText =
-          currentUser.role === 'STUDENT'
-            ? ('Mã HS: ' + formatStudentId(currentUser.username))
-            : (currentUser.role === 'GUEST'
-                ? 'Chế độ chỉ xem'
-                : 'Toán THCS & THPT');
-      }
+          currentUser = res.user;
 
-      applyRolePermissions();
-      syncData();
+          // Chốt chặn GUEST: Nếu chưa chọn học sinh ở ngoài khung đăng nhập thì giữ lại màn hình Login
+          var lockedStuId = sessionStorage.getItem('lockedGuestStuId');
+          var userRole = String(currentUser.role || '').toUpperCase();
+          if (userRole === 'GUEST' && !lockedStuId) {
+            sessionStorage.removeItem('sessionToken');
+            sessionStorage.removeItem('currentUser');
+            currentUser = null;
+            document.getElementById('loginScreen').classList.remove('hidden');
+            return;
+          }
+          if (lockedStuId) {
+            selectedGuestStudentId = lockedStuId;
+          }
 
-    })
-    .withFailureHandler(function() {
+          sessionStorage.setItem('currentUser', JSON.stringify(res.user));
+          document.getElementById('loginScreen').classList.add('hidden');
 
-      sessionStorage.removeItem('sessionToken');
-      sessionStorage.removeItem('currentUser');
-      currentUser = null;
+          if (document.getElementById('headerUserName')) {
+            document.getElementById('headerUserName').innerText = userDisplayName(currentUser);
+          }
 
-      document.getElementById('loginScreen').classList.remove('hidden');
+          if (document.getElementById('sidebarUserName')) {
+            document.getElementById('sidebarUserName').innerText = userDisplayName(currentUser);
+          }
 
-    })
-    .validateSession(token);
-}
+          if (document.getElementById('sidebarUserRole')) {
+            document.getElementById('sidebarUserRole').innerText =
+              currentUser.role === 'STUDENT'
+                ? ('Mã HS: ' + formatStudentId(currentUser.username))
+                : (currentUser.role === 'GUEST'
+                    ? 'Chế độ chỉ xem'
+                    : 'Toán THCS & THPT');
+          }
+
+          applyRolePermissions();
+          syncData();
+        })
+        .withFailureHandler(function() {
+          sessionStorage.removeItem('sessionToken');
+          sessionStorage.removeItem('currentUser');
+          currentUser = null;
+          document.getElementById('loginScreen').classList.remove('hidden');
+        })
+        .validateSession(token);
+    }
 
     function normalizeGradeKey(gStr) {
       var s = cleanName(gStr);
