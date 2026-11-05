@@ -250,34 +250,172 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden select-none bg-[#0b2447]">
 
- <!-- MÀN HÌNH ĐĂNG NHẬP -->
-  <div id="loginScreen" class="fixed inset-0 bg-[#0b2447] z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-[420px] p-5 sm:p-8 my-auto flex flex-col items-center space-y-4">
-      <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-emerald-500/20 p-1 flex items-center justify-center bg-white shadow-md">
-        <img id="loginLogo" src="" alt="Toán Mr Vy" class="w-full h-full object-cover rounded-full">
-      </div>
-      <div class="text-center space-y-0.5">
-        <h2 class="text-2xl sm:text-3xl font-black text-[#0b2447] tracking-tight uppercase">TOÁN MR VY</h2>
-        <p class="text-xs font-semibold text-slate-400">Nhập họ tên hoặc sđt để tra cứu</p>
-      </div>
+ <!-- MÀN HÌNH ĐĂNG NHẬP GIAO DIỆN MỚI -->
+  <div id="loginScreen" class="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" style="background: radial-gradient(circle at 20% 20%, #e0ecff 0%, #93bbf5 45%, #5b93e8 100%);">
+    
+    <!-- Họa tiết nền Toán học (Lưới tọa độ, Công thức, Đồ thị) -->
+    <div class="fixed inset-0 pointer-events-none overflow-hidden select-none z-0 opacity-75">
+      <!-- Lưới ô vuông mờ -->
+      <div class="absolute inset-0" style="background-image: linear-gradient(to right, rgba(255,255,255,0.22) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.22) 1px, transparent 1px); background-size: 44px 44px;"></div>
+      
+      <!-- Công thức Toán học & Hệ trục tọa độ trang trí -->
+      <div class="hidden sm:block absolute top-[8%] left-[18%] text-white/80 font-serif italic text-3xl font-bold tracking-wider drop-shadow-xs -rotate-6">a² + b² = c²</div>
+      <div class="hidden sm:block absolute bottom-[9%] left-[22%] text-white/80 font-serif italic text-3xl font-bold tracking-wider drop-shadow-xs">S = <span class="inline-block text-center align-middle text-xl leading-none mx-0.5"><span class="block border-b-2 border-white/80 pb-0.5">1</span><span class="block pt-0.5">2</span></span>ah</div>
+      
+      <!-- Đồ thị hàm số góc trên phải -->
+      <svg class="hidden md:block absolute top-[6%] right-[10%] w-48 h-32 text-blue-900/30" viewBox="0 0 200 130" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M20 115 L20 10 M20 10 L14 18 M20 10 L26 18" stroke-linecap="round"/>
+        <path d="M5 75 L190 75 M190 75 L182 69 M190 75 L182 81" stroke-linecap="round"/>
+        <path d="M20 85 C 55 15, 95 15, 125 65 C 150 105, 175 95, 185 50" stroke-width="2.5" stroke-linecap="round"/>
+        <text x="28" y="22" fill="currentColor" stroke="none" class="font-serif italic text-lg font-bold">y</text>
+        <text x="180" y="96" fill="currentColor" stroke="none" class="font-serif italic text-lg font-bold">x</text>
+      </svg>
 
-      <form onsubmit="handleLoginSubmit(event)" class="w-full space-y-3 pt-1">
-        <div class="relative">
-          <input type="text" id="loginUsername" autocomplete="off" oninput="onLoginUsernameInput(this.value)" placeholder="Nhập họ tên hoặc SĐT..." class="w-full px-4 py-3 text-sm border-2 border-emerald-500 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-bold text-slate-800 placeholder-slate-400 bg-slate-50/50">
-          <!-- Khung gợi ý học sinh xổ dài trực tiếp, không bị cuộn hẹp -->
-          <div id="loginStudentSuggestions" class="hidden mt-2 bg-white border-2 border-emerald-500 rounded-2xl shadow-lg overflow-hidden divide-y divide-slate-100"></div>
+      <!-- Đồ thị hàm số góc dưới phải -->
+      <svg class="hidden md:block absolute bottom-[5%] right-[16%] w-52 h-32 text-blue-900/25" viewBox="0 0 200 130" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M35 120 L35 10 M35 10 L29 18 M35 10 L41 18" stroke-linecap="round"/>
+        <path d="M10 90 L190 90 M190 90 L182 84 M190 90 L182 96" stroke-linecap="round"/>
+        <path d="M15 80 Q 65 15 110 70 T 185 60" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <!-- KHUNG CARD CHÍNH -->
+    <div class="relative z-10 w-full max-w-[820px] my-auto rounded-[34px] bg-white/95 backdrop-blur-md p-2 sm:p-2.5 shadow-[0_25px_70px_rgba(15,45,110,0.38)] border-2 border-white">
+      <div class="relative flex flex-col md:flex-row rounded-[28px] overflow-hidden bg-gradient-to-br from-[#f8fbff] via-white to-[#eef5ff]">
+
+        <!-- CỘT TRÁI: MINH HỌA TOÁN HỌC 3D (Hiện trên màn hình lớn / Tablet) -->
+        <div class="hidden md:flex md:w-[44%] relative overflow-hidden items-center justify-center p-6 select-none" style="background: linear-gradient(145deg, #6cacff 0%, #3b82f6 55%, #1d4ed8 100%);">
+          <!-- Đường lượn sóng trắng cắt giữa 2 cột -->
+          <svg class="absolute -right-1 top-0 bottom-0 h-full w-16 text-[#f8fbff] fill-current pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 800">
+            <path d="M100,0 L100,800 L20,800 C75,580 -15,260 45,0 Z"></path>
+          </svg>
+
+          <!-- Các biểu tượng Toán học 3D trang trí -->
+          <div class="relative z-10 flex flex-col items-center text-center w-full pr-4">
+            <!-- Thẻ căn bậc hai & Hình lập phương lơ lửng -->
+            <div class="flex items-center justify-between w-full px-4 mb-2">
+              <div class="px-3.5 py-2 rounded-2xl bg-white/20 backdrop-blur-md border border-white/40 text-white font-serif font-black text-2xl shadow-lg -rotate-6">
+                √x
+              </div>
+              <svg class="w-12 h-12 text-white/80 rotate-12 drop-shadow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+            </div>
+
+            <!-- Chữ Pi 3D cỡ lớn kèm vòng quỹ đạo phát sáng -->
+            <div class="relative my-1 flex items-center justify-center">
+              <div class="absolute w-44 h-16 rounded-full border-2 border-white/50 -rotate-12 shadow-[0_0_25px_rgba(255,255,255,0.6)]"></div>
+              <div class="text-[108px] leading-none font-serif font-black text-white select-none" style="text-shadow: 0 8px 0 #93c5fd, 0 14px 25px rgba(15,23,42,0.35);">
+                π
+              </div>
+            </div>
+
+            <!-- Chồng sách & Thước Ê-ke minh họa -->
+            <div class="mt-3 w-48 space-y-1.5 relative">
+              <div class="h-7 rounded-l-lg rounded-r-md bg-gradient-to-r from-blue-700 to-blue-600 border-y-2 border-l-2 border-blue-800 shadow-md flex items-center px-3">
+                <div class="w-full h-3 bg-slate-100 rounded-xs"></div>
+              </div>
+              <div class="h-8 rounded-l-lg rounded-r-md bg-gradient-to-r from-blue-800 to-indigo-700 border-y-2 border-l-2 border-blue-900 shadow-lg flex items-center px-3 relative">
+                <div class="w-full h-3.5 bg-slate-100 rounded-xs"></div>
+                <div class="w-2.5 h-5 bg-amber-400 absolute left-5 top-3 rounded-b-xs shadow"></div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div id="loginPasswordWrap" class="hidden">
-          <input type="password" id="loginPassword" onfocus="hideLoginSuggestions()" placeholder="Mật khẩu" class="w-full px-4 py-3 text-sm border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium placeholder-slate-400 bg-slate-50/50">
+
+        <!-- CỘT PHẢI: KHUNG ĐĂNG NHẬP & TRA CỨU CHÍNH -->
+        <div class="w-full md:w-[56%] p-5 sm:p-8 flex flex-col items-center justify-center relative">
+          
+          <!-- Nút tia trang trí góc trên phải giống mẫu -->
+          <div class="hidden sm:flex absolute top-4 right-5 text-blue-600 font-black select-none pointer-events-none">
+            <svg class="w-7 h-7" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round">
+              <line x1="12" y1="6" x2="8" y2="18" />
+              <line x1="25" y1="12" x2="16" y2="21" />
+              <line x1="34" y1="24" x2="22" y2="26" />
+            </svg>
+          </div>
+
+          <!-- Ảnh đại diện Thầy + Chấm xanh hoạt động -->
+          <div class="relative">
+            <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-1 bg-white shadow-[0_8px_25px_rgba(37,99,235,0.22)] border-2 border-blue-100 flex items-center justify-center">
+              <img id="loginLogo" src="" alt="Toán Mr Vy" class="w-full h-full object-cover rounded-full">
+            </div>
+            <span class="absolute bottom-1.5 right-1.5 w-5 h-5 rounded-full bg-emerald-500 border-3 border-white shadow-sm"></span>
+          </div>
+
+          <!-- Tiêu đề TOÁN MR VY + Thanh mũ cử nhân -->
+          <div class="text-center mt-3 w-full">
+            <h2 class="text-2xl sm:text-[30px] font-black text-[#0b2447] tracking-tight uppercase leading-tight">TOÁN MR VY</h2>
+            <div class="flex items-center justify-center gap-3 my-1.5">
+              <span class="h-[1.5px] w-16 sm:w-24 bg-gradient-to-r from-transparent to-blue-300"></span>
+              <i class="fa-solid fa-graduation-cap text-blue-600 text-sm"></i>
+              <span class="h-[1.5px] w-16 sm:w-24 bg-gradient-to-l from-transparent to-blue-300"></span>
+            </div>
+            <p class="text-xs sm:text-[13px] font-bold text-slate-500">Nhập họ tên hoặc SĐT để tra cứu</p>
+          </div>
+
+          <!-- FORM TRA CỨU / ĐĂNG NHẬP -->
+          <form onsubmit="handleLoginSubmit(event)" class="w-full space-y-3.5 mt-4">
+            <div class="relative">
+              <div class="relative flex items-center">
+                <i class="fa-solid fa-user text-slate-400 absolute left-4 text-sm pointer-events-none"></i>
+                <input type="text" id="loginUsername" autocomplete="off"
+                  oninput="onLoginUsernameInput(this.value); var clr=document.getElementById('btnClearLoginInput'); if(clr) clr.classList.toggle('hidden', !this.value);"
+                  placeholder="Nhập họ tên hoặc SĐT..."
+                  class="w-full pl-11 pr-10 py-3.5 text-sm sm:text-base border border-blue-200/90 rounded-full bg-[#eef4fc] focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none font-bold text-slate-800 placeholder-slate-400 shadow-inner transition">
+                <!-- Nút X xóa nhanh chữ đang gõ -->
+                <button type="button" id="btnClearLoginInput" onclick="clearLoginUsernameInput()" class="hidden absolute right-3.5 w-5 h-5 rounded-full bg-slate-400/70 hover:bg-slate-600 text-white text-[11px] flex items-center justify-center transition cursor-pointer" title="Xóa">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              <!-- Khung gợi ý học sinh xổ dài trực tiếp -->
+              <div id="loginStudentSuggestions" class="hidden mt-3 text-left"></div>
+            </div>
+
+            <!-- Ô mật khẩu (chỉ bật ra khi Giáo viên / Trợ giảng đăng nhập) -->
+            <div id="loginPasswordWrap" class="hidden">
+              <div class="relative flex items-center">
+                <i class="fa-solid fa-lock text-slate-400 absolute left-4 text-sm pointer-events-none"></i>
+                <input type="password" id="loginPassword" onfocus="hideLoginSuggestions()" placeholder="Mật khẩu"
+                  class="w-full pl-11 pr-4 py-3.5 text-sm sm:text-base border border-blue-200/90 rounded-full bg-[#eef4fc] focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-800 placeholder-slate-400 shadow-inner transition">
+              </div>
+            </div>
+
+            <div id="loginErrorMsg" class="text-xs font-bold text-red-600 text-center hidden bg-red-50 p-2.5 rounded-2xl border border-red-200"></div>
+
+            <!-- Nút Đăng nhập màu xanh dương bóng 3D kèm mũi tên -->
+            <button type="submit" id="btnLoginSubmit"
+              style="background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 55%, #1e40af 100%); box-shadow: 0 10px 22px -4px rgba(29, 78, 216, 0.55), inset 0 2px 1px rgba(255, 255, 255, 0.35);"
+              class="w-full hover:brightness-110 text-white font-black py-3.5 rounded-full text-base sm:text-lg transition flex items-center justify-center gap-3 active:scale-95 cursor-pointer">
+              <span>Đăng nhập</span>
+              <i class="fa-solid fa-arrow-right text-sm"></i>
+            </button>
+
+            <!-- Nút SĐT: Bấm vào mở menu chọn Gọi điện thoại hoặc Mở Zalo -->
+            <div class="relative">
+              <button type="button" onclick="togglePhoneZaloMenu()"
+                class="w-full bg-[#eef4fc] hover:bg-blue-100/70 text-[#0b2447] font-extrabold py-3 rounded-full text-xs sm:text-sm transition border border-blue-200/80 flex items-center justify-center gap-2 shadow-2xs active:scale-95 cursor-pointer">
+                <i class="fa-solid fa-phone-volume text-blue-600"></i>
+                <span>SĐT: 0981864442</span>
+              </button>
+
+              <!-- Hộp chọn Gọi Điện hoặc Nhắn Zalo -->
+              <div id="loginPhoneActionMenu" class="hidden mt-2 grid grid-cols-2 gap-2.5 p-2 bg-white rounded-2xl border-2 border-blue-200 shadow-lg">
+                <a href="tel:0981864442" class="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-xs transition active:scale-95">
+                  <i class="fa-solid fa-phone"></i> Gọi điện
+                </a>
+                <a href="https://zalo.me/0981864442" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-xs transition active:scale-95">
+                  <i class="fa-solid fa-comment-dots"></i> Mở Zalo
+                </a>
+              </div>
+            </div>
+          </form>
+
         </div>
-        <div id="loginErrorMsg" class="text-xs font-bold text-red-600 text-center hidden bg-red-50 p-2.5 rounded-xl border border-red-200"></div>
-        <button type="submit" id="btnLoginSubmit" class="w-full bg-[#00a65a] hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl text-sm sm:text-base transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-95 cursor-pointer">
-          Đăng nhập
-        </button>
-        <a href="tel:0981864442" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-2xl text-xs sm:text-sm transition border border-slate-300 flex items-center justify-center gap-2 shadow-sm">
-          <i class="fa-solid fa-phone text-emerald-600"></i> SĐT: 0981864442
-        </a>
-      </form>
+      </div>
     </div>
   </div>
 
@@ -4475,6 +4613,22 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (box) box.classList.add('hidden');
     }
 
+  function clearLoginUsernameInput() {
+      var inp = document.getElementById('loginUsername');
+      var clr = document.getElementById('btnClearLoginInput');
+      if (inp) {
+        inp.value = '';
+        onLoginUsernameInput('');
+        inp.focus();
+      }
+      if (clr) clr.classList.add('hidden');
+    }
+
+    function togglePhoneZaloMenu() {
+      var menu = document.getElementById('loginPhoneActionMenu');
+      if (menu) menu.classList.toggle('hidden');
+    }
+    
     function onLoginUsernameInput(rawVal) {
       var box = document.getElementById('loginStudentSuggestions');
       var passWrap = document.getElementById('loginPasswordWrap');
