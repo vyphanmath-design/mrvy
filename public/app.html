@@ -4566,45 +4566,48 @@ function getStudentDebtDetails(student, targetMonthStr) {
   var selectedGuestStudentId = sessionStorage.getItem('lockedGuestStuId') || null;
     var _guestPreloadPromise = null;
 
-    function ensureGuestDataForLoginSearch() {
-      if (appData && appData.students && appData.students.length > 0) {
-        return Promise.resolve(appData.students);
-      }
-      if (_guestPreloadPromise) return _guestPreloadPromise;
+   var cachedAllStudents = [];
+    var isStudentsPreloaded = false;
 
-      _guestPreloadPromise = new Promise(function(resolve) {
-        if (typeof google === 'undefined' || !google.script || !google.script.run) {
-          resolve([]);
-          return;
-        }
-        var existingToken = sessionStorage.getItem('sessionToken') || sessionStorage.getItem('guestTempToken');
-        if (existingToken) {
-          google.script.run
-            .withSuccessHandler(function(data) {
-              if (data && data.students) appData = data;
-              resolve((appData && appData.students) || []);
-            })
-            .withFailureHandler(function() { resolve([]); })
-            .getInitialData(existingToken);
-        } else {
-          google.script.run
-            .withSuccessHandler(function(res) {
-              if (!res || !res.success || !res.token) { resolve([]); return; }
-              sessionStorage.setItem('guestTempToken', res.token);
-              google.script.run
-                .withSuccessHandler(function(data) {
-                  if (data && data.students) appData = data;
-                  resolve((appData && appData.students) || []);
-                })
-                .withFailureHandler(function() { resolve([]); })
-                .getInitialData(res.token);
-            })
-            .withFailureHandler(function() { resolve([]); })
-            .createGuestSession();
-        }
+    // 1. Tải sẵn toàn bộ danh sách học sinh 1 lần duy nhất ngay khi mở trang để tra cứu siêu tốc
+    function preloadAllStudentsForInstantSearch() {
+      if (isStudentsPreloaded && cachedAllStudents.length > 0) return Promise.resolve(cachedAllStudents);
+
+      if (appData && appData.students && appData.students.length > 0) {
+        cachedAllStudents = appData.students;
+        isStudentsPreloaded = true;
+        return Promise.resolve(cachedAllStudents);
+      }
+
+      if (typeof google === 'undefined' || !google.script || !google.script.run) {
+        return Promise.resolve([]);
+      }
+
+      var existingToken = sessionStorage.getItem('sessionToken') || sessionStorage.getItem('guestTempToken');
+      
+      return new Promise(function(resolve) {
+        google.script.run
+          .withSuccessHandler(function(data) {
+            var list = [];
+            if (data && data.students) {
+              list = data.students;
+              appData = data;
+            } else if (Array.isArray(data)) {
+              list = data;
+            }
+            cachedAllStudents = list;
+            isStudentsPreloaded = true;
+            resolve(list);
+          })
+          .withFailureHandler(function() { resolve([]); })
+          .getInitialData(existingToken || '');
       });
-      return _guestPreloadPromise;
     }
+
+    // Kích hoạt nạp sẵn ngầm ngay khi tải xong trang (0 độ trễ khi người dùng gõ)
+    window.addEventListener('DOMContentLoaded', function() {
+      preloadAllStudentsForInstantSearch();
+    });
 
     function hideLoginSuggestions() {
       var box = document.getElementById('loginStudentSuggestions');
@@ -4627,6 +4630,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (menu) menu.classList.toggle('hidden');
     }
 
+    // 2. HÀM TÌM KIẾM TỨC THÌ (INSTANT SEARCH) - LỌC TRỰC TIẾP TRÊN BỘ NHỚ TRÌNH DUYỆT (0 GIÂY)
     function onLoginUsernameInput(rawVal) {
       var box = document.getElementById('loginStudentSuggestions');
       var passWrap = document.getElementById('loginPasswordWrap');
@@ -4651,113 +4655,125 @@ function getStudentDebtDetails(student, targetMonthStr) {
         return;
       }
 
-      ensureGuestDataForLoginSearch().then(function() {
-        var currentInput = document.getElementById('loginUsername');
-        if (!currentInput || cleanName(currentInput.value) !== q) return;
-
-        var isNumericQuery = /^\d+$/.test(qNoTone);
-        var queryWords = qNoTone.split(/\s+/).filter(Boolean);
-
-        var matches = (getActiveStudents() || []).filter(function(s) {
-          var cId = formatStudentId(s.id).toLowerCase();
-          var pStu = formatPhoneDisplay(s.phone).replace(/\D/g, '');
-          var pPar = formatPhoneDisplay(s.parentPhone).replace(/\D/g, '');
-
-          if (isNumericQuery) {
-            var matchId = (cId === qNoTone);
-            var matchPhone = qNoTone.length >= 4 && (
-              (pStu && pStu.startsWith(qNoTone)) ||
-              (pPar && pPar.startsWith(qNoTone))
-            );
-            return matchId || matchPhone;
-          }
-
-          var nameNoTone = removeVietnameseTones(cleanName(s.name)).toLowerCase();
-          var nameWords = nameNoTone.split(/\s+/).filter(Boolean);
-
-          if (queryWords.length === 1) {
-            var targetWord = queryWords[0];
-            return nameWords.some(function(w) { return w === targetWord; });
-          } else {
-            for (var i = 0; i <= nameWords.length - queryWords.length; i++) {
-              var allMatch = true;
-              for (var j = 0; j < queryWords.length; j++) {
-                if (nameWords[i + j] !== queryWords[j]) {
-                  allMatch = false;
-                  break;
-                }
-              }
-              if (allMatch) return true;
-            }
-            return false;
+      // Lấy ngay từ bộ nhớ đệm cachedAllStudents (không chờ mạng, hiển thị ngay lập tức)
+      var sourceList = (cachedAllStudents.length > 0) ? cachedAllStudents : ((appData && appData.students) ? appData.students : []);
+      
+      // Nếu bộ đệm chưa có, gọi nạp 1 lần đồng thời lọc luôn
+      if (sourceList.length === 0) {
+        preloadAllStudentsForInstantSearch().then(function(fetchedList) {
+          if (fetchedList.length > 0 && document.getElementById('loginUsername').value.trim() === rawVal) {
+            onLoginUsernameInput(rawVal); // Gọi lại sau khi có dữ liệu
           }
         });
+        return;
+      }
 
-        matches.sort(function(a, b) {
-          var clsA = String(a.className || a.grade || '').trim();
-          var clsB = String(b.className || b.grade || '').trim();
-          var numA = parseInt(clsA.replace(/\D/g, ''), 10) || parseInt(String(a.grade || '').replace(/\D/g, ''), 10) || 99;
-          var numB = parseInt(clsB.replace(/\D/g, ''), 10) || parseInt(String(b.grade || '').replace(/\D/g, ''), 10) || 99;
-          if (numA !== numB) return numA - numB;
+      var isNumericQuery = /^\d+$/.test(qNoTone);
+      var queryWords = qNoTone.split(/\s+/).filter(Boolean);
 
-          var cmpClass = clsA.localeCompare(clsB, 'vi');
-          if (cmpClass !== 0) return cmpClass;
+      var matches = sourceList.filter(function(s) {
+        var statusNghi = String(s.statusNghi || s.note || '').toUpperCase();
+        if (statusNghi.includes('ĐÃ NGHỈ HỌC') || s.active === false) return false;
 
-          var idA = parseInt(String(a.id || '').replace(/\D/g, ''), 10) || 0;
-          var idB = parseInt(String(b.id || '').replace(/\D/g, ''), 10) || 0;
-          return idA - idB;
-        });
+        var cId = formatStudentId(s.id).toLowerCase();
+        var pStu = formatPhoneDisplay(s.phone).replace(/\D/g, '');
+        var pPar = formatPhoneDisplay(s.parentPhone).replace(/\D/g, '');
 
-        if (matches.length === 0) {
-          if (box) box.classList.add('hidden');
-          return;
+        if (isNumericQuery) {
+          var matchId = (cId === qNoTone);
+          var matchPhone = qNoTone.length >= 4 && (
+            (pStu && pStu.startsWith(qNoTone)) ||
+            (pPar && pPar.startsWith(qNoTone))
+          );
+          return matchId || matchPhone;
         }
 
-        if (passWrap) passWrap.classList.add('hidden');
+        var nameNoTone = removeVietnameseTones(cleanName(s.name)).toLowerCase();
+        var nameWords = nameNoTone.split(/\s+/).filter(Boolean);
 
-        var groupedByClass = {};
-        var classOrder = [];
-        matches.forEach(function(s) {
-          var cls = String(s.className || s.grade || 'Chưa xếp').trim();
-          if (!groupedByClass[cls]) {
-            groupedByClass[cls] = [];
-            classOrder.push(cls);
+        if (queryWords.length === 1) {
+          var targetWord = queryWords[0];
+          return nameWords.some(function(w) { return w === targetWord; });
+        } else {
+          for (var i = 0; i <= nameWords.length - queryWords.length; i++) {
+            var allMatch = true;
+            for (var j = 0; j < queryWords.length; j++) {
+              if (nameWords[i + j] !== queryWords[j]) {
+                allMatch = false;
+                break;
+              }
+            }
+            if (allMatch) return true;
           }
-          groupedByClass[cls].push(s);
-        });
-
-        if (box) {
-          var groupsHtml = classOrder.map(function(cls) {
-            var stuList = groupedByClass[cls];
-            var rowsHtml = stuList.map(function(s) {
-              var cId = formatStudentId(s.id);
-              return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-4 py-3 text-left hover:bg-emerald-50 active:bg-emerald-100 transition flex items-center justify-between gap-2.5 cursor-pointer bg-white">' +
-                '<div class="min-w-0 flex-1 flex items-center justify-between gap-2 pr-1">' +
-                  '<span class="font-black text-slate-900 text-base sm:text-lg leading-snug break-words">' + s.name + '</span>' +
-                  '<span class="text-xs text-slate-600 whitespace-nowrap flex-shrink-0 font-medium">Mã: <b class="font-mono text-emerald-700 font-bold">' + cId + '</b></span>' +
-                '</div>' +
-                '<span class="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 shadow-xs">Xem →</span>' +
-              '</button>';
-            }).join('');
-
-            return '<div class="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white">' +
-              '<div class="bg-slate-100/90 px-3.5 py-2 text-xs font-black text-[#0b2447] uppercase flex items-center justify-between border-b border-slate-200">' +
-                '<span><i class="fa-solid fa-graduation-cap text-emerald-600 mr-1.5"></i> LỚP ' + cls + '</span>' +
-                '<span class="text-xs font-bold text-slate-500">' + stuList.length + ' HS</span>' +
-              '</div>' +
-              '<div class="divide-y divide-slate-100">' + rowsHtml + '</div>' +
-            '</div>';
-          }).join('');
-
-          box.className = 'mt-3 space-y-3 text-left';
-          box.innerHTML =
-            '<div class="px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-extrabold text-emerald-800 uppercase tracking-wider text-center shadow-2xs">' +
-              '👇 Bấm vào tên học sinh để xem hồ sơ (' + matches.length + ' em):' +
-            '</div>' +
-            groupsHtml;
-          box.classList.remove('hidden');
+          return false;
         }
       });
+
+      // Sắp xếp lớp từ nhỏ đến lớn
+      matches.sort(function(a, b) {
+        var clsA = String(a.className || a.grade || '').trim();
+        var clsB = String(b.className || b.grade || '').trim();
+        var numA = parseInt(clsA.replace(/\D/g, ''), 10) || parseInt(String(a.grade || '').replace(/\D/g, ''), 10) || 99;
+        var numB = parseInt(clsB.replace(/\D/g, ''), 10) || parseInt(String(b.grade || '').replace(/\D/g, ''), 10) || 99;
+        if (numA !== numB) return numA - numB;
+
+        var cmpClass = clsA.localeCompare(clsB, 'vi');
+        if (cmpClass !== 0) return cmpClass;
+
+        var idA = parseInt(String(a.id || '').replace(/\D/g, ''), 10) || 0;
+        var idB = parseInt(String(b.id || '').replace(/\D/g, ''), 10) || 0;
+        return idA - idB;
+      });
+
+      if (matches.length === 0) {
+        if (box) box.classList.add('hidden');
+        return;
+      }
+
+      if (passWrap) passWrap.classList.add('hidden');
+
+      var groupedByClass = {};
+      var classOrder = [];
+      matches.forEach(function(s) {
+        var cls = String(s.className || s.grade || 'Chưa xếp').trim();
+        if (!groupedByClass[cls]) {
+          groupedByClass[cls] = [];
+          classOrder.push(cls);
+        }
+        groupedByClass[cls].push(s);
+      });
+
+      if (box) {
+        var groupsHtml = classOrder.map(function(cls) {
+          var stuList = groupedByClass[cls];
+          var rowsHtml = stuList.map(function(s) {
+            var cId = formatStudentId(s.id);
+            return '<button type="button" onclick="loginDirectlyAsParentOfStudent(\'' + s.id + '\')" class="w-full px-4 py-3 text-left hover:bg-emerald-50 active:bg-emerald-100 transition flex items-center justify-between gap-2.5 cursor-pointer bg-white">' +
+              '<div class="min-w-0 flex-1 flex items-center justify-between gap-2 pr-1">' +
+                '<span class="font-black text-slate-900 text-base sm:text-lg leading-snug break-words">' + s.name + '</span>' +
+                '<span class="text-xs text-slate-600 whitespace-nowrap flex-shrink-0 font-medium">Mã: <b class="font-mono text-emerald-700 font-bold">' + cId + '</b></span>' +
+              '</div>' +
+              '<span class="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap flex-shrink-0 shadow-xs">Xem →</span>' +
+            '</button>';
+          }).join('');
+
+          return '<div class="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs bg-white">' +
+            '<div class="bg-slate-100/90 px-3.5 py-2 text-xs font-black text-[#0b2447] uppercase flex items-center justify-between border-b border-slate-200">' +
+              '<span><i class="fa-solid fa-graduation-cap text-emerald-600 mr-1.5"></i> LỚP ' + cls + '</span>' +
+              '<span class="text-xs font-bold text-slate-500">' + stuList.length + ' HS</span>' +
+            '</div>' +
+            '<div class="divide-y divide-slate-100">' + rowsHtml + '</div>' +
+          '</div>';
+        }).join('');
+
+        box.className = 'mt-3 space-y-3 text-left';
+        box.innerHTML =
+          '<div class="px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-extrabold text-emerald-800 uppercase tracking-wider text-center shadow-2xs">' +
+            '👇 Bấm vào tên học sinh để xem hồ sơ (' + matches.length + ' em):' +
+          '</div>' +
+          groupsHtml;
+        box.classList.remove('hidden');
+      }
     }
 
     function loginDirectlyAsParentOfStudent(stuId) {
