@@ -3549,7 +3549,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
         '</tr>';
       }
 
-      // ...(Phần lọc filtered giữ nguyên)...
       var filtered = (appData.students || []).filter(function(s) {
         var statusNghi = String(s.statusNghi || s.note || '').toUpperCase();
         var isInactive = statusNghi.includes('ĐÃ NGHỈ HỌC') || s.active === false;
@@ -3569,6 +3568,20 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
         return matchSearch && matchGrade && matchClass;
       });
+
+      // KHI XEM DANH SÁCH HỌC SINH ĐÃ NGHỈ: Xếp học sinh còn nợ học phí lên trên đầu (từ nợ nhiều đến nợ ít)
+      if (isViewingDisabled && typeof parseSavedLeaveDebt === 'function') {
+        filtered.sort(function(a, b) {
+          var debtA = parseSavedLeaveDebt(a).totalDebt;
+          var debtB = parseSavedLeaveDebt(b).totalDebt;
+          if (debtA > 0 && debtB === 0) return -1;
+          if (debtA === 0 && debtB > 0) return 1;
+          if (debtA !== debtB) return debtB - debtA;
+          var idA = parseInt(String(a.id || '').replace(/\D/g, ''), 10) || 0;
+          var idB = parseInt(String(b.id || '').replace(/\D/g, ''), 10) || 0;
+          return idA - idB;
+        });
+      }
 
       var countBadge = document.getElementById('studentCountBadge');
       if (countBadge) countBadge.innerText = filtered.length + ' Học Sinh';
@@ -3597,10 +3610,21 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var selectedMonthStr = getCurrentMonthStr();
         var debtInfo = getStudentDebtDetails(s, selectedMonthStr);
         var feeStatusHtml = '';
+        var displayNoteHtml = '<td class="p-3 text-slate-500 italic max-w-[120px] truncate">' + (s.note || '-') + '</td>';
 
         var isWaiting = String(s.className || '').toUpperCase().includes('ĐỢI') || String(s.className || '').toUpperCase().includes('DOI');
+        var leaveDebt = (isViewingDisabled && typeof parseSavedLeaveDebt === 'function')
+          ? parseSavedLeaveDebt(s)
+          : { totalDebt: 0, detailNote: '' };
 
-        if (isWaiting) {
+        if (isViewingDisabled) {
+          if (leaveDebt.totalDebt > 0) {
+            feeStatusHtml = '<span class="font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 whitespace-nowrap">Nợ: ' + formatMoney(leaveDebt.totalDebt) + ' đ</span>';
+            displayNoteHtml = '<td class="p-3 text-red-600 font-bold text-xs max-w-[240px] whitespace-normal leading-snug">' + leaveDebt.detailNote + '</td>';
+          } else {
+            feeStatusHtml = '<span class="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 whitespace-nowrap">Đã đủ (0 đ)</span>';
+          }
+        } else if (isWaiting) {
           feeStatusHtml = '<span class="font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Chưa xếp lớp</span>';
         } else if (debtInfo.totalDebt > 0) {
           feeStatusHtml = '<span class="font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200">Thiếu: ' + formatMoney(debtInfo.totalDebt) + ' đ</span>';
@@ -3618,7 +3642,9 @@ function getStudentDebtDetails(student, targetMonthStr) {
                           (isAdmin ? '<button onclick="handleDeleteStudent(\'' + s.id + '\', \'' + s.name + '\')" class="bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-red-200 transition flex items-center gap-1"><i class="fa-solid fa-trash-can"></i> Xóa</button>' : '');
         }
 
-        return '<tr class="hover:bg-slate-50 transition border-b border-slate-100">' +
+        var rowHighlight = (isViewingDisabled && leaveDebt.totalDebt > 0) ? 'bg-red-50/30 hover:bg-red-50/60' : 'hover:bg-slate-50';
+
+        return '<tr class="' + rowHighlight + ' transition border-b border-slate-100">' +
           tdCheckbox + // <--- Bơm checkbox vào ngay vị trí cột đầu tiên
           '<td class="p-3 font-mono text-emerald-808 font-bold">' + formattedId + '</td>' +
           '<td class="p-3 font-bold text-slate-800 text-sm cursor-pointer hover:text-emerald-600 transition" onclick="openEditStudentModal(\'' + s.id + '\')" title="Nhấn để sửa thông tin">' + s.name + '</td>' +
@@ -3627,16 +3653,13 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<td class="p-3 text-slate-700 font-medium">' + (s.school || '-') + '</td>' +
           '<td class="p-3">' + phoneStuHtml + '</td>' +
           '<td class="p-3">' + phoneParHtml + '</td>' +
-          '<td class="p-3 text-slate-500 italic max-w-[120px] truncate">' + (s.note || '-') + '</td>' +
+          displayNoteHtml +
           '<td class="p-3 text-right">' +
             '<div class="inline-flex items-center gap-1.5">' + actionButtons + '</div>' +
           '</td>' +
         '</tr>';
       }).join('');
     }
-
-    
-   
 
     function formatPhoneDisplay(phoneVal) {
       if (!phoneVal && phoneVal !== 0) return '-';
@@ -5834,37 +5857,113 @@ function getStudentDebtDetails(student, targetMonthStr) {
   }
 }
 
-    function handleDeleteStudent(id, name) {
-  if (confirm('Xác nhận đưa học sinh "' + name + '" (Mã HS: ' + formatStudentId(id) + ') vào danh sách nghỉ học?')) {
-    
-    var token = sessionStorage.getItem('sessionToken'); // Móc đúng chìa khóa
+   function parseSavedLeaveDebt(student) {
+      if (!student) return { totalDebt: 0, detailNote: '' };
+      var rawNote = String(student.note || '').trim();
+      var prefix = '[NỢ HP:';
+      var startIdx = rawNote.indexOf(prefix);
+      var endIdx = rawNote.indexOf(']', startIdx);
 
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      if (typeof showToast === 'function') showToast('Đang xử lý...');
+      if (startIdx !== -1 && endIdx !== -1) {
+        var inside = rawNote.substring(startIdx + prefix.length, endIdx).trim();
+        var parts = inside.split('|');
+        var amtStr = parts[0] ? String(parts[0]).replace(/\D/g, '') : '0';
+        var amt = Number(amtStr) || 0;
+        var detail = parts[1] ? parts[1].trim() : inside;
+        return { totalDebt: amt, detailNote: detail };
+      }
 
-      google.script.run
-        .withSuccessHandler(function(data) {
-          if (data && data.success === false) {
-             if (typeof showToast === 'function') showToast('Lỗi: ' + data.message);
-             return; 
-          }
-          
-          if (data) appData = data.data || data;
-          renderStudentsTable(); // CHỈ VẼ LẠI BẢNG (Giữ nguyên bộ lọc)
-          if (typeof showToast === 'function') showToast('Đã đánh dấu nghỉ học học sinh ' + name + '!');
-        })
-        .withFailureHandler(function(error) {
-          if (typeof showToast === 'function') showToast('Lỗi: Bạn không có quyền (Chỉ Admin)!');
-        })
-        .deleteStudentFromSheet(token, id); 
-
-    } else {
-      appData.students = (appData.students || []).filter(function(s) { return s.id !== id; });
-      renderStudentsTable(); // CHỈ VẼ LẠI BẢNG (Giữ nguyên bộ lọc)
-      if (typeof showToast === 'function') showToast('Đã đánh dấu nghỉ học (Bản local)!');
+      var debtInfo = getStudentDebtDetails(student, getCurrentMonthStr());
+      if (debtInfo && debtInfo.totalDebt > 0) {
+        var detailList = (debtInfo.debtMonths || []).map(function(m) {
+          return m.month + ': ' + formatMoney(m.debtAmount) + ' đ';
+        }).join('; ');
+        return { totalDebt: debtInfo.totalDebt, detailNote: 'Nợ ' + detailList };
+      }
+      return { totalDebt: 0, detailNote: '' };
     }
-  }
-}
+
+    function handleDeleteStudent(id, name) {
+      var student = (appData.students || []).find(function(s) {
+        return String(s.id).trim() === String(id).trim();
+      });
+      var currentMonthStr = getCurrentMonthStr();
+      var debtInfo = student ? getStudentDebtDetails(student, currentMonthStr) : { totalDebt: 0, debtMonths: [] };
+
+      var confirmMsg = 'Xác nhận đưa học sinh "' + name + '" (Mã HS: ' + formatStudentId(id) + ') vào danh sách nghỉ học?';
+      var newDebtNote = '';
+
+      if (debtInfo && debtInfo.totalDebt > 0) {
+        var detailMonths = (debtInfo.debtMonths || []).map(function(m) {
+          return m.month + ': ' + formatMoney(m.debtAmount) + ' đ';
+        }).join('; ');
+        newDebtNote = '[NỢ HP: ' + formatMoney(debtInfo.totalDebt) + ' đ | Nợ ' + detailMonths + ']';
+        confirmMsg = confirmMsg + ' (Còn nợ ' + formatMoney(debtInfo.totalDebt) + ' đ - ' + detailMonths + ')';
+      }
+
+      if (!confirm(confirmMsg)) return;
+
+      var token = sessionStorage.getItem('sessionToken');
+
+      if (student) {
+        student.statusNghi = 'ĐÃ NGHỈ HỌC';
+        student.active = false;
+        if (newDebtNote) {
+          student.note = newDebtNote;
+        }
+      }
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        if (typeof showToast === 'function') showToast('Đang xử lý...');
+
+        var finishDeleteOnServer = function() {
+          google.script.run
+            .withSuccessHandler(function(data) {
+              if (data && data.success === false) {
+                if (typeof showToast === 'function') showToast('Lỗi: ' + data.message, true);
+                return;
+              }
+              if (data) appData = data.data || data;
+              if (newDebtNote && appData && appData.students) {
+                var sAfter = appData.students.find(function(x) {
+                  return String(x.id).trim() === String(id).trim();
+                });
+                if (sAfter && String(sAfter.note || '').indexOf('[NỢ HP:') === -1) {
+                  sAfter.note = newDebtNote;
+                }
+              }
+              renderStudentsTable();
+              if (typeof showToast === 'function') showToast('Đã đánh dấu nghỉ học học sinh ' + name + '!');
+            })
+            .withFailureHandler(function() {
+              if (typeof showToast === 'function') showToast('Lỗi: Bạn không có quyền (Chỉ Admin)!', true);
+            })
+            .deleteStudentFromSheet(token, id);
+        };
+
+        if (student && newDebtNote) {
+          var updatePayload = {
+            id: student.id,
+            name: student.name,
+            grade: student.grade || '',
+            className: student.className || '',
+            school: student.school || '',
+            phone: student.phone || '',
+            parentPhone: student.parentPhone || '',
+            note: newDebtNote
+          };
+          google.script.run
+            .withSuccessHandler(function() { finishDeleteOnServer(); })
+            .withFailureHandler(function() { finishDeleteOnServer(); })
+            .updateStudent(token, updatePayload);
+        } else {
+          finishDeleteOnServer();
+        }
+      } else {
+        renderStudentsTable();
+        if (typeof showToast === 'function') showToast('Đã đánh dấu nghỉ học (Bản local)!');
+      }
+    }
 
     function handleSavePost(e) {
       e.preventDefault();
@@ -7745,39 +7844,47 @@ function exportTuitionExcel() {
     }
 
     function restoreStudentModal(id) {
-      var s = (appData.students || []).find(function(x) { return x.id === id; });
+      var s = (appData.students || []).find(function(x) { return String(x.id).trim() === String(id).trim(); });
       if (!s) return;
 
       var newClass = prompt('Nhập tên lớp muốn cho học sinh "' + s.name + '" quay lại học (Ví dụ: 10A, 11B):', s.className || '10A');
       if (!newClass) return;
 
-      // Chuẩn hóa tên lớp: Xóa sạch khoảng trắng thừa và viết hoa hoàn toàn (VD: "  9 b  " -> "9B")
       newClass = newClass.replace(/\s+/g, '').toUpperCase();
 
       var m = newClass.match(/\d+/);
       var newGrade = m ? ('Khối ' + m[0]) : s.grade;
 
+      // Xem như học sinh mới: Xóa toàn bộ ghi chú nợ cũ và mốc tháng bắt đầu học cũ
       s.active = true;
       s.grade = newGrade;
       s.className = newClass;
-      s.statusNghi = ''; // Khôi phục trên giao diện
+      s.statusNghi = '';
+      s.note = '';
+      s.startMonth = '';
 
       var token = sessionStorage.getItem('sessionToken');
 
       if (typeof google !== 'undefined' && google.script && google.script.run) {
         var payload = {
-          id: s.id, name: s.name, grade: newGrade, className: newClass, 
-          school: s.school || '', phone: s.phone || '', parentPhone: s.parentPhone || '', note: s.note || '',
-          isRestore: true // <-- Tín hiệu yêu cầu xóa cột "ĐÃ NGHỈ HỌC"
+          id: s.id,
+          name: s.name,
+          grade: newGrade,
+          className: newClass,
+          school: s.school || '',
+          phone: s.phone || '',
+          parentPhone: s.parentPhone || '',
+          note: '', // Xóa sạch ghi chú nợ khi vào học lại
+          isRestore: true
         };
         google.script.run.withSuccessHandler(function(data) {
           if (data && data.success === false) {
-             if (typeof showToast === 'function') showToast('Lỗi: ' + data.message);
-             return; 
+            if (typeof showToast === 'function') showToast('Lỗi: ' + data.message, true);
+            return;
           }
           if (data) appData = data.data || data;
-          renderStudentsTable(); 
-          showToast('Đã thêm học sinh ' + s.name + ' quay lại lớp ' + newClass + '!');
+          renderStudentsTable();
+          showToast('Đã khôi phục học sinh ' + s.name + ' vào lớp ' + newClass + ' (đã xóa ghi chú nợ cũ)!');
         }).updateStudent(token, payload);
       } else {
         renderStudentsTable();
