@@ -4862,6 +4862,38 @@ function getStudentDebtDetails(student, targetMonthStr) {
       handleLogout();
     }
 
+    // Hàm xử lý khi Học sinh / Phụ huynh (hoặc Admin trong popup hồ sơ) đổi tháng ở mục 2
+    function onGuestProfileMonthChange(newMonth, stuId) {
+      // 1. Đồng bộ luôn với bộ lọc tháng tổng (overviewMonthFilter) để khi bấm tải phiếu .JPG lấy đúng tháng này
+      var mainMonthEl = document.getElementById('overviewMonthFilter');
+      if (mainMonthEl) {
+        var hasOpt = Array.from(mainMonthEl.options).some(function(o) { return o.value === newMonth; });
+        if (!hasOpt) {
+          var opt = document.createElement('option');
+          opt.value = newMonth;
+          opt.text = newMonth;
+          mainMonthEl.add(opt, 0);
+        }
+        mainMonthEl.value = newMonth;
+      }
+
+      // 2. Nếu đang mở Popup hồ sơ chi tiết (bên Admin/Trợ giảng), cập nhật ngay nội dung Popup
+      var staffModalBody = document.getElementById('staffFullProfileModalBody') || document.getElementById('staffStudentProfileContent');
+      var staffModal = document.getElementById('staffFullProfileModal');
+      if (staffModalBody && staffModal && !staffModal.classList.contains('hidden')) {
+        var stu = (appData.students || []).find(function(x) {
+          return formatStudentId(x.id) === formatStudentId(stuId);
+        });
+        if (stu) {
+          staffModalBody.innerHTML = renderGuestFullStudentProfile(stu, newMonth);
+          return;
+        }
+      }
+
+      // 3. Nếu đang ở màn hình Phụ huynh / Học sinh, vẽ lại hồ sơ với tháng vừa chọn
+      renderAttendanceOverviewClass();
+    }
+    
     function renderGuestFullStudentProfile(s, selectedMonth) {
       var cleanStuId = formatStudentId(s.id);
       var cleanStuName = cleanName(s.name);
@@ -5163,9 +5195,29 @@ function getStudentDebtDetails(student, targetMonthStr) {
         '</div>' +
 
         '<div class="bg-white p-5 rounded-2xl shadow-sm border space-y-4">' +
-          '<h3 class="font-black text-brand-dark text-sm uppercase border-b pb-2.5 flex items-center gap-2">' +
-            '<i class="fa-solid fa-qrcode text-red-600"></i> 2. Tình Trạng Học Phí & Mã QR Đóng Học Phí' +
-          '</h3>' +
+          '<div class="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">' +
+            '<h3 class="font-black text-brand-dark text-sm uppercase flex items-center gap-2">' +
+              '<i class="fa-solid fa-qrcode text-red-600"></i> 2. Tình Trạng Học Phí & Mã QR Đóng Học Phí' +
+            '</h3>' +
+            '<div class="flex items-center gap-1.5">' +
+              '<span class="text-xs font-bold text-slate-500 whitespace-nowrap"><i class="fa-regular fa-calendar-days text-emerald-600 mr-1"></i>Tính đến:</span>' +
+              '<select onchange="onGuestProfileMonthChange(this.value, \'' + s.id + '\')" class="px-3 py-1.5 border-2 border-emerald-600 rounded-xl bg-white font-bold text-emerald-800 text-xs shadow-2xs focus:outline-none cursor-pointer">' +
+                (function() {
+                  var now = new Date();
+                  var curY = now.getFullYear();
+                  var opts = '';
+                  for (var y = curY - 1; y <= curY + 1; y++) {
+                    for (var m = 1; m <= 12; m++) {
+                      var mVal = 'Tháng ' + m + '/' + y;
+                      var isSel = isSameMonth(mVal, calculationMonth) ? 'selected' : '';
+                      opts += '<option value="' + mVal + '" ' + isSel + '>' + mVal + '</option>';
+                    }
+                  }
+                  return opts;
+                })() +
+              '</select>' +
+            '</div>' +
+          '</div>' +
           qrBlockHtml +
         '</div>' +
 
