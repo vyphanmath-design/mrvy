@@ -2867,6 +2867,7 @@ function getStudentFirstAttendanceMonth(student) {
 
 
 // --- 3. TÍNH HỌC PHÍ DỰ KIẾN THEO THÁNG (CÁ NHÂN ĐƯỢC ƯU TIÊN VÀ BỎ QUA KIỂM TRA NGÀY VÀO HỌC) ---
+// --- 3. TÍNH HỌC PHÍ DỰ KIẾN THEO THÁNG (CÁ NHÂN ĐƯỢC ƯU TIÊN VÀ BỎ QUA KIỂM TRA NGÀY VÀO HỌC) ---
 function getStudentExpectedRateItemsByMonth(student, monthStr) {
   if (!student) return [];
   
@@ -2876,10 +2877,13 @@ function getStudentExpectedRateItemsByMonth(student, monthStr) {
   var targetMonth = String(monthStr || getCurrentMonthStr()).trim();
   var rates = appData.customRates || [];
   var studentGradeClean = normalizeGradeKey(student.grade);
+  var cleanStuId = formatStudentId(student.id);
 
-  // ƯU TIÊN 1: HỌC PHÍ CÁ NHÂN (Luôn áp dụng, kể cả khi chưa có mặt buổi nào)
+  // ƯU TIÊN 1: HỌC PHÍ CÁ NHÂN (So sánh chuẩn Mã HS 3 chữ số để nhận diện tức thì)
   var stuRates = rates.filter(function(r) {
-    return String(r.type).toUpperCase() === 'STUDENT' && String(r.key).trim() === String(student.id).trim() && isSameMonth(r.month, targetMonth);
+    return String(r.type || '').toUpperCase() === 'STUDENT' && 
+           formatStudentId(r.key) === cleanStuId && 
+           isSameMonth(r.month, targetMonth);
   });
   if (stuRates.length > 0) {
     return [{ id: 'STU_' + student.id, label: 'Học phí cá nhân', amount: Number(stuRates[stuRates.length - 1].amount) || 0 }];
@@ -2905,7 +2909,7 @@ function getStudentExpectedRateItemsByMonth(student, monthStr) {
   var stuClassKey = String(student.className || '').trim().toUpperCase();
   var classRates = rates.filter(function(r) {
     var rateClassKey = String(r.key || '').trim().toUpperCase();
-    return String(r.type).toUpperCase() === 'CLASS' && rateClassKey === stuClassKey && isSameMonth(r.month, targetMonth);
+    return String(r.type || '').toUpperCase() === 'CLASS' && rateClassKey === stuClassKey && isSameMonth(r.month, targetMonth);
   });
   if (classRates.length > 0) {
     return [{ id: 'CLASS_' + student.className, label: 'Học phí lớp ' + student.className, amount: Number(classRates[classRates.length - 1].amount) || 0 }];
@@ -2913,7 +2917,7 @@ function getStudentExpectedRateItemsByMonth(student, monthStr) {
 
   // ƯU TIÊN 3: HỌC PHÍ THEO KHỐI
   var gradeRates = rates.filter(function(r) {
-    return String(r.type).toUpperCase() === 'GRADE' && (normalizeGradeKey(r.key) === studentGradeClean || cleanName(r.key).includes(cleanName(student.grade))) && isSameMonth(r.month, targetMonth);
+    return String(r.type || '').toUpperCase() === 'GRADE' && (normalizeGradeKey(r.key) === studentGradeClean || cleanName(r.key).includes(cleanName(student.grade))) && isSameMonth(r.month, targetMonth);
   });
   if (gradeRates.length > 0) {
     return [{ id: 'GRADE_' + student.grade, label: 'Học phí ' + student.grade, amount: Number(gradeRates[gradeRates.length - 1].amount) || 0 }];
