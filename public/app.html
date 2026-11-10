@@ -1756,6 +1756,30 @@
       students: [], attendance: [], tuition: [], avatarUrl: '', customRates: [], dismissedKeys: [], posts: [], scheduleNote: { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] }
     };
 
+    // ==================== DUY TRÌ ĐĂNG NHẬP BỀN VỮNG (LOCALSTORAGE) ====================
+    var PERSIST_KEYS = ['sessionToken', 'currentUser', 'lockedGuestStuId', 'guestTempToken'];
+    
+    PERSIST_KEYS.forEach(function(k) {
+      var savedVal = localStorage.getItem(k);
+      if (savedVal && !sessionStorage.getItem(k)) {
+        sessionStorage.setItem(k, savedVal);
+      }
+    });
+
+    (function() {
+      var origSet = sessionStorage.setItem.bind(sessionStorage);
+      var origRemove = sessionStorage.removeItem.bind(sessionStorage);
+      sessionStorage.setItem = function(k, v) {
+        origSet(k, v);
+        if (PERSIST_KEYS.indexOf(k) !== -1) localStorage.setItem(k, v);
+      };
+      sessionStorage.removeItem = function(k) {
+        origRemove(k);
+        if (PERSIST_KEYS.indexOf(k) !== -1) localStorage.removeItem(k);
+      };
+    })();
+    // ===================================================================================
+    
     var currentUser = null;
     var DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2319376D'/><circle cx='50' cy='38' r='20' fill='%23ffffff'/><path d='M20 88 C 20 62, 80 62, 80 88 Z' fill='%23ffffff'/></svg>";
     
@@ -6256,21 +6280,45 @@ function getStudentDebtDetails(student, targetMonthStr) {
       return user.name || user.username;
     }
 
+   function clearAllSavedAuthSession() {
+      // 1. Xóa sạch mọi khóa lưu trữ phiên đăng nhập trên thiết bị
+      var keysToRemove = ['sessionToken', 'currentUser', 'lockedGuestStuId', 'guestTempToken'];
+      keysToRemove.forEach(function(k) {
+        sessionStorage.removeItem(k);
+        localStorage.removeItem(k);
+      });
+
+      // 2. Xóa sạch dữ liệu trong RAM của trình duyệt (tránh lộ thông tin ở máy lạ)
+      selectedGuestStudentId = null;
+      currentUser = null;
+      cachedAllStudents = [];
+      isStudentsPreloaded = false;
+      currentAttendanceState = {};
+      danhSachHocBuThem = [];
+      appData = {
+        students: [], attendance: [], tuition: [], avatarUrl: '', customRates: [], dismissedKeys: [], posts: [],
+        scheduleNote: { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] }
+      };
+
+      var uInp = document.getElementById('loginUsername');
+      var pInp = document.getElementById('loginPassword');
+      if (uInp) uInp.value = '';
+      if (pInp) pInp.value = '';
+    }
+
     function handleLogout() {
-      if (!confirm('Bạn có chắc chắn muốn đăng xuất?')) {
+      if (!confirm('Bạn có chắc chắn muốn đăng xuất và xóa toàn bộ thông tin trên thiết bị này?')) {
         return;
       }
 
-      var token = sessionStorage.getItem('sessionToken');
+      var token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
+      
+      // Xóa trắng toàn bộ dữ liệu ngay lập tức trước khi gọi server
+      clearAllSavedAuthSession();
 
       function finishLogout() {
-        sessionStorage.removeItem('sessionToken');
-        sessionStorage.removeItem('currentUser');
-        sessionStorage.removeItem('lockedGuestStuId');
-        sessionStorage.removeItem('guestTempToken');
-        selectedGuestStudentId = null;
-        currentUser = null;
-        window.location.reload();
+        // Dùng location.replace để xóa sạch lịch sử nút Back trên trình duyệt
+        window.location.replace(window.location.pathname + window.location.search);
       }
 
       if (token && typeof google !== 'undefined' && google.script && google.script.run) {
@@ -6284,44 +6332,75 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     function checkSessionOnLoad() {
-      var token = sessionStorage.getItem('sessionToken');
-
       setAllAvatars(localStorage.getItem('teacherAvatar') || '');
 
+      var token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
+      var savedUserStr = sessionStorage.getItem('currentUser') || localStorage.getItem('currentUser');
+      var lockedStuId = sessionStorage.getItem('lockedGuestStuId') || localStorage.getItem('lockedGuestStuId');
+
       if (!token) {
-        currentUser = null;
-        sessionStorage.removeItem('currentUser');
+        clearAllSavedAuthSession();
         document.getElementById('loginScreen').classList.remove('hidden');
         return;
       }
 
+      // Khôi phục giao diện tức thì từ bộ nhớ máy (vào thẳng 0 giây không chớp màn hình)
+      if (savedUserStr) {
+        try {
+          var parsedUser = JSON.parse(savedUserStr);
+          var savedRole = String((parsedUser && parsedUser.role) || '').toUpperCase();
+          if (savedRole === 'GUEST' && !lockedStuId) {
+            clearAllSavedAuthSession();
+            document.getElementById('loginScreen').classList.remove('hidden');
+            return;
+          }
+          currentUser = parsedUser;
+          if (lockedStuId) selectedGuestStudentId = lockedStuId;
+          document.getElementById('loginScreen').classList.add('hidden');
+          if (document.getElementById('headerUserName')) {
+            document.getElementById('headerUserName').innerText = userDisplayName(currentUser);
+          }
+          applyRolePermissions();
+        } catch (e) {}
+      }
+
       if (typeof google === 'undefined' || !google.script || !google.script.run) {
-        currentUser = null;
-        sessionStorage.removeItem('sessionToken');
-        sessionStorage.removeItem('currentUser');
-        document.getElementById('loginScreen').classList.remove('hidden');
         return;
       }
 
       google.script.run
         .withSuccessHandler(function(res) {
+          if ((!res || !res.success || !res.user) && lockedStuId) {
+            google.script.run
+              .withSuccessHandler(function(guestRes) {
+                if (guestRes && guestRes.success && guestRes.token) {
+                  sessionStorage.setItem('sessionToken', guestRes.token);
+                  currentUser = { username: 'guest', name: 'Phụ huynh', role: 'GUEST' };
+                  sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+                  selectedGuestStudentId = lockedStuId;
+                  document.getElementById('loginScreen').classList.add('hidden');
+                  applyRolePermissions();
+                  syncData();
+                } else {
+                  clearAllSavedAuthSession();
+                  document.getElementById('loginScreen').classList.remove('hidden');
+                }
+              })
+              .createGuestSession();
+            return;
+          }
+
           if (!res || !res.success || !res.user) {
-            sessionStorage.removeItem('sessionToken');
-            sessionStorage.removeItem('currentUser');
-            currentUser = null;
+            clearAllSavedAuthSession();
             document.getElementById('loginScreen').classList.remove('hidden');
             return;
           }
 
           currentUser = res.user;
-
-          // Chốt chặn GUEST: Nếu chưa chọn học sinh ở ngoài khung đăng nhập thì giữ lại màn hình Login
-          var lockedStuId = sessionStorage.getItem('lockedGuestStuId');
           var userRole = String(currentUser.role || '').toUpperCase();
+
           if (userRole === 'GUEST' && !lockedStuId) {
-            sessionStorage.removeItem('sessionToken');
-            sessionStorage.removeItem('currentUser');
-            currentUser = null;
+            clearAllSavedAuthSession();
             document.getElementById('loginScreen').classList.remove('hidden');
             return;
           }
@@ -6353,10 +6432,9 @@ function getStudentDebtDetails(student, targetMonthStr) {
           syncData();
         })
         .withFailureHandler(function() {
-          sessionStorage.removeItem('sessionToken');
-          sessionStorage.removeItem('currentUser');
-          currentUser = null;
-          document.getElementById('loginScreen').classList.remove('hidden');
+          if (!currentUser) {
+            document.getElementById('loginScreen').classList.remove('hidden');
+          }
         })
         .validateSession(token);
     }
