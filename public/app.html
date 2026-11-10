@@ -1837,9 +1837,15 @@
         el.innerHTML = filterAll;
       });
 
-      var filterStu = '<option value="NONE" selected>-- Khối --</option><option value="ALL">Tất cả</option>' + optionsBasic + '<option value="DISABLED">🚫 Học sinh đã nghỉ</option>';
+      var isAdmin = currentUser && String(currentUser.role || '').toUpperCase() === 'ADMIN';
+      var disabledOpt = isAdmin ? '<option value="DISABLED">🚫 Học sinh đã nghỉ</option>' : '';
+      var filterStu = '<option value="NONE" selected>-- Khối --</option><option value="ALL">Tất cả</option>' + optionsBasic + disabledOpt;
       document.querySelectorAll('.grade-filter-options').forEach(function(el) {
+        var curVal = el.value;
         el.innerHTML = filterStu;
+        if (curVal && (curVal !== 'DISABLED' || isAdmin)) {
+          el.value = curVal;
+        }
       });
 
       var postGrade = '<option value="Tất cả khối">🌟 Tất cả khối</option>' + optionsBasic;
@@ -3547,7 +3553,18 @@ function getStudentDebtDetails(student, targetMonthStr) {
         return;
       }
 
-      var isViewingDisabled = (grade === 'DISABLED');
+      // Chốt chặn: Nếu không phải Admin thì xóa ngay mục "Học sinh đã nghỉ" khỏi bộ lọc và cấm xem
+      if (!isAdmin) {
+        var filterGradeEl = document.getElementById('filterGrade');
+        if (filterGradeEl) {
+          var optDis = filterGradeEl.querySelector('option[value="DISABLED"]');
+          if (optDis) optDis.remove();
+          if (filterGradeEl.value === 'DISABLED') filterGradeEl.value = 'NONE';
+        }
+        grade = (grade === 'DISABLED') ? 'NONE' : grade;
+      }
+
+      var isViewingDisabled = isAdmin && (grade === 'DISABLED');
 
       // TỰ ĐỘNG CHÈN CỘT CHECKBOX NẾU ĐANG XEM HỌC SINH ĐÃ NGHỈ VÀ LÀ ADMIN
       if (isViewingDisabled && isAdmin) {
@@ -3825,7 +3842,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var currentMonthStr = getCurrentMonthStr();
 
       // 2. LỌC DANH SÁCH HỌC SINH (Giống hệt bảng đang hiển thị)
-      var isViewingDisabled = (grade === 'DISABLED');
+      var isAdmin = currentUser && String(currentUser.role || '').toUpperCase() === 'ADMIN';
+      var isViewingDisabled = isAdmin && (grade === 'DISABLED');
       var filteredStudents = (appData.students || []).filter(function(s) {
         var statusNghi = String(s.statusNghi || s.note || '').toUpperCase();
         var isInactive = statusNghi.includes('ĐÃ NGHỈ HỌC') || s.active === false;
