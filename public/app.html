@@ -6490,6 +6490,12 @@ function handleSaveGradeRate(e) {
         appData.customRates.push({ type: 'GRADE', key: grade, month: month, amount: amount }); 
       }
 
+      // Cập nhật hiển thị ngay lập tức cho cả 3 bảng (Học sinh, Học phí, Điểm danh)
+      closeSetRateModal();
+      if (typeof renderStudentsTable === 'function') renderStudentsTable();
+      if (typeof renderTuitionAll === 'function') renderTuitionAll();
+      if (typeof renderAttendanceOverviewClass === 'function') renderAttendanceOverviewClass();
+
       var btn = e.target.querySelector('button[type="submit"]');
       var originalText = btn ? btn.innerHTML : 'Lưu Học Phí Khối';
       if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
@@ -6497,9 +6503,9 @@ function handleSaveGradeRate(e) {
       if (typeof google !== 'undefined' && google.script && google.script.run) {
         google.script.run.withSuccessHandler(function(data) {
           if (btn) btn.innerHTML = originalText;
-          closeSetRateModal();
           if (data) appData = data;
           
+          if (typeof renderStudentsTable === 'function') renderStudentsTable();
           if (typeof renderTuitionAll === 'function') renderTuitionAll();
           if (typeof renderAttendanceOverviewClass === 'function') renderAttendanceOverviewClass();
           
@@ -6514,7 +6520,6 @@ function handleSaveGradeRate(e) {
       var id = document.getElementById('rateStudentSelect') ? document.getElementById('rateStudentSelect').value : '';
       var month = document.getElementById('rateStudentMonth') ? document.getElementById('rateStudentMonth').value : '';
       
-      // Lấy chuỗi tiền tệ, loại bỏ tất cả ký tự không phải số (dấu chấm, dấu phẩy, chữ) rồi mới ép sang Number
       var rawAmountVal = document.getElementById('rateStudentAmount') ? document.getElementById('rateStudentAmount').value : '';
       var amount = Number(String(rawAmountVal).replace(/\D/g, '')) || 0;
       
@@ -6539,7 +6544,7 @@ function handleSaveGradeRate(e) {
 
       studentsToUpdate.forEach(function(stu) {
         var existingIdx = appData.customRates.findIndex(function(r) { 
-          return r.type === 'STUDENT' && r.key === stu.id && r.month === month; 
+          return r.type === 'STUDENT' && formatStudentId(r.key) === formatStudentId(stu.id) && isSameMonth(r.month, month); 
         });
         
         if (existingIdx >= 0) { 
@@ -6562,11 +6567,16 @@ function handleSaveGradeRate(e) {
         if (document.getElementById('overviewMonthFilter')) document.getElementById('overviewMonthFilter').value = curMonth;
         if (document.getElementById('overviewSearch')) document.getElementById('overviewSearch').value = curSearch;
 
+        // VẼ LẠI CẢ BẢNG HỌC SINH BÊN NGOÀI + BẢNG ĐIỂM DANH + BẢNG HỌC PHÍ
+        if (typeof renderStudentsTable === 'function') renderStudentsTable();
         renderAttendanceOverviewClass();
         renderTuitionAll();
-        showToast(isApplyWholeClass ? ('Đã lưu học phí cho cả lớp (' + studentsToUpdate.length + ' em)!') : 'Đã lưu học phí riêng!');
       }
 
+      // 1. Vẽ lại giao diện NGAY LẬP TỨC khi vừa bấm nút Lưu (không cần đợi mạng)
+      restoreAndRefresh();
+
+      // 2. Đồng bộ ngầm lên Server và vẽ lại lần nữa khi Server trả dữ liệu chuẩn về
       if (typeof google !== 'undefined' && google.script && google.script.run) {
         var completed = 0;
         studentsToUpdate.forEach(function(stu) {
@@ -6575,11 +6585,12 @@ function handleSaveGradeRate(e) {
             if (completed === studentsToUpdate.length) {
               if (data) appData = data;
               restoreAndRefresh();
+              showToast(isApplyWholeClass ? ('Đã lưu học phí cho cả lớp (' + studentsToUpdate.length + ' em)!') : 'Đã lưu học phí riêng!');
             }
           }).saveCustomTuitionRate(sessionStorage.getItem('sessionToken'), 'STUDENT', stu.id, month, amount);
         });
       } else {
-        setTimeout(restoreAndRefresh, 200);
+        showToast(isApplyWholeClass ? ('Đã lưu học phí cho cả lớp (' + studentsToUpdate.length + ' em)!') : 'Đã lưu học phí riêng!');
       }
     }
 
