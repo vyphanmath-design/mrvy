@@ -4441,28 +4441,59 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     
-
-    var editAttContext = { studentId: null, dateStr: null };
+var editAttContext = { studentId: null, dateStr: null };
 
     function quickEditAttendance(studentId, dateStr, currentStatus) {
       // Cho phép cả ADMIN và ASSISTANT sửa điểm danh
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
       if (role !== 'ADMIN' && role !== 'ASSISTANT') return;
 
+      var stdDate = toStandardDateStr(dateStr);
+      var cleanId = formatStudentId(studentId);
+
       // Lưu lại ngữ cảnh để dùng khi bấm nút Lưu/Xóa
       editAttContext.studentId = studentId;
-      editAttContext.dateStr = dateStr;
+      editAttContext.dateStr = stdDate;
+
+      // Tìm bản ghi điểm danh hiện tại để lấy trạng thái & ghi chú (nếu có)
+      var existingRec = (appData.attendance || []).find(function(a) {
+        return formatStudentId(a.studentId) === cleanId && toStandardDateStr(a.date) === stdDate;
+      });
+      var curNote = (existingRec && existingRec.note) ? String(existingRec.note).trim() : '';
+      var actualStatus = (existingRec && existingRec.status) ? String(existingRec.status).trim() : currentStatus;
 
       // Hiển thị thông tin lên giao diện
-      var formattedDate = formatDateWithDay(dateStr);
+      var formattedDate = formatDateWithDay(stdDate);
       document.getElementById('editAttDateDisplay').innerText = 'Ngày: ' + formattedDate;
-      document.getElementById('editAttCurrentStatusDisplay').innerText = 'Hiện tại: ' + currentStatus;
+      document.getElementById('editAttCurrentStatusDisplay').innerHTML =
+        'Hiện tại: <b>' + actualStatus + '</b>' +
+        (curNote ? '<div class="mt-1 text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg text-[11px] italic">📝 Ghi chú: ' + curNote + '</div>' : '');
 
       var selectEl = document.getElementById('editAttNewStatus');
       if (selectEl) {
-         // Trỏ select vào đúng trạng thái hiện tại
-         var found = Array.from(selectEl.options).some(function(opt) { return opt.value === currentStatus; });
-         if (found) selectEl.value = currentStatus;
+        var found = Array.from(selectEl.options).some(function(opt) { return opt.value === actualStatus; });
+        if (found) selectEl.value = actualStatus;
+
+        // Tự động tạo ô nhập/sửa Ghi chú ngay dưới ô chọn trạng thái (nếu chưa có)
+        var noteInput = document.getElementById('editAttNoteInput');
+        if (!noteInput) {
+          var noteWrap = document.createElement('div');
+          noteWrap.className = 'mt-3 space-y-1';
+          noteWrap.innerHTML =
+            '<label class="block text-xs font-bold text-slate-600">Ghi chú buổi học (nếu có):</label>' +
+            '<div class="flex items-center gap-1.5">' +
+              '<input type="text" id="editAttNoteInput" placeholder="Nhập hoặc sửa ghi chú..." ' +
+                'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); handleSaveEditAtt(); }" ' +
+                'class="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl font-semibold text-slate-800 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">' +
+              '<button type="button" onclick="var inp=document.getElementById(\'editAttNoteInput\'); if(inp){inp.value=\'\'; inp.focus();}" ' +
+                'class="px-2.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition cursor-pointer shrink-0" title="Xóa trắng ghi chú">' +
+                '<i class="fa-solid fa-xmark"></i>' +
+              '</button>' +
+            '</div>';
+          selectEl.parentNode.insertBefore(noteWrap, selectEl.nextSibling);
+          noteInput = document.getElementById('editAttNoteInput');
+        }
+        if (noteInput) noteInput.value = curNote;
       }
 
       document.getElementById('quickEditAttModal').classList.remove('hidden');
@@ -4474,8 +4505,10 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
     function handleSaveEditAtt() {
       var newStatus = document.getElementById('editAttNewStatus').value;
+      var noteEl = document.getElementById('editAttNoteInput');
+      var newNote = noteEl ? noteEl.value.trim() : undefined;
       closeQuickEditAttModal();
-      executeUpdateAttendance(editAttContext.studentId, editAttContext.dateStr, newStatus);
+      executeUpdateAttendance(editAttContext.studentId, editAttContext.dateStr, newStatus, newNote);
     }
 
     function handleDeleteAttRecord() {
@@ -4485,51 +4518,57 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-    function executeUpdateAttendance(studentId, dateStr, newStatus) {
+    function executeUpdateAttendance(studentId, dateStr, newStatus, newNote) {
       var stdDate = toStandardDateStr(dateStr);
+      var cleanId = formatStudentId(studentId);
+      var finalNote = (newNote !== undefined) ? newNote : '';
 
-      // 1. CẬP NHẬT GIAO DIỆN LẠC QUAN (ĐỔI MÀU NGAY LẬP TỨC)
+      // 1. CẬP NHẬT GIAO DIỆN LẠC QUAN (ĐỔI MÀU & CẬP NHẬT GHI CHÚ NGAY LẬP TỨC)
       if (appData.attendance) {
         var existingIdx = appData.attendance.findIndex(function(a) {
-          return String(a.studentId) === String(studentId) && toStandardDateStr(a.date) === stdDate;
+          return formatStudentId(a.studentId) === cleanId && toStandardDateStr(a.date) === stdDate;
         });
         
         if (existingIdx >= 0) {
+          if (newNote === undefined) {
+            finalNote = appData.attendance[existingIdx].note || '';
+          }
           appData.attendance[existingIdx].status = newStatus;
+          appData.attendance[existingIdx].note = finalNote;
         } else {
           appData.attendance.push({
-            date: stdDate, studentId: studentId, status: newStatus, note: ''
+            date: stdDate, studentId: studentId, status: newStatus, note: finalNote
           });
         }
       }
 
       // Vẽ lại riêng bảng Tổng quan ngay lập tức
       renderAttendanceOverviewClass();
-      showToast("Đang đồng bộ trạng thái lên hệ thống...");
+      showToast("Đang đồng bộ trạng thái & ghi chú lên hệ thống...");
 
       // TÌM LỚP HIỆN TẠI CỦA HỌC SINH ĐỂ GỬI LÊN KÈM THEO
       var student = (getActiveStudents() || []).find(function(s) { 
-        return String(s.id) === String(studentId); 
+        return formatStudentId(s.id) === cleanId; 
       });
       var studentGrade = student ? (student.className || student.grade) : '';
 
-      // 2. CHUẨN BỊ PAYLOAD GỬI LÊN SERVER
+      // 2. CHUẨN BỊ PAYLOAD GỬI LÊN SERVER (Gửi kèm cả finalNote)
       var payloadRecord = [{ 
         date: stdDate, 
-        studentId: studentId, 
-        grade: studentGrade, // Đã lấy đúng tên lớp thay vì để trống
+        studentId: student ? student.id : studentId, 
+        studentName: student ? student.name : '',
+        grade: studentGrade,
         status: newStatus, 
-        note: '' 
+        note: finalNote 
       }];
 
-      // 3. GỬI NGẦM LÊN GOOGLE SHEET
+      // 3. GỬI NGẦM LÊN SERVER
       if (typeof google !== 'undefined' && google.script && google.script.run) {
         google.script.run
           .withSuccessHandler(function(data) {
             if (data) appData = data;
-            // Chỉ render lại bảng Tổng quan để khớp dữ liệu thật từ Server
             renderAttendanceOverviewClass(); 
-            showToast('✓ Đã cập nhật điểm danh thành công!');
+            showToast('✓ Đã cập nhật điểm danh & ghi chú thành công!');
           })
           .withFailureHandler(function(err) {
             showToast('Lỗi lưu điểm danh: ' + (err.message || err), true);
@@ -4537,6 +4576,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           .saveAttendance(sessionStorage.getItem('sessionToken'), payloadRecord);
       }
     }
+    
 
     function executeDeleteAttendance(studentId, dateStr) {
       var stdDate = toStandardDateStr(dateStr);
