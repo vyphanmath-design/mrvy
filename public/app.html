@@ -11491,7 +11491,6 @@ function extractStdDateFromCard(cardEl) {
   if (m2) return m2[0];
   return '';
 }
-
 function upgradeOverviewDateCardsWithNoteBoxes() {
   var container = document.getElementById('classOverviewContainer');
   if (!container) return;
@@ -11541,74 +11540,139 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
       return toStandardDateStr(a.date) === stdDate;
     });
 
-    var cardsHtml = namesArr.map(function(rawItem, idx) {
-      var namePart = rawItem.trim();
+    var normalCards = [];
+    var makeUpCards = [];
+
+    namesArr.forEach(function(rawItem, idx) {
+      var displayRaw = rawItem.trim();
+      var nameForLookup = displayRaw;
       var idInBracket = '';
-      var mCode = namePart.match(/\((\d{2,6})\)$/);
+
+      // 1. Tách mã HS nếu có ở cuối dạng (022)
+      var mCode = nameForLookup.match(/\((\d{2,6})\)$/);
       if (mCode) {
         idInBracket = padId3(mCode[1]);
-        namePart = namePart.replace(/\s*\(\d{2,6}\)$/, '').trim();
+        nameForLookup = nameForLookup.replace(/\s*\(\d{2,6}\)$/, '').trim();
       }
-      var cleanTargetName = cleanName(namePart);
 
+      // 2. Bóc tách nhãn "(Đi bù...)" hoặc "(Học bù...)" hoặc "(Bù...)" để lấy đúng tên thật của học sinh
+      var makeUpSuffix = '';
+      var mMakeUp = nameForLookup.match(/\(([^)]*(?:đi\s*bù|học\s*bù|\bbù\b)[^)]*)\)/i);
+      if (mMakeUp) {
+        makeUpSuffix = '(' + mMakeUp[1].trim() + ')';
+        nameForLookup = nameForLookup.replace(mMakeUp[0], '').trim();
+      }
+
+      // Dự phòng nếu học sinh có phần ngoặc đơn phụ khác ở cuối tên
+      var cleanTargetName = cleanName(nameForLookup);
+      var cleanBaseNameOnly = cleanName(nameForLookup.replace(/\s*\([^)]*\)\s*/g, ' ').trim());
+
+      // 3. Tìm bản ghi điểm danh khớp với học sinh này trong ngày stdDate
       var matchedRec = dayRecs.find(function(a) {
         if (idInBracket && padId3(a.studentId) === idInBracket) return true;
-        if (cleanName(a.studentName) === cleanTargetName) return true;
+        var aName = cleanName(a.studentName);
+        if (aName && (aName === cleanTargetName || aName === cleanBaseNameOnly)) return true;
         var sObj = allStudents.find(function(s) { return padId3(s.id) === padId3(a.studentId); });
-        return sObj && cleanName(sObj.name) === cleanTargetName;
+        if (sObj) {
+          var sName = cleanName(sObj.name);
+          if (sName === cleanTargetName || sName === cleanBaseNameOnly) return true;
+        }
+        return false;
       });
 
+      // 4. Tìm hồ sơ gốc của học sinh để luôn lấy được đúng stuId & Mã HS (022)
       var stuObj = allStudents.find(function(s) {
         if (matchedRec && padId3(s.id) === padId3(matchedRec.studentId)) return true;
         if (idInBracket && padId3(s.id) === idInBracket) return true;
-        return cleanName(s.name) === cleanTargetName;
+        var sName = cleanName(s.name);
+        return sName === cleanTargetName || sName === cleanBaseNameOnly;
       });
 
       var stuId = matchedRec ? matchedRec.studentId : (stuObj ? stuObj.id : '');
       var cleanId = stuObj ? padId3(stuObj.id) : (matchedRec ? padId3(matchedRec.studentId) : '');
       var curNote = (matchedRec && matchedRec.note) ? String(matchedRec.note).trim() : '';
-      var curStatus = (matchedRec && matchedRec.status) ? String(matchedRec.status).trim() : 'Có mặt';
+      var curStatus = (matchedRec && matchedRec.status) ? String(matchedRec.status).trim() : (makeUpSuffix ? 'Học bù' : 'Có mặt');
+
+      var isMakeUpStudent = (curStatus === 'Học bù') || Boolean(makeUpSuffix);
+      var dotColor = isMakeUpStudent ? '#9333ea' : '#10b981';
+      var cardBorderColor = isMakeUpStudent ? '#d8b4fe' : '#cbd5e1';
+
+      // Tên hiển thị gọn gàng: Tên thật + Nhãn đi bù màu tím nổi bật
+      var realNameDisplay = stuObj ? stuObj.name : nameForLookup;
+      var makeUpBadgeHtml = makeUpSuffix
+        ? '<span style="font-size:10.5px;font-weight:700;color:#7e22ce;background:#f3e8ff;padding:1px 6px;border-radius:6px;flex-shrink:0;">' + makeUpSuffix + '</span>'
+        : (isMakeUpStudent && stuObj && stuObj.className ? '<span style="font-size:10.5px;font-weight:700;color:#7e22ce;background:#f3e8ff;padding:1px 6px;border-radius:6px;flex-shrink:0;">(Đi bù - ' + stuObj.className + ')</span>' : '');
 
       var inputId = 'ov_note_' + stdDate.replace(/\D/g, '') + '_' + (cleanId || idx) + '_' + Math.random().toString(36).substring(2, 6);
       var safeNoteHtml = curNote.replace(/"/g, '&quot;');
       var safeStuIdJs = String(stuId).replace(/'/g, "\\'");
-      var safeNameJs = namePart.replace(/'/g, "\\'");
+      var safeNameJs = realNameDisplay.replace(/'/g, "\\'");
       var safeStatusJs = curStatus.replace(/'/g, "\\'");
 
+      var cardItemHtml = '';
       if (!isStaff) {
-        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:7px 10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">' +
-          '<span style="font-weight:700;color:#1e293b;font-size:12.5px;">' + namePart + '</span>' +
+        cardItemHtml = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:7px 10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">' +
+          '<div style="display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap;">' +
+            '<span style="font-weight:700;color:#1e293b;font-size:12.5px;">' + realNameDisplay + '</span>' +
+            makeUpBadgeHtml +
+          '</div>' +
           (curNote ? '<span style="font-size:11px;font-weight:600;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:2px 8px;border-radius:6px;font-style:italic;">' + safeNoteHtml + '</span>' : '') +
+        '</div>';
+      } else {
+        cardItemHtml = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">' +
+          // Bên trái: Tên học sinh + Mã HS + Nhãn đi bù (Bấm vào đổi trạng thái được 100%)
+          '<div onclick="if(typeof quickEditAttendance===\'function\' && \'' + safeStuIdJs + '\') quickEditAttendance(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\')" ' +
+               'style="display:flex;align-items:center;gap:5px;min-width:0;flex:1 1 48%;cursor:pointer;overflow:hidden;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
+            '<span style="width:6px;height:6px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;"></span>' +
+            '<span style="font-weight:700;color:#0f172a;font-size:12.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + realNameDisplay + '</span>' +
+            (cleanId ? '<span style="font-size:10.5px;font-family:monospace;font-weight:700;color:#64748b;flex-shrink:0;">(' + cleanId + ')</span>' : '') +
+            makeUpBadgeHtml +
+          '</div>' +
+          // Bên phải: Ô Ghi chú theo ngày + Nút Lưu (✓) + Nút Xóa (×)
+          '<div style="display:flex;align-items:center;gap:4px;flex:1 1 52%;min-width:0;max-width:235px;">' +
+            '<input type="text" id="' + inputId + '" value="' + safeNoteHtml + '" placeholder="Ghi chú..." ' +
+              'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\'); }" ' +
+              'style="width:100%;min-width:0;padding:4px 8px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:7px;background:' + (curNote ? '#ecfdf5' : '#f8fafc') + ';color:#0f172a;font-weight:600;outline:none;box-sizing:border-box;">' +
+            '<button type="button" onclick="saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
+              'style="width:24px;height:24px;border-radius:7px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;flex-shrink:0;" title="Lưu ghi chú (hoặc nhấn Enter)">' +
+              '<i class="fa-solid fa-check"></i>' +
+            '</button>' +
+            '<button type="button" id="' + inputId + '_del" onclick="deleteOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
+              'style="width:24px;height:24px;border-radius:7px;background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;flex-shrink:0;opacity:' + (curNote ? '1' : '0.35') + ';" title="Xóa ghi chú">' +
+              '<i class="fa-solid fa-xmark"></i>' +
+            '</button>' +
+          '</div>' +
         '</div>';
       }
 
-      // MỖI HỌC SINH LÀ 1 HÀNG RIÊNG BIỆT (width: 100%, không bị xếp ngang 2 học sinh)
-      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:6px 10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">' +
-        // Bên trái: Tên học sinh + Mã HS
-        '<div onclick="if(typeof quickEditAttendance===\'function\' && \'' + safeStuIdJs + '\') quickEditAttendance(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\')" ' +
-             'style="display:flex;align-items:center;gap:5px;min-width:0;flex:1 1 45%;cursor:pointer;overflow:hidden;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
-          '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;flex-shrink:0;"></span>' +
-          '<span style="font-weight:700;color:#0f172a;font-size:12.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + namePart + '</span>' +
-          (cleanId ? '<span style="font-size:10.5px;font-family:monospace;font-weight:700;color:#64748b;flex-shrink:0;">(' + cleanId + ')</span>' : '') +
-        '</div>' +
-        // Bên phải: Ô Ghi chú theo ngày + Nút Lưu (✓) + Nút Xóa (×)
-        '<div style="display:flex;align-items:center;gap:4px;flex:1 1 55%;min-width:0;max-width:240px;">' +
-          '<input type="text" id="' + inputId + '" value="' + safeNoteHtml + '" placeholder="Ghi chú..." ' +
-            'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\'); }" ' +
-            'style="width:100%;min-width:0;padding:4px 8px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:7px;background:' + (curNote ? '#ecfdf5' : '#f8fafc') + ';color:#0f172a;font-weight:600;outline:none;box-sizing:border-box;">' +
-          '<button type="button" onclick="saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
-            'style="width:24px;height:24px;border-radius:7px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;flex-shrink:0;" title="Lưu ghi chú (hoặc nhấn Enter)">' +
-            '<i class="fa-solid fa-check"></i>' +
-          '</button>' +
-          '<button type="button" id="' + inputId + '_del" onclick="deleteOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
-            'style="width:24px;height:24px;border-radius:7px;background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;flex-shrink:0;opacity:' + (curNote ? '1' : '0.35') + ';" title="Xóa ghi chú">' +
-            '<i class="fa-solid fa-xmark"></i>' +
-          '</button>' +
-        '</div>' +
-      '</div>';
-    }).join('');
+      // Phân loại: Nếu là học sinh đi bù thì gom riêng vào khung màu tím
+      if (isMakeUpStudent) {
+        makeUpCards.push(cardItemHtml);
+      } else {
+        normalCards.push(cardItemHtml);
+      }
+    });
 
-    // Ép cả thẻ hiện tại (el) VÀ thẻ cha (el.parentElement) xếp dọc 100% (tránh trường hợp thẻ cha đang để flex-row hoặc grid 2 cột làm 2 học sinh bị dồn ngang)
+    // Kiểm tra xem bản thân thẻ el này có đang nằm sẵn trong một khung màu tím "Học bù" hay chưa
+    var parentText = (el.parentElement && el.parentElement.textContent) ? el.parentElement.textContent : '';
+    var alreadyInsideMakeUpBox = /🟣\s*(Học\s*bù|Đi\s*bù)/i.test(parentText) && normalCards.length === 0;
+
+    var finalHtml = normalCards.join('');
+    if (makeUpCards.length > 0) {
+      if (alreadyInsideMakeUpBox) {
+        finalHtml += makeUpCards.join('');
+      } else {
+        // Tạo khung màu tím bao xung quanh nhóm Học sinh đi bù giống hệt bên cột Vắng
+        finalHtml += '<div style="margin-top:' + (normalCards.length > 0 ? '10px' : '0') + ';background:#faf5ff;border:1px solid #d8b4fe;border-radius:12px;padding:10px 10px 4px 10px;">' +
+          '<div style="font-weight:800;color:#6b21a8;font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">' +
+            '<span style="width:10px;height:10px;border-radius:50%;background:#9333ea;display:inline-block;"></span>' +
+            '<span>Học bù (' + makeUpCards.length + ')</span>' +
+          '</div>' +
+          makeUpCards.join('') +
+        '</div>';
+      }
+    }
+
     el.setAttribute('data-note-upgraded', '1');
     el.style.cssText = 'display:flex !important; flex-direction:column !important; width:100% !important; max-width:100% !important; box-sizing:border-box !important; white-space:normal !important; grid-column:1 / -1 !important;';
     if (el.parentElement && el.parentElement !== container) {
@@ -11619,9 +11683,10 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
         el.parentElement.style.gridTemplateColumns = '1fr';
       }
     }
-    el.innerHTML = cardsHtml;
+    el.innerHTML = finalHtml;
   });
 }
+
 
 (function() {
   var attachObserver = function() {
