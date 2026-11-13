@@ -11191,301 +11191,19 @@ function applyGuestStudentLock() {
 
 <script>
 // =========================================================================
-
+// TÍNH NĂNG 1: XẾP CHỖ NGỒI KIỂM TRA & TÍNH NĂNG 2: VÒNG QUAY MAY MẮN THEO NGÀY
+// + TÍNH NĂNG 3: TÁCH KHUNG TỪNG HỌC SINH & THÊM/SỬA/XÓA GHI CHÚ Ở TỔNG QUAN NGÀY
 // =========================================================================
-// KHỐI THỐNG NHẤT: TỔNG QUAN THEO NGÀY (📅 NGÀY) + GHI CHÚ NGÀY + XẾP CHỖ + VÒNG QUAY
-// (Giữ nguyên 100% logic Điểm danh & Điểm danh bù gốc của hệ thống)
-// =========================================================================
-var overviewCurrentViewMode = 'student'; // 'student' (👤 HS) hoặc 'date' (📅 Ngày)
 
-// Lưu giữ tham chiếu tới hàm renderAttendanceOverviewClass gốc (xem theo 👤 HS)
-var _originalRenderAttendanceOverviewStudent = window.renderAttendanceOverviewClass;
-
-function switchOverviewMode(mode) {
-  overviewCurrentViewMode = (mode === 'date') ? 'date' : 'student';
-  var btnStu = document.getElementById('btnViewByStudent');
-  var btnDate = document.getElementById('btnViewByDate');
-
-  if (btnStu) {
-    btnStu.className = (overviewCurrentViewMode === 'student')
-      ? 'px-2.5 py-1 rounded-lg bg-emerald-600 text-white transition shadow-sm'
-      : 'px-2.5 py-1 rounded-lg bg-white text-emerald-700 hover:bg-emerald-100 transition';
-  }
-  if (btnDate) {
-    btnDate.className = (overviewCurrentViewMode === 'date')
-      ? 'px-2.5 py-1 rounded-lg bg-emerald-600 text-white transition shadow-sm'
-      : 'px-2.5 py-1 rounded-lg bg-white text-emerald-700 hover:bg-emerald-100 transition';
-  }
-  renderAttendanceOverviewClass();
+if (typeof window.padId3 !== 'function') {
+  window.padId3 = function(id) {
+    return (typeof formatStudentId === 'function') ? formatStudentId(id) : String(id || '').trim();
+  };
 }
 
-// Điều phối hiển thị: Nếu đang chọn 👤 HS -> chạy nguyên hàm gốc 100%; Nếu chọn 📅 Ngày -> chạy bảng theo Ngày
-window.renderAttendanceOverviewClass = function() {
-  var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
-  var isStaff = (role === 'ADMIN' || role === 'ASSISTANT');
-
-  if (!isStaff || overviewCurrentViewMode !== 'date') {
-    if (typeof _originalRenderAttendanceOverviewStudent === 'function') {
-      return _originalRenderAttendanceOverviewStudent();
-    }
-    return;
-  }
-  renderOverviewByDateUnified();
-};
-
-// --- 1. HÀM VẼ KHUNG NHỎ CHO TỪNG HỌC SINH KÈM Ô SỬA / LƯU / XÓA GHI CHÚ NGÀY ---
-function renderDateOverviewStudentCard(attRec) {
-  var stuId = String(attRec.studentId || '').trim();
-  var cleanId = formatStudentId(stuId);
-  var activeList = (typeof getActiveStudents === 'function') ? getActiveStudents() : (appData.students || []);
-
-  var stuObj = activeList.find(function(s) {
-    return formatStudentId(s.id) === cleanId || cleanName(s.name) === cleanName(attRec.studentName);
-  });
-
-  var displayName = stuObj ? stuObj.name : (attRec.studentName || 'Học sinh');
-  var actualStuId = stuObj ? stuObj.id : stuId;
-  var stdDate = toStandardDateStr(attRec.date);
-  var curStatus = String(attRec.status || 'Có mặt').trim();
-  var curNote = String(attRec.note || '').trim();
-
-  var inputId = 'ov_daynote_' + cleanId + '_' + stdDate.replace(/\D/g, '');
-  var safeStatusJs = curStatus.replace(/'/g, "\\'");
-  var safeNoteHtml = curNote.replace(/"/g, '&quot;');
-
-  return '<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-2 rounded-xl bg-white hover:border-emerald-300 border border-slate-200/90 shadow-2xs transition mb-1.5 last:mb-0">' +
-    // Bên trái: Tên học sinh (Bấm vào mở popup sửa trạng thái điểm danh như cũ)
-    '<div class="flex items-center gap-1.5 min-w-0 cursor-pointer hover:text-emerald-700" onclick="quickEditAttendance(\'' + actualStuId + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\')" title="Bấm vào tên để đổi trạng thái điểm danh">' +
-      '<span class="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0"></span>' +
-      '<span class="font-bold text-slate-800 text-xs truncate">' + displayName + '</span>' +
-      '<span class="text-[10px] font-mono font-bold text-slate-400 shrink-0">(' + cleanId + ')</span>' +
-    '</div>' +
-    // Bên phải: Ô ghi chú theo ngày + Nút Lưu (✓) + Nút Xóa (×)
-    '<div class="flex items-center gap-1 shrink-0 sm:w-[54%] md:w-[56%]">' +
-      '<input type="text" id="' + inputId + '" value="' + safeNoteHtml + '" ' +
-        'placeholder="Ghi chú ngày..." ' +
-        'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); saveDateOverviewNote(\'' + actualStuId + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\', \'' + inputId + '\'); }" ' +
-        'class="w-full px-2 py-1 text-[11px] border border-slate-200 rounded-lg bg-slate-50/70 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-800 font-medium placeholder-slate-400">' +
-      '<button type="button" onclick="saveDateOverviewNote(\'' + actualStuId + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\', \'' + inputId + '\')" ' +
-        'class="w-6 h-6 rounded-lg bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 flex items-center justify-center text-[11px] transition shrink-0 cursor-pointer active:scale-95" title="Lưu ghi chú (hoặc nhấn Enter)">' +
-        '<i class="fa-solid fa-check"></i>' +
-      '</button>' +
-      '<button type="button" onclick="clearDateOverviewNote(\'' + actualStuId + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\', \'' + inputId + '\')" ' +
-        'class="w-6 h-6 rounded-lg bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 flex items-center justify-center text-[11px] transition shrink-0 cursor-pointer active:scale-95 ' + (curNote ? '' : 'opacity-40') + '" title="Xóa sạch ghi chú">' +
-        '<i class="fa-solid fa-xmark"></i>' +
-      '</button>' +
-    '</div>' +
-  '</div>';
-}
-
-// --- 2. HÀM LƯU & XÓA GHI CHÚ THEO NGÀY TẠI Ô TỔNG QUAN ---
-function saveDateOverviewNote(studentId, dateStr, currentStatus, inputId) {
-  var inp = document.getElementById(inputId);
-  var newNote = inp ? inp.value.trim() : '';
-  var stdDate = toStandardDateStr(dateStr);
-  var cleanId = formatStudentId(studentId);
-
-  var student = (getActiveStudents() || []).find(function(s) {
-    return formatStudentId(s.id) === cleanId;
-  });
-  var stuName = student ? student.name : '';
-  var stuGrade = student ? (student.className || student.grade || '') : '';
-  var savedStatus = currentStatus || 'Có mặt';
-
-  // Cập nhật tức thì trên bộ nhớ trình duyệt (Giữ nguyên trạng thái & lớp điểm danh bù nếu có)
-  if (!appData.attendance) appData.attendance = [];
-  var existingIdx = appData.attendance.findIndex(function(a) {
-    return formatStudentId(a.studentId) === cleanId && toStandardDateStr(a.date) === stdDate;
-  });
-
-  if (existingIdx >= 0) {
-    savedStatus = appData.attendance[existingIdx].status || savedStatus;
-    stuGrade = appData.attendance[existingIdx].grade || stuGrade;
-    stuName = appData.attendance[existingIdx].studentName || stuName;
-    appData.attendance[existingIdx].note = newNote;
-  } else {
-    appData.attendance.push({
-      date: stdDate, studentId: studentId, studentName: stuName, grade: stuGrade, status: savedStatus, note: newNote
-    });
-  }
-
-  if (currentAttendanceState && currentAttendanceState[studentId] && toStandardDateStr(currentAttendanceState[studentId].date) === stdDate) {
-    currentAttendanceState[studentId].note = newNote;
-  }
-
-  renderOverviewByDateUnified();
-  showToast(newNote ? ('✓ Đã lưu ghi chú ngày ' + formatDateWithDay(stdDate)) : '✓ Đã xóa ghi chú ngày!');
-
-  // Gửi ngầm lên Server qua đúng hàm saveAttendance nguyên bản
-  if (typeof google !== 'undefined' && google.script && google.script.run) {
-    var payloadRecord = [{
-      date: stdDate,
-      studentId: studentId,
-      studentName: stuName,
-      grade: stuGrade,
-      status: savedStatus,
-      note: newNote
-    }];
-    google.script.run
-      .withSuccessHandler(function(data) {
-        if (data) appData = data;
-        if (overviewCurrentViewMode === 'date') renderOverviewByDateUnified();
-      })
-      .withFailureHandler(function(err) {
-        showToast('Lỗi lưu ghi chú: ' + (err.message || err), true);
-      })
-      .saveAttendance(sessionStorage.getItem('sessionToken'), payloadRecord);
-  }
-}
-
-function clearDateOverviewNote(studentId, dateStr, currentStatus, inputId) {
-  var inp = document.getElementById(inputId);
-  if (inp) inp.value = '';
-  saveDateOverviewNote(studentId, dateStr, currentStatus, inputId);
-}
-
-// --- 3. HÀM VẼ BẢNG TỔNG QUAN THEO NGÀY (📅 NGÀY) ---
-function renderOverviewByDateUnified() {
-  var container = document.getElementById('classOverviewContainer');
-  if (!container) return;
-
-  var grade = document.getElementById('overviewGradeFilter') ? document.getElementById('overviewGradeFilter').value : 'NONE';
-  var cFilter = document.getElementById('overviewClassFilter') ? document.getElementById('overviewClassFilter').value : 'ALL';
-  var searchInput = document.getElementById('overviewSearch') ? document.getElementById('overviewSearch').value.trim() : '';
-  var search = cleanName(searchInput);
-  var selectedMonth = document.getElementById('overviewMonthFilter') ? document.getElementById('overviewMonthFilter').value : getCurrentMonthStr();
-
-  if (grade === 'NONE' && !search) {
-    container.innerHTML = '<div class="bg-white p-12 text-center text-slate-400 font-medium rounded-2xl border border-dashed border-slate-200">' +
-      '<i class="fa-solid fa-filter text-3xl text-slate-300 mb-2 block"></i>' +
-      'Vui lòng chọn <b>Khối học</b> hoặc nhập tên vào ô <b>Tìm kiếm</b> ở trên.' +
-    '</div>';
-    return;
-  }
-
-  var activeStudents = getActiveStudents() || [];
-  var matchedStuIds = new Set();
-  activeStudents.forEach(function(s) {
-    var mSearch = !search || cleanName(s.name).includes(search) || String(s.id).includes(search) || formatStudentId(s.id).includes(search);
-    var mGrade = search ? true : (grade === 'ALL' || grade === 'NONE' || s.grade === grade);
-    var mClass = search ? true : (cFilter === 'ALL' || (s.className || s.grade) === cFilter);
-    if (mSearch && mGrade && mClass) {
-      matchedStuIds.add(formatStudentId(s.id));
-    }
-  });
-
-  // Lọc các bản ghi điểm danh trong tháng (Gồm cả học sinh của lớp VÀ học sinh đi học bù vào lớp đó)
-  var monthAttRecords = (appData.attendance || []).filter(function(a) {
-    var aId = formatStudentId(a.studentId);
-    var isClassMakeUp = (!search && cFilter !== 'ALL' && String(a.grade || '').trim() === cFilter);
-    if (!matchedStuIds.has(aId) && !isClassMakeUp) return false;
-
-    var std = toStandardDateStr(a.date);
-    if (!std) return false;
-    var parts = std.split('-');
-    if (parts.length === 3) {
-      var mStr = 'Tháng ' + parseInt(parts[1], 10) + '/' + parts[0];
-      return isSameMonth(mStr, selectedMonth);
-    }
-    return false;
-  });
-
-  if (monthAttRecords.length === 0) {
-    container.innerHTML = '<div class="bg-white p-8 text-center text-slate-400 font-bold rounded-2xl border">Chưa có dữ liệu điểm danh nào trong ' + selectedMonth + '</div>';
-    return;
-  }
-
-  var byDate = {};
-  monthAttRecords.forEach(function(a) {
-    var std = toStandardDateStr(a.date);
-    if (!byDate[std]) byDate[std] = [];
-    byDate[std].push(a);
-  });
-
-  var sortedDates = Object.keys(byDate).sort(function(d1, d2) { return d2.localeCompare(d1); });
-
-  container.innerHTML = sortedDates.map(function(stdDate) {
-    var recs = byDate[stdDate];
-    var presentList = recs.filter(function(a) { return a.status === 'Có mặt'; });
-    var makeUpList = recs.filter(function(a) { return a.status === 'Học bù'; });
-    var reportMakeUpList = recs.filter(function(a) { return a.status === 'Báo bù'; });
-    var absentCpList = recs.filter(function(a) { return a.status === 'Vắng CP'; });
-    var absentKpList = recs.filter(function(a) { return a.status === 'Vắng KP'; });
-    var totalAbsent = reportMakeUpList.length + absentCpList.length + absentKpList.length;
-
-    var leftColHtml =
-      '<div class="bg-emerald-50/40 border border-emerald-200 rounded-2xl p-3.5 space-y-3">' +
-        '<div class="font-black text-emerald-900 text-xs uppercase border-b border-emerald-200/80 pb-2 flex items-center justify-between">' +
-          '<span>🟢 Có mặt (' + presentList.length + ')</span>' +
-          '<span class="text-[10px] font-semibold text-emerald-700">Gõ ghi chú & nhấn ✓ hoặc Enter để lưu</span>' +
-        '</div>' +
-        '<div>' +
-          (presentList.length > 0 ? presentList.map(renderDateOverviewStudentCard).join('') : '<div class="text-xs text-slate-400 italic py-2">Không có</div>') +
-        '</div>' +
-        (makeUpList.length > 0 ? (
-          '<div class="pt-2 border-t border-emerald-200/80 space-y-1.5">' +
-            '<div class="font-black text-purple-900 text-xs uppercase">🟣 Học bù (' + makeUpList.length + ')</div>' +
-            '<div>' + makeUpList.map(renderDateOverviewStudentCard).join('') + '</div>' +
-          '</div>'
-        ) : '') +
-      '</div>';
-
-    var rightColHtml =
-      '<div class="bg-rose-50/30 border border-rose-200 rounded-2xl p-3.5 space-y-3">' +
-        '<div class="font-black text-rose-800 text-xs uppercase border-b border-rose-200/80 pb-2">' +
-          '🔴 Vắng (' + totalAbsent + ')' +
-        '</div>' +
-        (absentCpList.length > 0 ? (
-          '<div class="bg-amber-50/60 border border-amber-200 rounded-xl p-2.5 space-y-1.5">' +
-            '<div class="font-bold text-amber-900 text-xs">🟡 Vắng có phép (' + absentCpList.length + ')</div>' +
-            '<div>' + absentCpList.map(renderDateOverviewStudentCard).join('') + '</div>' +
-          '</div>'
-        ) : '') +
-        (absentKpList.length > 0 ? (
-          '<div class="bg-red-50/70 border border-red-200 rounded-xl p-2.5 space-y-1.5">' +
-            '<div class="font-bold text-red-900 text-xs">🔴 Vắng không phép (' + absentKpList.length + ')</div>' +
-            '<div>' + absentKpList.map(renderDateOverviewStudentCard).join('') + '</div>' +
-          '</div>'
-        ) : '') +
-        (reportMakeUpList.length > 0 ? (
-          '<div class="bg-blue-50/60 border border-blue-200 rounded-xl p-2.5 space-y-1.5">' +
-            '<div class="font-bold text-blue-900 text-xs">🔵 Báo bù (' + reportMakeUpList.length + ')</div>' +
-            '<div>' + reportMakeUpList.map(renderDateOverviewStudentCard).join('') + '</div>' +
-          '</div>'
-        ) : '') +
-        (totalAbsent === 0 ? '<div class="text-xs text-emerald-700 font-bold py-3 text-center">🎉 Đi học đầy đủ 100%, không có học sinh vắng!</div>' : '') +
-      '</div>';
-
-    return '<div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-4 sm:p-5 space-y-4">' +
-      '<div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">' +
-        '<h3 class="font-black text-brand-dark text-sm sm:text-base uppercase flex items-center gap-2">' +
-          '<i class="fa-solid fa-calendar-day text-emerald-600"></i> NGÀY ' + formatDateWithDay(stdDate) +
-        '</h3>' +
-        '<div class="flex flex-wrap items-center gap-2">' +
-          '<button type="button" onclick="openSeatingArrangementModal(\'' + stdDate + '\')" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 py-1.5 rounded-full text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95">' +
-            '<i class="fa-solid fa-chair"></i> Xếp chỗ kiểm tra' +
-          '</button>' +
-          '<button type="button" onclick="openLuckyWheelModal(\'' + stdDate + '\')" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-1.5 rounded-full text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95">' +
-            '<i class="fa-solid fa-dharmachakra"></i> Vòng quay may mắn' +
-          '</button>' +
-          '<span class="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full text-xs">Tổng điểm danh: ' + recs.length + ' em</span>' +
-        '</div>' +
-      '</div>' +
-      '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">' +
-        leftColHtml +
-        rightColHtml +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
-
-// --- 4. TÍNH NĂNG XẾP CHỖ NGỒI KIỂM TRA & VÒNG QUAY MAY MẮN THEO NGÀY (NGUYÊN BẢN) ---
-function padId3(id) {
-  return formatStudentId(id);
-}
-
+// Lấy danh sách học sinh CÓ MẶT thực tế (gồm cả học sinh đi bù) trong ngày dStr
 function getPresentStudentsForDate(dStr) {
-  var d = window.appData || appData || {};
+  var d = window.appData || {};
   var attList = d.attendance || [];
   var activeStudents = (typeof getActiveStudents === 'function') ? getActiveStudents() : (d.students || []);
 
@@ -11500,7 +11218,6 @@ function getPresentStudentsForDate(dStr) {
   attList.forEach(function(a) {
     if (toStandardDateStr(a.date) !== dStr) return;
     var st = String(a.status || '').trim();
-    // Lấy học sinh có mặt hoặc học sinh đi học bù ngày hôm đó
     if (st === 'Có mặt' || st === 'Học bù') {
       var cid = padId3(a.studentId);
       var stuObj = stuMap[cid];
@@ -11521,6 +11238,7 @@ function getPresentStudentsForDate(dStr) {
   return list;
 }
 
+// 1. MODAL XẾP CHỖ NGỒI KIỂM TRA
 function openSeatingArrangementModal(dStr) {
   var students = getPresentStudentsForDate(dStr);
   if (students.length === 0) {
@@ -11596,6 +11314,7 @@ function renderSeatingGridHtml(students) {
   '</div>';
 }
 
+// 2. MODAL VÒNG QUAY MAY MẮN
 function openLuckyWheelModal(dStr) {
   var students = getPresentStudentsForDate(dStr);
   if (students.length === 0) {
@@ -11667,7 +11386,274 @@ function startSpinLuckyWheel(students) {
   }
 
   runSlot();
-}  
+}
+
+
+// =========================================================================
+// 3. TÁCH KHUNG TỪNG BẠN & THÊM/SỬA/XÓA GHI CHÚ TRỰC TIẾP Ở TỔNG QUAN NGÀY
+// =========================================================================
+function saveOverviewDayStudentNote(studentId, stdDate, inputId, fallbackName) {
+  var inp = document.getElementById(inputId);
+  var newNote = inp ? inp.value.trim() : '';
+  var cleanId = padId3(studentId);
+  var d = window.appData || {};
+  if (!d.attendance) d.attendance = [];
+
+  var activeStudents = (typeof getActiveStudents === 'function') ? getActiveStudents() : (d.students || []);
+  var stuObj = activeStudents.find(function(s) {
+    return (cleanId && padId3(s.id) === cleanId) || (fallbackName && cleanName(s.name) === cleanName(fallbackName));
+  });
+
+  // Tìm đúng bản ghi điểm danh của học sinh trong ngày stdDate
+  var recIdx = d.attendance.findIndex(function(a) {
+    if (toStandardDateStr(a.date) !== stdDate) return false;
+    if (cleanId && padId3(a.studentId) === cleanId) return true;
+    if (fallbackName && cleanName(a.studentName) === cleanName(fallbackName)) return true;
+    return stuObj && cleanName(a.studentName) === cleanName(stuObj.name);
+  });
+
+  var savedStatus = 'Có mặt';
+  var savedGrade = stuObj ? (stuObj.className || stuObj.grade || '') : '';
+  var savedName = stuObj ? stuObj.name : (fallbackName || '');
+  var actualId = stuObj ? stuObj.id : studentId;
+
+  if (recIdx >= 0) {
+    savedStatus = d.attendance[recIdx].status || savedStatus;
+    savedGrade = d.attendance[recIdx].grade || savedGrade;
+    savedName = d.attendance[recIdx].studentName || savedName;
+    actualId = d.attendance[recIdx].studentId || actualId;
+    d.attendance[recIdx].note = newNote;
+  } else {
+    d.attendance.push({
+      date: stdDate,
+      studentId: actualId,
+      studentName: savedName,
+      grade: savedGrade,
+      status: savedStatus,
+      note: newNote
+    });
+  }
+
+  if (typeof currentAttendanceState !== 'undefined' && currentAttendanceState[actualId] && toStandardDateStr(currentAttendanceState[actualId].date) === stdDate) {
+    currentAttendanceState[actualId].note = newNote;
+  }
+
+  // Đổi màu viền báo đã lưu ngay tại ô input
+  if (inp) {
+    inp.value = newNote;
+    inp.style.borderColor = '#10b981';
+    inp.style.backgroundColor = newNote ? '#ecfdf5' : '#f8fafc';
+    setTimeout(function() {
+      if (inp) inp.style.borderColor = '#cbd5e1';
+    }, 800);
+  }
+  var delBtn = document.getElementById(inputId + '_del');
+  if (delBtn) {
+    delBtn.style.opacity = newNote ? '1' : '0.35';
+  }
+
+  if (typeof showToast === 'function') {
+    showToast(newNote ? ('✓ Đã lưu ghi chú cho ' + savedName + '!') : ('✓ Đã xóa ghi chú của ' + savedName + '!'));
+  }
+
+  // Gửi ngầm lên Server qua đúng hàm saveAttendance nguyên bản
+  if (typeof google !== 'undefined' && google.script && google.script.run) {
+    var payloadRecord = [{
+      date: stdDate,
+      studentId: actualId,
+      studentName: savedName,
+      grade: savedGrade,
+      status: savedStatus,
+      note: newNote
+    }];
+    google.script.run
+      .withSuccessHandler(function(resData) {
+        if (resData && resData.students) window.appData = resData;
+      })
+      .withFailureHandler(function(err) {
+        if (typeof showToast === 'function') showToast('Lỗi lưu ghi chú: ' + (err.message || err), true);
+      })
+      .saveAttendance(sessionStorage.getItem('sessionToken'), payloadRecord);
+  }
+}
+
+function deleteOverviewDayStudentNote(studentId, stdDate, inputId, fallbackName) {
+  var inp = document.getElementById(inputId);
+  if (inp) inp.value = '';
+  saveOverviewDayStudentNote(studentId, stdDate, inputId, fallbackName);
+}
+
+// Hàm tìm ngày chuẩn YYYY-MM-DD từ tiêu đề "NGÀY T6 - 06/11/2026"
+function extractStdDateFromCard(cardEl) {
+  if (!cardEl) return '';
+  var txt = cardEl.textContent || '';
+  // Tìm chuỗi dd/mm/yyyy (VD: 06/11/2026)
+  var m1 = txt.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m1) {
+    return m1[3] + '-' + ('0' + m1[2]).slice(-2) + '-' + ('0' + m1[1]).slice(-2);
+  }
+  // Tìm chuỗi yyyy-mm-dd
+  var m2 = txt.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m2) return m2[0];
+  return '';
+}
+
+function upgradeOverviewDateCardsWithNoteBoxes() {
+  var container = document.getElementById('classOverviewContainer');
+  if (!container) return;
+
+  var d = window.appData || {};
+  var attList = d.attendance || [];
+  var allStudents = d.students || [];
+
+  var role = (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser.role || '').toUpperCase() : '';
+  var isStaff = (role === 'ADMIN' || role === 'ASSISTANT');
+
+  // Quét mọi thẻ con bên trong classOverviewContainer có chứa dấu chấm tròn "•"
+  var allElements = container.querySelectorAll('div, p, ul, li, span');
+
+  allElements.forEach(function(el) {
+    if (el.getAttribute('data-note-upgraded') === '1') return;
+    if (el.closest('[data-note-upgraded="1"]')) return;
+
+    var rawText = (el.textContent || '').trim();
+    if (rawText.indexOf('•') === -1) return;
+
+    // Chỉ lấy thẻ sâu nhất chứa trực tiếp danh sách "• Tên học sinh" (không có thẻ con nào khác chứa "•")
+    var childHasBullet = Array.from(el.children || []).some(function(ch) {
+      return ch.tagName !== 'BR' && (ch.textContent || '').indexOf('•') !== -1;
+    });
+    if (childHasBullet) return;
+
+    // Tìm thẻ khung Ngày bao ngoài để lấy ngày chuẩn (VD: "NGÀY T6 - 06/11/2026" -> "2026-11-06")
+    var parentCard = el.parentElement;
+    var stdDate = '';
+    while (parentCard && parentCard !== container) {
+      var foundDate = extractStdDateFromCard(parentCard);
+      if (foundDate) {
+        stdDate = foundDate;
+        break;
+      }
+      parentCard = parentCard.parentElement;
+    }
+    if (!stdDate) return;
+
+    // Bóc tách từng tên học sinh (Hỗ trợ cả <br>, xuống dòng \n, lẫn nhiều dấu • nối liền nhau)
+    var htmlReplaced = (el.innerHTML || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/div>|<\/p>|<\/li>/gi, '\n');
+    var tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlReplaced;
+    var cleanFullText = tempDiv.textContent || '';
+
+    // Cắt theo dấu "•" để dù 33 tên nằm chung 1 khối hay 33 dòng rời đều tách ra thành đúng 33 phần tử riêng biệt
+    var namesArr = cleanFullText.split('•').map(function(s) { return s.trim(); }).filter(Boolean);
+    if (namesArr.length === 0) return;
+
+    var dayRecs = attList.filter(function(a) {
+      return toStandardDateStr(a.date) === stdDate;
+    });
+
+    var cardsHtml = namesArr.map(function(rawItem, idx) {
+      var namePart = rawItem.trim();
+      var idInBracket = '';
+      var mCode = namePart.match(/\((\d{2,6})\)$/);
+      if (mCode) {
+        idInBracket = padId3(mCode[1]);
+        namePart = namePart.replace(/\s*\(\d{2,6}\)$/, '').trim();
+      }
+      // Nếu có ghi chú cũ đính kèm kiểu "Tên (ghi chú)" thì tách ra
+      var cleanTargetName = cleanName(namePart);
+
+      // Tìm bản ghi điểm danh khớp với học sinh này trong ngày stdDate
+      var matchedRec = dayRecs.find(function(a) {
+        if (idInBracket && padId3(a.studentId) === idInBracket) return true;
+        if (cleanName(a.studentName) === cleanTargetName) return true;
+        var sObj = allStudents.find(function(s) { return padId3(s.id) === padId3(a.studentId); });
+        return sObj && cleanName(sObj.name) === cleanTargetName;
+      });
+
+      var stuObj = allStudents.find(function(s) {
+        if (matchedRec && padId3(s.id) === padId3(matchedRec.studentId)) return true;
+        if (idInBracket && padId3(s.id) === idInBracket) return true;
+        return cleanName(s.name) === cleanTargetName;
+      });
+
+      var stuId = matchedRec ? matchedRec.studentId : (stuObj ? stuObj.id : '');
+      var cleanId = stuObj ? padId3(stuObj.id) : (matchedRec ? padId3(matchedRec.studentId) : '');
+      var curNote = (matchedRec && matchedRec.note) ? String(matchedRec.note).trim() : '';
+      var curStatus = (matchedRec && matchedRec.status) ? String(matchedRec.status).trim() : 'Có mặt';
+
+      var inputId = 'ov_note_' + stdDate.replace(/\D/g, '') + '_' + (cleanId || idx) + '_' + Math.random().toString(36).substring(2, 6);
+      var safeNoteHtml = curNote.replace(/"/g, '&quot;');
+      var safeStuIdJs = String(stuId).replace(/'/g, "\\'");
+      var safeNameJs = namePart.replace(/'/g, "\\'");
+      var safeStatusJs = curStatus.replace(/'/g, "\\'");
+
+      if (!isStaff) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:6px 10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">' +
+          '<span style="font-weight:700;color:#1e293b;font-size:12.5px;">' + namePart + '</span>' +
+          (curNote ? '<span style="font-size:11px;font-weight:600;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:2px 8px;border-radius:6px;font-style:italic;">' + safeNoteHtml + '</span>' : '') +
+        '</div>';
+      }
+
+      return '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:6px 10px;margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">' +
+        // Cột trái: Tên học sinh + Mã HS (Bấm vào để đổi trạng thái điểm danh)
+        '<div onclick="if(typeof quickEditAttendance===\'function\' && \'' + safeStuIdJs + '\') quickEditAttendance(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\')" ' +
+             'style="display:flex;align-items:center;gap:6px;min-width:135px;flex:1;cursor:pointer;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
+          '<span style="width:6px;height:6px;border-radius:50%;background:#10b981;flex-shrink:0;"></span>' +
+          '<span style="font-weight:700;color:#0f172a;font-size:12.5px;line-height:1.25;">' + namePart + '</span>' +
+          (cleanId ? '<span style="font-size:10.5px;font-family:monospace;font-weight:700;color:#64748b;">(' + cleanId + ')</span>' : '') +
+        '</div>' +
+        // Cột phải: Ô Ghi chú theo ngày + Nút Lưu (✓) + Nút Xóa (×)
+        '<div style="display:flex;align-items:center;gap:4px;flex:1.15;min-width:175px;">' +
+          '<input type="text" id="' + inputId + '" value="' + safeNoteHtml + '" placeholder="Ghi chú ngày..." ' +
+            'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\'); }" ' +
+            'style="width:100%;padding:4px 8px;font-size:11.5px;border:1px solid #cbd5e1;border-radius:7px;background:' + (curNote ? '#ecfdf5' : '#f8fafc') + ';color:#0f172a;font-weight:600;outline:none;">' +
+          '<button type="button" onclick="saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
+            'style="width:25px;height:25px;border-radius:7px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;flex-shrink:0;" title="Lưu ghi chú (hoặc nhấn Enter)">' +
+            '<i class="fa-solid fa-check"></i>' +
+          '</button>' +
+          '<button type="button" id="' + inputId + '_del" onclick="deleteOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
+            'style="width:25px;height:25px;border-radius:7px;background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;flex-shrink:0;opacity:' + (curNote ? '1' : '0.35') + ';" title="Xóa ghi chú">' +
+            '<i class="fa-solid fa-xmark"></i>' +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    el.setAttribute('data-note-upgraded', '1');
+    el.style.whiteSpace = 'normal';
+    el.innerHTML = cardsHtml;
+  });
+}
+
+// Tự động theo dõi và nâng cấp ngay khi chuyển sang chế độ xem "📅 Ngày"
+(function() {
+  var attachObserver = function() {
+    var target = document.getElementById('classOverviewContainer');
+    if (!target) return;
+    var obs = new MutationObserver(function() {
+      upgradeOverviewDateCardsWithNoteBoxes();
+    });
+    obs.observe(target, { childList: true, subtree: true });
+    upgradeOverviewDateCardsWithNoteBoxes();
+  };
+
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', attachObserver);
+  } else {
+    attachObserver();
+  }
+  // Quét dự phòng sau khi bấm nút chuyển sang chế độ Ngày
+  document.addEventListener('click', function(e) {
+    var btn = e.target && e.target.closest ? e.target.closest('#btnViewByDate, #subTabOverview, #overviewClassFilter, #overviewMonthFilter') : null;
+    if (btn) {
+      setTimeout(upgradeOverviewDateCardsWithNoteBoxes, 50);
+      setTimeout(upgradeOverviewDateCardsWithNoteBoxes, 200);
+    }
+  });
+})();
+</script>
+  
   
 <script>
 // =========================================================================
