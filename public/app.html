@@ -3801,6 +3801,49 @@ function getStudentDebtDetails(student, targetMonthStr) {
   }
 }
 
+    function updateReferrerDropdown() {
+      var datalistEl = document.getElementById('listReferrerStudents');
+      var inputEl = document.getElementById('stuReferrerInput');
+      var hiddenInput = document.getElementById('stuReferrer');
+      if (!datalistEl || !inputEl) return;
+
+      var activeStus = (typeof getActiveStudents === 'function') ? getActiveStudents() : (appData.students || []);
+      
+      activeStus.sort(function(a, b) {
+        var nameA = cleanName(a.name);
+        var nameB = cleanName(b.name);
+        if (nameA !== nameB) return nameA.localeCompare(nameB, 'vi');
+        return formatStudentId(a.id).localeCompare(formatStudentId(b.id));
+      });
+
+      datalistEl.innerHTML = activeStus.map(function(s) {
+        var sId = formatStudentId(s.id);
+        var className = s.className || s.grade || 'Chưa xếp';
+        return '<option value="' + s.name + ' — Lớp ' + className + ' (Mã: ' + sId + ')"></option>';
+      }).join('');
+
+      inputEl.oninput = function() {
+        var val = inputEl.value.trim();
+        if (!val) {
+          if (hiddenInput) hiddenInput.value = '';
+          return;
+        }
+        
+        var matched = activeStus.find(function(s) {
+          var sId = formatStudentId(s.id);
+          var className = s.className || s.grade || 'Chưa xếp';
+          var fullStr = s.name + ' — Lớp ' + className + ' (Mã: ' + sId + ')';
+          return fullStr.toLowerCase() === val.toLowerCase() || val.includes('(Mã: ' + sId + ')');
+        });
+
+        if (matched && hiddenInput) {
+          hiddenInput.value = formatStudentId(matched.id);
+        } else if (hiddenInput) {
+          hiddenInput.value = '';
+        }
+      };
+    }
+
   // 1. Mở Modal Bảng Thống Kê Tiền Chi (Đảm bảo bắt đúng sự kiện click)
     function openExpenseModal() {
       try {
