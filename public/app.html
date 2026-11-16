@@ -11532,42 +11532,48 @@ function extractStdDateFromCard(cardEl) {
   return '';
 }
   
-// Tự động bơm CSS khóa cứng bố cục 2 cột thẳng hàng tuyệt đối
+// Bơm CSS giữ nguyên bố cục bản cũ + ép mọi dòng học sinh rộng 100% bằng nhau
 (function injectMobileOverviewDayStyles() {
   var oldSt = document.getElementById('ovDayMobileFixStyle');
   if (oldSt) oldSt.remove();
   var st = document.createElement('style');
   st.id = 'ovDayMobileFixStyle';
   st.innerHTML =
-    '.ov-upgraded-list-wrap {' +
-      'display: flex !important;' +
-      'flex-direction: column !important;' +
-      'align-items: stretch !important;' +
+    /* Ép thẻ gốc chứa từng học sinh luôn là 1 dòng 100% (chữa dứt điểm lỗi ô Ghi chú ngắn/dài khác nhau) */
+    '[data-note-upgraded="1"] {' +
+      'display: block !important;' +
       'width: 100% !important;' +
       'max-width: 100% !important;' +
       'min-width: 0 !important;' +
       'box-sizing: border-box !important;' +
-      'margin: 0 !important;' +
-      'padding: 0 !important;' +
+      'grid-column: 1 / -1 !important;' +
     '}' +
-    /* Khóa cứng lưới 2 cột: Cột tên co giãn hết phần trống (1fr), Cột ghi chú cố định đúng bằng nhau ở mọi hàng */
     '.ov-stu-card-row {' +
-      'display: grid !important;' +
-      'grid-template-columns: minmax(0, 1fr) 215px !important;' +
+      'display: flex !important;' +
+      'flex-direction: row !important;' +
       'align-items: center !important;' +
-      'gap: 8px !important;' +
+      'justify-content: space-between !important;' +
       'width: 100% !important;' +
       'max-width: 100% !important;' +
-      'min-width: 0 !important;' +
       'box-sizing: border-box !important;' +
     '}' +
+    '.ov-stu-name-col {' +
+      'display: flex !important;' +
+      'align-items: center !important;' +
+      'gap: 5px !important;' +
+      'flex: 1 1 0% !important;' +
+      'min-width: 0 !important;' +
+      'padding-right: 6px !important;' +
+    '}' +
+    /* Khóa cố định độ rộng cụm Ghi chú + 2 nút để mọi hàng trên dưới bằng nhau 100% */
     '.ov-stu-note-col {' +
       'display: flex !important;' +
       'align-items: center !important;' +
       'justify-content: flex-end !important;' +
       'gap: 4px !important;' +
-      'width: 100% !important;' +
-      'box-sizing: border-box !important;' +
+      'flex: 0 0 210px !important;' +
+      'width: 210px !important;' +
+      'max-width: 210px !important;' +
     '}' +
     '.ov-stu-note-input {' +
       'flex: 1 1 0% !important;' +
@@ -11576,21 +11582,12 @@ function extractStdDateFromCard(cardEl) {
       'box-sizing: border-box !important;' +
     '}' +
     '@media (max-width: 640px) {' +
-      '#classOverviewContainer > div { padding: 8px 6px !important; border-radius: 16px !important; overflow: hidden !important; }' +
-      '#classOverviewContainer .ov-day-status-box { padding: 6px 5px !important; border-radius: 12px !important; }' +
-      '#classOverviewContainer .ov-makeup-group-box { padding: 6px 5px 2px 5px !important; margin-top: 6px !important; width: 100% !important; box-sizing: border-box !important; }' +
-      /* Trên điện thoại: Cột phải cố định đúng 128px ở tất cả các hàng -> Thẳng tắp 100% */
-      '.ov-stu-card-row {' +
-        'grid-template-columns: minmax(0, 1fr) 128px !important;' +
-        'padding: 5px 6px !important;' +
-        'gap: 4px !important;' +
-        'margin-bottom: 4px !important;' +
-        'border-radius: 8px !important;' +
-      '}' +
-      '.ov-stu-name-col { min-width: 0 !important; gap: 3px !important; }' +
+      '#classOverviewContainer > div { padding: 8px 6px !important; border-radius: 16px !important; }' +
+      '.ov-stu-card-row { padding: 5px 6px !important; gap: 4px !important; margin-bottom: 4px !important; border-radius: 8px !important; }' +
+      '.ov-stu-name-col { gap: 3px !important; padding-right: 3px !important; }' +
       '.ov-stu-name-text { font-size: 12px !important; line-height: 1.2 !important; white-space: normal !important; word-break: break-word !important; }' +
       '.ov-stu-code-text { font-size: 9px !important; letter-spacing: -0.3px !important; }' +
-      '.ov-stu-note-col { gap: 2px !important; }' +
+      '.ov-stu-note-col { flex: 0 0 126px !important; width: 126px !important; max-width: 126px !important; gap: 2px !important; }' +
       '.ov-stu-note-input { padding: 3px 5px !important; font-size: 10.5px !important; height: 22px !important; }' +
       '.ov-stu-note-btn { width: 21px !important; height: 21px !important; font-size: 10px !important; border-radius: 5px !important; flex-shrink: 0 !important; }' +
     '}';
@@ -11608,44 +11605,26 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
   var role = (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser.role || '').toUpperCase() : '';
   var isStaff = (role === 'ADMIN' || role === 'ASSISTANT');
 
-  // Tìm tất cả các hộp chứa danh sách tên học sinh (hộp Có mặt, Vắng có phép, Vắng không phép, Báo bù...)
-  var candidateBoxes = [];
-  container.querySelectorAll('div, ul').forEach(function(box) {
-    if (box.getAttribute('data-note-upgraded') === '1') return;
-    if (box.closest('[data-note-upgraded="1"]')) return;
+  var allElements = container.querySelectorAll('div, p, ul, li, span');
 
-    var txt = (box.textContent || '').trim();
-    if (txt.indexOf('•') === -1) return;
+  allElements.forEach(function(el) {
+    if (el.getAttribute('data-note-upgraded') === '1') return;
+    if (el.closest('[data-note-upgraded="1"]')) return;
 
-    // Kiểm tra xem có hộp con nào bên trong chứa toàn bộ dấu "•" hay không
-    // Nếu một hộp vừa chứa tiêu đề (VD: "Vắng không phép (2)") vừa chứa các thẻ con "• Tên",
-    // hoặc bản thân hộp đó chỉ chứa các dòng "• Tên" thì gom xử lý ngay tại cấp danh sách
-    var bulletChildren = Array.from(box.children || []).filter(function(ch) {
-      return ch.tagName !== 'BR' && (ch.textContent || '').indexOf('•') !== -1;
-    });
+    var rawText = (el.textContent || '').trim();
+    if (rawText.indexOf('•') === -1) return;
 
-    // Nếu chỉ có đúng 1 thẻ con chứa toàn bộ dấu "•" (ví dụ thẻ wrapper danh sách), nhường cho thẻ con đó xử lý
-    if (bulletChildren.length === 1 && (bulletChildren[0].textContent || '').split('•').length === txt.split('•').length) {
-      return;
+    // Nếu thẻ hiện tại bắt đầu trực tiếp bằng dấu "•" (tức là 1 dòng tên học sinh như "• Thống Quỳnh Anh (118)"),
+    // xử lý luôn thẻ này kể cả khi bên trong nó có thẻ <span> con chứa mã "(118)"!
+    var startsWithBullet = rawText.indexOf('•') === 0;
+    if (!startsWithBullet) {
+      var childHasBullet = Array.from(el.children || []).some(function(ch) {
+        return ch.tagName !== 'BR' && (ch.textContent || '').indexOf('•') !== -1;
+      });
+      if (childHasBullet) return;
     }
 
-    // Nếu các thẻ con là các nhóm lớn (như cột Phải chứa 2 hộp Vắng CP + Vắng KP), bỏ qua để xử lý từng hộp Vắng CP / Vắng KP riêng
-    var isGroupContainer = bulletChildren.some(function(ch) {
-      var chTxt = (ch.textContent || '');
-      return /(Có mặt|Vắng có phép|Vắng không phép|Báo bù|Học bù)\s*\(\d+/i.test(chTxt);
-    });
-    if (isGroupContainer) return;
-
-    candidateBoxes.push({ box: box, bulletChildren: bulletChildren });
-  });
-
-  candidateBoxes.forEach(function(item) {
-    var box = item.box;
-    var bulletChildren = item.bulletChildren;
-    if (box.getAttribute('data-note-upgraded') === '1' || box.closest('[data-note-upgraded="1"]')) return;
-
-    // Tìm ngày chuẩn YYYY-MM-DD từ khung Ngày lớn bao ngoài
-    var parentCard = box;
+    var parentCard = el.parentElement;
     var stdDate = '';
     while (parentCard && parentCard !== container) {
       var foundDate = extractStdDateFromCard(parentCard);
@@ -11657,23 +11636,12 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
     }
     if (!stdDate) return;
 
-    // Trích xuất toàn bộ các dòng "• Tên học sinh" trong hộp này (bất kể viết bằng nhiều thẻ <div> rời hay nối bằng <br>)
-    var namesArr = [];
-    if (bulletChildren.length > 0) {
-      bulletChildren.forEach(function(ch) {
-        var htmlRep = (ch.innerHTML || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/div>|<\/p>|<\/li>/gi, '\n');
-        var tmp = document.createElement('div');
-        tmp.innerHTML = htmlRep;
-        var parts = (tmp.textContent || '').split('•').map(function(s) { return s.trim(); }).filter(Boolean);
-        parts.forEach(function(p) { namesArr.push(p); });
-      });
-    } else {
-      var htmlRep2 = (box.innerHTML || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/div>|<\/p>|<\/li>/gi, '\n');
-      var tmp2 = document.createElement('div');
-      tmp2.innerHTML = htmlRep2;
-      namesArr = (tmp2.textContent || '').split('•').map(function(s) { return s.trim(); }).filter(Boolean);
-    }
+    var htmlReplaced = (el.innerHTML || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/div>|<\/p>|<\/li>/gi, '\n');
+    var tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlReplaced;
+    var cleanFullText = tempDiv.textContent || '';
 
+    var namesArr = cleanFullText.split('•').map(function(s) { return s.trim(); }).filter(Boolean);
     if (namesArr.length === 0) return;
 
     var dayRecs = attList.filter(function(a) {
@@ -11746,8 +11714,8 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
 
       var cardItemHtml = '';
       if (!isStaff) {
-        cardItemHtml = '<div style="display:flex;align-items:center;justify-content:space-between;width:100%;box-sizing:border-box;background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.03);gap:6px;">' +
-          '<div style="display:flex;align-items:baseline;gap:4px;min-width:0;flex:1;flex-wrap:wrap;">' +
+        cardItemHtml = '<div class="ov-stu-card-row" style="background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">' +
+          '<div class="ov-stu-name-col">' +
             '<span class="ov-stu-name-text" style="font-weight:700;color:#1e293b;font-size:12.5px;">' + realNameDisplay + '</span>' +
             makeUpBadgeHtml +
           '</div>' +
@@ -11755,8 +11723,7 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
         '</div>';
       } else {
         cardItemHtml = '<div class="ov-stu-card-row" style="background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">' +
-          '<div class="ov-stu-name-col" onclick="if(typeof quickEditAttendance===\'function\' && \'' + safeStuIdJs + '\') quickEditAttendance(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\')" ' +
-               'style="display:flex;align-items:center;gap:5px;min-width:0;cursor:pointer;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
+          '<div class="ov-stu-name-col" onclick="if(typeof quickEditAttendance===\'function\' && \'' + safeStuIdJs + '\') quickEditAttendance(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\')" style="cursor:pointer;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
             '<span style="width:6px;height:6px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;"></span>' +
             '<div style="min-width:0;flex:1;line-height:1.25;">' +
               '<span class="ov-stu-name-text" style="font-weight:700;color:#0f172a;font-size:12.5px;">' + realNameDisplay + '</span>' +
@@ -11787,8 +11754,8 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
       }
     });
 
-    var parentText = (box.parentElement && box.parentElement.textContent) ? box.parentElement.textContent : '';
-    var alreadyInsideMakeUpBox = /🟣\s*(Học\s*bù|Đi\s*bù)/i.test(parentText || box.textContent) && normalCards.length === 0;
+    var parentText = (el.parentElement && el.parentElement.textContent) ? el.parentElement.textContent : '';
+    var alreadyInsideMakeUpBox = /🟣\s*(Học\s*bù|Đi\s*bù)/i.test(parentText) && normalCards.length === 0;
 
     var finalHtml = normalCards.join('');
     if (makeUpCards.length > 0) {
@@ -11805,26 +11772,17 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
       }
     }
 
-    var listWrapper = document.createElement('div');
-    listWrapper.className = 'ov-upgraded-list-wrap';
-    listWrapper.setAttribute('data-note-upgraded', '1');
-    listWrapper.innerHTML = finalHtml;
-
-    // Nếu box vừa chứa dòng tiêu đề (VD: "Vắng không phép (2)") vừa chứa các thẻ con "• Tên",
-    // chỉ xóa các thẻ con chứa "•" và gắn listWrapper ngay dưới tiêu đề!
-    if (bulletChildren.length > 0 && bulletChildren.length < box.children.length) {
-      bulletChildren.forEach(function(ch) { ch.remove(); });
-      box.setAttribute('data-note-upgraded', '1');
-      box.classList.add('ov-day-status-box');
-      box.appendChild(listWrapper);
-    } else {
-      box.setAttribute('data-note-upgraded', '1');
-      box.className = (box.className || '') + ' ov-upgraded-list-wrap';
-      box.innerHTML = finalHtml;
-      if (box.parentElement && box.parentElement !== container) {
-        box.parentElement.classList.add('ov-day-status-box');
+    el.setAttribute('data-note-upgraded', '1');
+    el.removeAttribute('onclick');
+    if (el.parentElement && el.parentElement !== container) {
+      var pStyle = window.getComputedStyle(el.parentElement);
+      if (pStyle.display === 'flex' || pStyle.display === 'inline-flex' || pStyle.display === 'grid') {
+        el.parentElement.style.flexDirection = 'column';
+        el.parentElement.style.alignItems = 'stretch';
+        el.parentElement.style.gridTemplateColumns = '1fr';
       }
     }
+    el.innerHTML = finalHtml;
   });
 }
 
