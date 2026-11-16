@@ -11532,62 +11532,71 @@ function extractStdDateFromCard(cardEl) {
   return '';
 }
   
-// Bơm CSS giữ nguyên bố cục bản cũ + ép mọi dòng học sinh rộng 100% bằng nhau
+// Bơm CSS ép mọi khung ngày và dòng học sinh không bao giờ phình ngang quá màn hình
 (function injectMobileOverviewDayStyles() {
   var oldSt = document.getElementById('ovDayMobileFixStyle');
   if (oldSt) oldSt.remove();
   var st = document.createElement('style');
   st.id = 'ovDayMobileFixStyle';
   st.innerHTML =
-    /* Ép thẻ gốc chứa từng học sinh luôn là 1 dòng 100% (chữa dứt điểm lỗi ô Ghi chú ngắn/dài khác nhau) */
+    '#classOverviewContainer, #classOverviewContainer * {' +
+      'box-sizing: border-box !important;' +
+    '}' +
     '[data-note-upgraded="1"] {' +
-      'display: block !important;' +
+      'display: flex !important;' +
+      'flex-direction: column !important;' +
+      'align-items: stretch !important;' +
       'width: 100% !important;' +
       'max-width: 100% !important;' +
       'min-width: 0 !important;' +
-      'box-sizing: border-box !important;' +
+      'white-space: normal !important;' +
+      'overflow: hidden !important;' +
       'grid-column: 1 / -1 !important;' +
     '}' +
     '.ov-stu-card-row {' +
-      'display: flex !important;' +
-      'flex-direction: row !important;' +
+      'display: grid !important;' +
+      'grid-template-columns: minmax(0, 1fr) 210px !important;' +
       'align-items: center !important;' +
-      'justify-content: space-between !important;' +
+      'gap: 8px !important;' +
       'width: 100% !important;' +
       'max-width: 100% !important;' +
-      'box-sizing: border-box !important;' +
+      'min-width: 0 !important;' +
+      'overflow: hidden !important;' +
     '}' +
     '.ov-stu-name-col {' +
       'display: flex !important;' +
       'align-items: center !important;' +
       'gap: 5px !important;' +
-      'flex: 1 1 0% !important;' +
+      'width: 100% !important;' +
       'min-width: 0 !important;' +
-      'padding-right: 6px !important;' +
+      'overflow: hidden !important;' +
     '}' +
-    /* Khóa cố định độ rộng cụm Ghi chú + 2 nút để mọi hàng trên dưới bằng nhau 100% */
     '.ov-stu-note-col {' +
       'display: flex !important;' +
       'align-items: center !important;' +
       'justify-content: flex-end !important;' +
       'gap: 4px !important;' +
-      'flex: 0 0 210px !important;' +
-      'width: 210px !important;' +
-      'max-width: 210px !important;' +
+      'width: 100% !important;' +
+      'min-width: 0 !important;' +
     '}' +
     '.ov-stu-note-input {' +
       'flex: 1 1 0% !important;' +
       'width: 100% !important;' +
       'min-width: 0 !important;' +
-      'box-sizing: border-box !important;' +
     '}' +
     '@media (max-width: 640px) {' +
-      '#classOverviewContainer > div { padding: 8px 6px !important; border-radius: 16px !important; }' +
-      '.ov-stu-card-row { padding: 5px 6px !important; gap: 4px !important; margin-bottom: 4px !important; border-radius: 8px !important; }' +
-      '.ov-stu-name-col { gap: 3px !important; padding-right: 3px !important; }' +
+      '#classOverviewContainer > div { padding: 8px 6px !important; border-radius: 16px !important; width: 100% !important; max-width: 100% !important; min-width: 0 !important; overflow: hidden !important; }' +
+      '.ov-stu-card-row {' +
+        'grid-template-columns: minmax(0, 1fr) 124px !important;' +
+        'padding: 5px 6px !important;' +
+        'gap: 4px !important;' +
+        'margin-bottom: 4px !important;' +
+        'border-radius: 8px !important;' +
+      '}' +
+      '.ov-stu-name-col { gap: 3px !important; }' +
       '.ov-stu-name-text { font-size: 12px !important; line-height: 1.2 !important; white-space: normal !important; word-break: break-word !important; }' +
       '.ov-stu-code-text { font-size: 9px !important; letter-spacing: -0.3px !important; }' +
-      '.ov-stu-note-col { flex: 0 0 126px !important; width: 126px !important; max-width: 126px !important; gap: 2px !important; }' +
+      '.ov-stu-note-col { gap: 2px !important; width: 124px !important; max-width: 124px !important; }' +
       '.ov-stu-note-input { padding: 3px 5px !important; font-size: 10.5px !important; height: 22px !important; }' +
       '.ov-stu-note-btn { width: 21px !important; height: 21px !important; font-size: 10px !important; border-radius: 5px !important; flex-shrink: 0 !important; }' +
     '}';
@@ -11614,15 +11623,11 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
     var rawText = (el.textContent || '').trim();
     if (rawText.indexOf('•') === -1) return;
 
-    // Nếu thẻ hiện tại bắt đầu trực tiếp bằng dấu "•" (tức là 1 dòng tên học sinh như "• Thống Quỳnh Anh (118)"),
-    // xử lý luôn thẻ này kể cả khi bên trong nó có thẻ <span> con chứa mã "(118)"!
-    var startsWithBullet = rawText.indexOf('•') === 0;
-    if (!startsWithBullet) {
-      var childHasBullet = Array.from(el.children || []).some(function(ch) {
-        return ch.tagName !== 'BR' && (ch.textContent || '').indexOf('•') !== -1;
-      });
-      if (childHasBullet) return;
-    }
+    // Giữ đúng cách chọn thẻ lá chứa dấu "•" của bản cũ ổn định
+    var childHasBullet = Array.from(el.children || []).some(function(ch) {
+      return ch.tagName !== 'BR' && (ch.textContent || '').indexOf('•') !== -1;
+    });
+    if (childHasBullet) return;
 
     var parentCard = el.parentElement;
     var stdDate = '';
@@ -11773,16 +11778,23 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
     }
 
     el.setAttribute('data-note-upgraded', '1');
-    el.removeAttribute('onclick');
-    if (el.parentElement && el.parentElement !== container) {
-      var pStyle = window.getComputedStyle(el.parentElement);
-      if (pStyle.display === 'flex' || pStyle.display === 'inline-flex' || pStyle.display === 'grid') {
-        el.parentElement.style.flexDirection = 'column';
-        el.parentElement.style.alignItems = 'stretch';
-        el.parentElement.style.gridTemplateColumns = '1fr';
-      }
-    }
     el.innerHTML = finalHtml;
+
+    // CHỐT CHẶN QUAN TRỌNG NHẤT: Đi ngược từ dòng học sinh (el) lên tới khung Ngày (parentCard)
+    // Khóa min-width: 0 và max-width: 100% ở TẤT CẢ các tầng thẻ cha để khung Vắng (2) tuyệt đối không thể phình ngang ra ngoài màn hình!
+    var curr = el;
+    while (curr && curr !== container) {
+      curr.style.minWidth = '0';
+      curr.style.maxWidth = '100%';
+      curr.style.boxSizing = 'border-box';
+      if (curr === el || curr === el.parentElement) {
+        curr.style.width = '100%';
+        curr.style.display = 'flex';
+        curr.style.flexDirection = 'column';
+        curr.style.alignItems = 'stretch';
+      }
+      curr = curr.parentElement;
+    }
   });
 }
 
