@@ -11863,34 +11863,34 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
     var parentText = (el.parentElement && el.parentElement.textContent) ? el.parentElement.textContent : '';
     var alreadyInsideMakeUpBox = /🟣\s*(Học\s*bù|Đi\s*bù)/i.test(parentText) && normalCards.length === 0;
 
-    var finalHtml = normalCards.join('');
+    // Nối các thẻ học sinh kèm vách ngắt dòng 100% để dù chỉ có 2 học sinh cũng TUYỆT ĐỐI không thể nằm ngang cạnh nhau
+    var rowBreak = '<div style="display:block !important;width:100% !important;height:0 !important;clear:both !important;flex-basis:100% !important;"></div>';
+    var finalHtml = '<div style="display:block !important;width:100% !important;max-width:100% !important;box-sizing:border-box !important;">' +
+      normalCards.join(rowBreak) +
+    '</div>';
+
     if (makeUpCards.length > 0) {
       if (alreadyInsideMakeUpBox) {
-        finalHtml += makeUpCards.join('');
+        finalHtml += '<div style="display:block !important;width:100% !important;max-width:100% !important;box-sizing:border-box !important;">' +
+          makeUpCards.join(rowBreak) +
+        '</div>';
       } else {
-        finalHtml += '<div class="ov-makeup-group-box" style="margin-top:' + (normalCards.length > 0 ? '8px' : '0') + ';background:#faf5ff;border:1px solid #d8b4fe;border-radius:12px;padding:8px 8px 3px 8px;width:100%;box-sizing:border-box;">' +
+        finalHtml += '<div style="display:block !important;width:100% !important;box-sizing:border-box !important;margin-top:' + (normalCards.length > 0 ? '8px' : '0') + ';background:#faf5ff;border:1px solid #d8b4fe;border-radius:12px;padding:8px 8px 3px 8px;">' +
           '<div style="font-weight:800;color:#6b21a8;font-size:11.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">' +
             '<span style="width:8px;height:8px;border-radius:50%;background:#9333ea;display:inline-block;"></span>' +
             '<span>Học bù (' + makeUpCards.length + ')</span>' +
           '</div>' +
-          makeUpCards.join('') +
+          '<div style="display:block !important;width:100% !important;">' + makeUpCards.join(rowBreak) + '</div>' +
         '</div>';
       }
     }
 
-    // KHÓA CHẶT 3 TẦNG THẺ CHA BAO QUANH (chống lỗi thẻ cha có width cố định hoặc grid 2 cột đẩy tràn khung Vắng)
+    // Khóa cứng thẻ chứa (el) và thẻ cha của nó về display:block (KHÔNG dùng display:flex để tránh lỗi 2 học sinh bị xếp ngang)
     el.setAttribute('data-note-upgraded', '1');
-    el.classList.add('ov-upgraded-list-wrap');
-    el.style.cssText = 'display:flex !important; flex-direction:column !important; width:100% !important; max-width:100% !important; min-width:0 !important; box-sizing:border-box !important; white-space:normal !important; grid-column:1 / -1 !important;';
-
-    var p1 = el.parentElement;
-    if (p1 && p1 !== container) {
-      p1.classList.add('ov-day-status-box');
-      if (p1.parentElement && p1.parentElement !== container) {
-        p1.parentElement.classList.add('ov-day-status-box');
-      }
+    el.style.cssText = 'display:block !important; width:100% !important; max-width:100% !important; min-width:0 !important; box-sizing:border-box !important; white-space:normal !important; grid-column:1 / -1 !important;';
+    if (el.parentElement && el.parentElement !== container) {
+      el.parentElement.style.cssText += ';display:block !important; width:100% !important; max-width:100% !important; box-sizing:border-box !important;';
     }
-
     el.innerHTML = finalHtml;
   });
 }
