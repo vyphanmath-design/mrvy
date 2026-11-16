@@ -4035,6 +4035,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
+  // Hàm lưu toàn bộ dữ liệu thay đổi trực tiếp lên bảng 'chi_phi' của Supabase
     async function saveAllExpensesData() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
@@ -4050,6 +4051,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         return isSameMonth(exp.thang, currentMonthStr);
       });
 
+      // Cập nhật giá trị từ các ô input vào mảng tạm
       rows.forEach(function(row, idx) {
         var exp = filtered[idx];
         if (!exp) return;
@@ -4068,23 +4070,33 @@ function getStudentDebtDetails(student, targetMonthStr) {
       });
 
       if (typeof showToast === 'function') {
-        showToast('Đang lưu lên Supabase...');
+        showToast('Đang lưu dữ liệu lên Supabase...');
       }
 
       try {
-        if (typeof supabase !== 'undefined') {
-          for (var i = 0; i < appData.expenses.length; i++) {
-            var exp = appData.expenses[i];
-            var payload = {
-              khoan_chi: exp.khoanChi || '',
-              noi_dung: exp.noiDung || '',
-              so_tien: Number(exp.soTien) || 0,
-              ngay_chi: exp.ngayChi || '',
-              ghi_chu: exp.ghiChu || '',
-              thang: exp.thang || currentMonthStr,
-              ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now())
-            };
-            await supabase.from('chi_phi').upsert(payload, { onConflict: 'ma_hs_duoc_gioi_thieu' });
+        if (typeof supabase === 'undefined') {
+          throw new Error('Không tìm thấy kết nối Supabase!');
+        }
+
+        // Duyệt và upsert từng khoản chi vào bảng chi_phi trên Supabase
+        for (var i = 0; i < appData.expenses.length; i++) {
+          var exp = appData.expenses[i];
+          var payload = {
+            khoan_chi: exp.khoanChi || '',
+            noi_dung: exp.noiDung || '',
+            so_tien: Number(exp.soTien) || 0,
+            ngay_chi: exp.ngayChi || '',
+            ghi_chu: exp.ghiChu || '',
+            thang: exp.thang || currentMonthStr,
+            ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now() + '_' + i)
+          };
+
+          var res = await supabase
+            .from('chi_phi')
+            .upsert(payload, { onConflict: 'ma_hs_duoc_gioi_thieu' });
+
+          if (res.error) {
+            console.error('Lỗi dòng Supabase:', res.error);
           }
         }
 
@@ -4099,7 +4111,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         }
       }
     }
-
+    
     function initAllDropdowns() {
       initDynamicGradeDropdowns();
       updateClassDropdown();
