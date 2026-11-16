@@ -794,14 +794,12 @@
           </div>
         </div>
 
-        <!-- THỐNG KÊ GỌN GÀNG: 2 Ô TRÊN CÙNG 1 HÀNG -->
-        <div class="admin-only grid grid-cols-2 gap-2 sm:gap-4">
+        <!-- THỐNG KÊ 3 Ô TRÊN CÙNG 1 HÀNG -->
+        <div class="admin-only grid grid-cols-3 gap-2 sm:gap-4">
           <!-- Ô 1: TỔNG THU -->
           <div class="bg-white p-2.5 sm:p-4 rounded-2xl border-2 border-brand-dark shadow-xs flex flex-col justify-between">
-            <div class="flex items-center justify-between">
-              <div class="text-[10px] sm:text-xs font-black text-brand-dark uppercase tracking-wider flex items-center gap-1">
-                <i class="fa-solid fa-coins text-emerald-600"></i> Tổng Thu
-              </div>
+            <div class="text-[10px] sm:text-xs font-black text-brand-dark uppercase tracking-wider flex items-center gap-1">
+              <i class="fa-solid fa-coins text-emerald-600"></i> Tổng Thu
             </div>
             <div class="text-base sm:text-xl font-black text-slate-900 font-mono my-1 truncate" id="statGrandTotal">0 đ</div>
             <div class="flex items-center gap-1 sm:gap-2 text-[9.5px] sm:text-[11px] font-bold flex-wrap">
@@ -810,16 +808,24 @@
             </div>
           </div>
 
-          <!-- Ô 2: NỢ TỔNG CỘNG -->
+          <!-- Ô 2: NỢ TỔNG -->
           <div class="bg-white p-2.5 sm:p-4 rounded-2xl border-2 border-red-500 shadow-xs flex flex-col justify-between">
-            <div class="flex items-center justify-between">
-              <div class="text-[10px] sm:text-xs font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
-                <i class="fa-solid fa-triangle-exclamation"></i> Nợ Tổng
-              </div>
+            <div class="text-[10px] sm:text-xs font-black text-red-600 uppercase tracking-wider flex items-center gap-1">
+              <i class="fa-solid fa-triangle-exclamation"></i> Nợ Tổng
             </div>
             <div class="text-base sm:text-xl font-black text-red-600 font-mono my-1 truncate" id="statTotalDebt">0 đ</div>
-            <div class="text-[10px] sm:text-[11px] font-bold text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-max" id="statDebtCount">
-              0 HS nợ / 0 HS
+            <div class="text-[10px] sm:text-[11px] font-bold text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 w-max" id="statDebtCount">0 HS nợ / 0 HS</div>
+          </div>
+
+          <!-- Ô 3: TIỀN CHI (BẤM VÀO MỞ BẢNG THỐNG KÊ) -->
+          <div onclick="openExpenseModal()" class="bg-white p-2.5 sm:p-4 rounded-2xl border-2 border-blue-600 shadow-xs flex flex-col justify-between cursor-pointer hover:bg-blue-50/50 transition active:scale-95">
+            <div class="text-[10px] sm:text-xs font-black text-blue-700 uppercase tracking-wider flex items-center justify-between">
+              <span class="flex items-center gap-1"><i class="fa-solid fa-file-invoice-dollar text-blue-600"></i> Tiền Chi</span>
+              <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-blue-500"></i>
+            </div>
+            <div class="text-base sm:text-xl font-black text-blue-700 font-mono my-1 truncate" id="statGrandExpense">0 đ</div>
+            <div class="text-[10px] sm:text-[11px] font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-max">
+              Bấm để xem chi tiết
             </div>
           </div>
         </div>
@@ -3834,6 +3840,150 @@ function getStudentDebtDetails(student, targetMonthStr) {
           hiddenInput.value = '';
         }
       };
+    }
+
+    function updateReferrerDropdown() {
+      var datalistEl = document.getElementById('listReferrerStudents');
+      var inputEl = document.getElementById('stuReferrerInput');
+      var hiddenInput = document.getElementById('stuReferrer');
+      if (!datalistEl || !inputEl) return;
+
+      var activeStus = (typeof getActiveStudents === 'function') ? getActiveStudents() : (appData.students || []);
+      
+      activeStus.sort(function(a, b) {
+        var nameA = cleanName(a.name);
+        var nameB = cleanName(b.name);
+        if (nameA !== nameB) return nameA.localeCompare(nameB, 'vi');
+        return formatStudentId(a.id).localeCompare(formatStudentId(b.id));
+      });
+
+      datalistEl.innerHTML = activeStus.map(function(s) {
+        var sId = formatStudentId(s.id);
+        var className = s.className || s.grade || 'Chưa xếp';
+        return '<option value="' + s.name + ' — Lớp ' + className + ' (Mã: ' + sId + ')"></option>';
+      }).join('');
+
+      inputEl.oninput = function() {
+        var val = inputEl.value.trim();
+        if (!val) {
+          if (hiddenInput) hiddenInput.value = '';
+          return;
+        }
+        
+        var matched = activeStus.find(function(s) {
+          var sId = formatStudentId(s.id);
+          var className = s.className || s.grade || 'Chưa xếp';
+          var fullStr = s.name + ' — Lớp ' + className + ' (Mã: ' + sId + ')';
+          return fullStr.toLowerCase() === val.toLowerCase() || val.includes('(Mã: ' + sId + ')');
+        });
+
+        if (matched && hiddenInput) {
+          hiddenInput.value = formatStudentId(matched.id);
+        } else if (hiddenInput) {
+          hiddenInput.value = '';
+        }
+      };
+    }
+
+    function syncReferralExpenses() {
+      if (!appData.expenses) appData.expenses = [];
+      var activeStudents = getActiveStudents() || [];
+
+      activeStudents.forEach(function(s) {
+        // Kiểm tra xem học sinh này có người giới thiệu không (lấy từ cột nguoi_gioi_thieu)
+        if (!s.nguoi_gioi_thieu) return;
+        
+        var referrer = activeStudents.find(function(ref) { return formatStudentId(ref.id) === formatStudentId(s.nguoi_gioi_thieu); });
+        if (!referrer) return;
+
+        var referrerName = referrer.name + ' (' + formatStudentId(referrer.id) + ')';
+        var referredNameCode = s.name + ' (' + formatStudentId(s.id) + ')';
+
+        // Kiểm tra các phiếu thu của học sinh được giới thiệu
+        var receipts = (appData.tuition || []).filter(function(t) {
+          return formatStudentId(t.studentId) === formatStudentId(s.id) && (t.method === 'Tiền mặt' || t.method === 'Chuyển khoản');
+        });
+
+        var noiDungText = referredNameCode;
+        if (receipts.length > 0) {
+          receipts.sort(function(a, b) { return toStandardDateStr(a.date).localeCompare(toStandardDateStr(b.date)); });
+          var firstReceipt = receipts[0];
+          noiDungText += ' — đã đóng tháng ' + (firstReceipt.month || 'đầu tiên');
+        } else {
+          // Nếu chưa có phiếu thu, lấy tháng bắt đầu đi học (startMonth) nếu có, không thì báo chưa đóng
+          var startM = s.startMonth ? ('tháng ' + s.startMonth) : 'chưa đóng học phí';
+          noiDungText += ' — ' + startM;
+        }
+
+        // Kiểm tra xem đã lưu trong bảng chi phí chưa
+        var exists = appData.expenses.some(function(exp) {
+          return exp.maHsDuocGioiThieu === formatStudentId(s.id);
+        });
+
+        if (!exists) {
+          var newExp = {
+            khoanChi: referrerName,
+            noiDung: noiDungText,
+            soTien: 0, // Số tiền mặc định 0 đ để thầy điền
+            ngayChi: '', // Bỏ trống
+            ghiChu: 'Thưởng giới thiệu học viên',
+            thang: s.startMonth ? ('Tháng ' + s.startMonth.replace('Tháng ', '')) : getCurrentMonthStr(),
+            maHsDuocGioiThieu: formatStudentId(s.id)
+          };
+          appData.expenses.push(newExp);
+          
+          // Đồng bộ ngầm lên Supabase bảng chi_phi
+          if (typeof google !== 'undefined' && google.script && google.script.run) {
+            google.script.run.saveExpense(sessionStorage.getItem('sessionToken'), newExp);
+          }
+        } else {
+          // Cập nhật lại nội dung nếu có thay đổi trạng thái đóng học phí
+          var expObj = appData.expenses.find(function(exp) { return exp.maHsDuocGioiThieu === formatStudentId(s.id); });
+          if (expObj) {
+            expObj.khoanChi = referrerName;
+            expObj.noiDung = noiDungText;
+          }
+        }
+      });
+    }
+
+    function renderExpenseTable() {
+      var tbody = document.getElementById('expenseTableBody');
+      if (!tbody) return;
+
+      var filterMode = document.getElementById('expenseFilterMode') ? document.getElementById('expenseFilterMode').value : 'MONTH';
+      var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth').value : getCurrentMonthStr();
+      
+      var expenses = appData.expenses || [];
+      var filtered = expenses.filter(function(exp) {
+        if (filterMode === 'ALL') return true;
+        return isSameMonth(exp.thang, currentMonthStr);
+      });
+
+      var totalExpenseSum = 0;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-slate-400 font-medium">Chưa có khoản chi nào trong mục này.</td></tr>';
+        document.getElementById('expenseModalTotalAmount').innerText = '0 đ';
+        if (document.getElementById('statGrandExpense')) document.getElementById('statGrandExpense').innerText = '0 đ';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(function(exp, idx) {
+        totalExpenseSum += (Number(exp.soTien) || 0);
+
+        return '<tr class="hover:bg-slate-50 transition border-b border-slate-100">' +
+          '<td class="p-2.5 text-center font-bold text-slate-400">' + (idx + 1) + '</td>' +
+          '<td class="p-2.5 font-bold text-slate-800">' + exp.khoanChi + '</td>' +
+          '<td class="p-2.5 font-medium text-slate-700">' + exp.noiDung + '</td>' +
+          '<td class="p-2.5 text-right font-mono font-bold text-emerald-700">' + formatMoney(exp.soTien) + ' đ</td>' +
+          '<td class="p-2.5 text-center text-slate-600">' + (exp.ngayChi || '-') + '</td>' +
+          '<td class="p-2.5 text-slate-500 italic">' + (exp.ghiChu || '-') + '</td>' +
+        '</tr>';
+      }).join('');
+
+      document.getElementById('expenseModalTotalAmount').innerText = formatMoney(totalExpenseSum) + ' đ';
+      if (document.getElementById('statGrandExpense')) document.getElementById('statGrandExpense').innerText = formatMoney(totalExpenseSum) + ' đ';
     }
 
     function initAllDropdowns() {
@@ -12716,6 +12866,52 @@ function applyGuestStudentLock() {
   hideWaitingClassesUI();
 })();
 </script>
+
+<!-- MODAL QUẢN LÝ TIỀN CHI -->
+  <div id="expenseModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl border w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="bg-brand-dark text-white px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <h3 class="font-bold text-base flex items-center gap-2"><i class="fa-solid fa-file-invoice-dollar text-emerald-400"></i> Bảng Thống Kê Tiền Chi (Hoa Hồng & Khoản Chi Khác)</h3>
+        <button onclick="closeExpenseModal()" class="text-slate-400 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <!-- Thanh công cụ lọc & nút thêm -->
+      <div class="p-4 bg-slate-50 border-b flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+        <div class="flex items-center gap-2 text-xs">
+          <span class="font-bold text-slate-700">Lọc xem:</span>
+          <select id="expenseFilterMode" onchange="renderExpenseTable()" class="px-3 py-1.5 border rounded-xl bg-white font-bold text-emerald-800">
+            <option value="MONTH">Chi trong tháng đang chọn</option>
+            <option value="ALL">Tổng cộng tất cả</option>
+          </select>
+        </div>
+        <button type="button" onclick="openAddExpenseRowModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-plus"></i> Thêm khoản chi mới
+        </button>
+      </div>
+
+      <!-- Bảng 6 cột -->
+      <div class="p-4 overflow-y-auto custom-scrollbar flex-1">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="bg-slate-100 text-slate-700 uppercase font-bold text-[11px]">
+              <th class="p-2.5 text-center w-12">STT</th>
+              <th class="p-2.5 min-w-[140px]">Khoản Chi (Người giới thiệu)</th>
+              <th class="p-2.5 min-w-[200px]">Nội Dung (Học sinh được giới thiệu)</th>
+              <th class="p-2.5 text-right min-w-[110px]">Số Tiền (đ)</th>
+              <th class="p-2.5 text-center min-w-[110px]">Ngày Tháng</th>
+              <th class="p-2.5 min-w-[130px]">Ghi Chú</th>
+            </tr>
+          </thead>
+          <tbody id="expenseTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+
+      <div class="bg-slate-100 px-6 py-3 flex items-center justify-between flex-shrink-0 border-t">
+        <div class="text-xs font-bold text-slate-700">Tổng tiền chi hiển thị: <span id="expenseModalTotalAmount" class="font-mono text-base text-red-600 font-black">0 đ</span></div>
+        <button onclick="closeExpenseModal()" class="px-5 py-2 rounded-xl text-xs font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 transition cursor-pointer">Đóng</button>
+      </div>
+    </div>
+  </div>
   
 </body>
 </html>
