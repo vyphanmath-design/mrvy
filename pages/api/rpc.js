@@ -211,7 +211,8 @@ async function getInitialData(supabase, token) {
       school: String(r.truong || '').trim(),
       note: String(r.ghi_chu || '').trim(),
       statusNghi: String(r.trang_thai || '').trim(),
-      startMonth: String(r.thang_bat_dau || '').trim()
+      startMonth: String(r.thang_bat_dau || '').trim(),
+      nguoi_gioi_thieu: String(r.nguoi_gioi_thieu || '').trim()
     };
   });
 
@@ -466,7 +467,8 @@ export default async function handler(req, res) {
               truong: item.school || '',
               ghi_chu: item.note || '',
               trang_thai: '',
-              thang_bat_dau: ''
+              thang_bat_dau: '',
+              nguoi_gioi_thieu: String(item.nguoi_gioi_thieu || '').trim()
             });
           }
         });
