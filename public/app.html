@@ -3801,7 +3801,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
   }
 }
 
-   function updateReferrerDropdown() {
+  // 1. Hàm nạp danh sách học sinh giới thiệu
+    function updateReferrerDropdown() {
       var datalistEl = document.getElementById('listReferrerStudents');
       var inputEl = document.getElementById('stuReferrerInput');
       var hiddenInput = document.getElementById('stuReferrer');
@@ -3957,7 +3958,35 @@ function getStudentDebtDetails(student, targetMonthStr) {
       });
     }
 
-    // 7. Vẽ bảng thống kê tiền chi (Đơn vị nghìn đồng)
+    // 7. Cập nhật giá trị từng ô trực tiếp khi người dùng nhập xong (không làm mất focus)
+    function updateExpField(filteredIdx, field, value, filterMode) {
+      var feeMonthEl = document.getElementById('feeOverviewMonth');
+      var currentMonthStr = feeMonthEl ? feeMonthEl.value : getCurrentMonthStr();
+      
+      var expenses = appData.expenses || [];
+      var filtered = expenses.filter(function(exp) {
+        if (filterMode === 'ALL') return true;
+        return isSameMonth(exp.thang, currentMonthStr);
+      });
+
+      var targetExp = filtered[filteredIdx];
+      if (targetExp) {
+        if (field === 'soTien') {
+          targetExp[field] = Number(value) || 0;
+        } else {
+          targetExp[field] = value.trim();
+        }
+
+        // Cập nhật lại tổng tiền hiển thị ngay lập tức
+        var totalExpenseSum = expenses.reduce(function(sum, e) { return sum + (Number(e.soTien) || 0); }, 0);
+        var totalAmtEl = document.getElementById('expenseModalTotalAmount');
+        if (totalAmtEl) totalAmtEl.innerText = formatMoney(totalExpenseSum) + ' nghìn đ';
+        var statExpEl = document.getElementById('statGrandExpense');
+        if (statExpEl) statExpEl.innerText = formatMoney(totalExpenseSum * 1000) + ' đ';
+      }
+    }
+
+    // 8. Vẽ bảng thống kê tiền chi (Đơn vị nghìn đồng)
     function renderExpenseTable() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
@@ -3989,11 +4018,11 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
         return '<tr class="hover:bg-slate-50 transition border-b border-slate-100">' +
           '<td class="p-2 text-center font-bold text-slate-400">' + (idx + 1) + '</td>' +
-          '<td class="p-2"><input type="text" value="' + (exp.khoanChi || '') + '" class="inp-khoan w-full px-2.5 py-1.5 border rounded-lg bg-white font-bold text-slate-800 text-xs"></td>' +
-          '<td class="p-2"><input type="text" value="' + (exp.noiDung || '') + '" class="inp-noidung w-full px-2.5 py-1.5 border rounded-lg bg-white font-medium text-slate-700 text-xs"></td>' +
-          '<td class="p-2"><input type="number" value="' + (exp.soTien || '') + '" oninput="renderExpenseTable()" class="inp-tien w-full px-2.5 py-1.5 border rounded-lg bg-white font-mono font-bold text-emerald-700 text-xs text-right" placeholder="VD: 500"></td>' +
-          '<td class="p-2"><input type="date" value="' + (exp.ngayChi || '') + '" class="inp-ngay w-full px-2 py-1.5 border rounded-lg bg-white text-xs font-medium text-slate-700"></td>' +
-          '<td class="p-2"><input type="text" value="' + (exp.ghiChu || '') + '" class="inp-note w-full px-2.5 py-1.5 border rounded-lg bg-white text-xs text-slate-600" placeholder="Ghi chú..."></td>' +
+          '<td class="p-2"><input type="text" value="' + (exp.khoanChi || '').replace(/"/g, '&quot;') + '" onchange="updateExpField(' + idx + ', \'khoanChi\', this.value, \'' + filterMode + '\')" class="inp-khoan w-full px-2.5 py-1.5 border rounded-lg bg-white font-bold text-slate-800 text-xs"></td>' +
+          '<td class="p-2"><input type="text" value="' + (exp.noiDung || '').replace(/"/g, '&quot;') + '" onchange="updateExpField(' + idx + ', \'noiDung\', this.value, \'' + filterMode + '\')" class="inp-noidung w-full px-2.5 py-1.5 border rounded-lg bg-white font-medium text-slate-700 text-xs"></td>' +
+          '<td class="p-2"><input type="number" value="' + (exp.soTien || '') + '" onchange="updateExpField(' + idx + ', \'soTien\', this.value, \'' + filterMode + '\')" class="inp-tien w-full px-2.5 py-1.5 border rounded-lg bg-white font-mono font-bold text-emerald-700 text-xs text-right" placeholder="VD: 500"></td>' +
+          '<td class="p-2"><input type="date" value="' + (exp.ngayChi || '') + '" onchange="updateExpField(' + idx + ', \'ngayChi\', this.value, \'' + filterMode + '\')" class="inp-ngay w-full px-2 py-1.5 border rounded-lg bg-white text-xs font-medium text-slate-700"></td>' +
+          '<td class="p-2"><input type="text" value="' + (exp.ghiChu || '').replace(/"/g, '&quot;') + '" onchange="updateExpField(' + idx + ', \'ghiChu\', this.value, \'' + filterMode + '\')" class="inp-note w-full px-2.5 py-1.5 border rounded-lg bg-white text-xs text-slate-600" placeholder="Ghi chú..."></td>' +
           '<td class="p-2 text-center"><button type="button" onclick="removeExpenseRow(' + idx + ', \'' + filterMode + '\')" class="text-red-500 hover:text-red-700 p-1.5 font-bold cursor-pointer" title="Xóa dòng"><i class="fa-solid fa-trash-can"></i></button></td>' +
         '</tr>';
       }).join('');
@@ -4006,39 +4035,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-    // 8. Hàm lưu toàn bộ dữ liệu thay đổi trong bảng chi phí
+    // 9. Hàm lưu toàn bộ dữ liệu thay đổi trong bảng chi phí
     function saveAllExpensesData() {
-      var tbody = document.getElementById('expenseTableBody');
-      if (!tbody) return;
-
-      var rows = tbody.querySelectorAll('tr');
-      var filterModeEl = document.getElementById('expenseFilterMode');
-      var filterMode = filterModeEl ? filterModeEl.value : 'MONTH';
-      var feeMonthEl = document.getElementById('feeOverviewMonth');
-      var currentMonthStr = feeMonthEl ? feeMonthEl.value : getCurrentMonthStr();
-      
-      var filtered = (appData.expenses || []).filter(function(exp) {
-        if (filterMode === 'ALL') return true;
-        return isSameMonth(exp.thang, currentMonthStr);
-      });
-
-      rows.forEach(function(row, idx) {
-        var exp = filtered[idx];
-        if (!exp) return;
-
-        var inpKhoan = row.querySelector('.inp-khoan');
-        var inpNoiDung = row.querySelector('.inp-noidung');
-        var inpTien = row.querySelector('.inp-tien');
-        var inpNgay = row.querySelector('.inp-ngay');
-        var inpNote = row.querySelector('.inp-note');
-
-        if (inpKhoan) exp.khoanChi = inpKhoan.value.trim();
-        if (inpNoiDung) exp.noiDung = inpNoiDung.value.trim();
-        if (inpTien) exp.soTien = Number(inpTien.value) || 0;
-        if (inpNgay) exp.ngayChi = inpNgay.value;
-        if (inpNote) exp.ghiChu = inpNote.value.trim();
-      });
-
       if (typeof showToast === 'function') {
         showToast('✓ Đã lưu thay đổi thành công!');
       }
