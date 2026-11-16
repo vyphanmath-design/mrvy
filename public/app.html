@@ -11532,25 +11532,45 @@ function extractStdDateFromCard(cardEl) {
   return '';
 }
   
-// Tự động bơm CSS tối ưu không gian sát viền cho màn hình điện thoại
+// Tự động bơm CSS khóa cứng chiều rộng 100% (chống tràn mép phải ở phần Vắng)
 (function injectMobileOverviewDayStyles() {
-  if (document.getElementById('ovDayMobileFixStyle')) return;
+  var oldSt = document.getElementById('ovDayMobileFixStyle');
+  if (oldSt) oldSt.remove();
   var st = document.createElement('style');
   st.id = 'ovDayMobileFixStyle';
   st.innerHTML =
+    /* Áp dụng cho cả PC và Điện thoại: Ép mọi khung chứa danh sách học sinh không bao giờ tràn ngang */
+    '.ov-upgraded-list-wrap, .ov-day-status-box {' +
+      'display: flex !important;' +
+      'flex-direction: column !important;' +
+      'align-items: stretch !important;' +
+      'width: 100% !important;' +
+      'max-width: 100% !important;' +
+      'min-width: 0 !important;' +
+      'box-sizing: border-box !important;' +
+      'overflow: hidden !important;' +
+    '}' +
+    '.ov-stu-card-row {' +
+      'display: flex !important;' +
+      'flex-direction: row !important;' +
+      'align-items: center !important;' +
+      'justify-content: space-between !important;' +
+      'width: 100% !important;' +
+      'max-width: 100% !important;' +
+      'min-width: 0 !important;' +
+      'box-sizing: border-box !important;' +
+    '}' +
     '@media (max-width: 640px) {' +
-      /* 1. Kéo khung trắng lớn và khung xanh/đỏ/tím sát ra 2 mép màn hình điện thoại */
-      '#classOverviewContainer > div { padding: 8px 6px !important; border-radius: 16px !important; }' +
-      '#classOverviewContainer .ov-day-status-box { padding: 6px 4px !important; border-radius: 12px !important; }' +
-      '#classOverviewContainer .ov-makeup-group-box { padding: 6px 4px 2px 4px !important; margin-top: 6px !important; }' +
-      /* 2. Tối ưu thẻ học sinh trên điện thoại: sát viền, ưu tiên tối đa diện tích cho Họ Tên */
+      '#classOverviewContainer > div { padding: 8px 6px !important; border-radius: 16px !important; overflow: hidden !important; }' +
+      '#classOverviewContainer .ov-day-status-box { padding: 6px 5px !important; border-radius: 12px !important; margin-left: 0 !important; margin-right: 0 !important; }' +
+      '#classOverviewContainer .ov-makeup-group-box { padding: 6px 5px 2px 5px !important; margin-top: 6px !important; width: 100% !important; box-sizing: border-box !important; }' +
       '.ov-stu-card-row { padding: 5px 6px !important; gap: 4px !important; margin-bottom: 4px !important; border-radius: 8px !important; }' +
-      '.ov-stu-name-col { flex: 1 1 62% !important; min-width: 0 !important; gap: 3px !important; }' +
-      '.ov-stu-name-text { font-size: 12px !important; line-height: 1.2 !important; white-space: normal !important; word-break: break-word !important; overflow: visible !important; text-overflow: clip !important; }' +
+      '.ov-stu-name-col { flex: 1 1 0% !important; min-width: 0 !important; gap: 3px !important; padding-right: 2px !important; }' +
+      '.ov-stu-name-text { font-size: 12px !important; line-height: 1.2 !important; white-space: normal !important; word-break: break-word !important; }' +
       '.ov-stu-code-text { font-size: 9px !important; letter-spacing: -0.3px !important; }' +
-      '.ov-stu-note-col { flex: 0 0 38% !important; max-width: 132px !important; gap: 2px !important; }' +
-      '.ov-stu-note-input { padding: 3px 5px !important; font-size: 10.5px !important; height: 22px !important; }' +
-      '.ov-stu-note-btn { width: 21px !important; height: 21px !important; font-size: 10px !important; border-radius: 5px !important; }' +
+      '.ov-stu-note-col { flex: 0 0 126px !important; width: 126px !important; max-width: 126px !important; gap: 2px !important; justify-content: flex-end !important; }' +
+      '.ov-stu-note-input { width: 76px !important; flex: 1 1 auto !important; min-width: 0 !important; padding: 3px 5px !important; font-size: 10.5px !important; height: 22px !important; }' +
+      '.ov-stu-note-btn { width: 21px !important; height: 21px !important; font-size: 10px !important; border-radius: 5px !important; flex-shrink: 0 !important; }' +
     '}';
   document.head.appendChild(st);
 })();
@@ -11592,14 +11612,6 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
     }
     if (!stdDate) return;
 
-    // Gắn class để tự động kéo sát viền khung xanh lá / khung đỏ trên điện thoại
-    if (el.parentElement && el.parentElement !== container) {
-      el.parentElement.classList.add('ov-day-status-box');
-      if (el.parentElement.parentElement && el.parentElement.parentElement !== container) {
-        el.parentElement.parentElement.classList.add('ov-day-status-box');
-      }
-    }
-
     var htmlReplaced = (el.innerHTML || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/div>|<\/p>|<\/li>/gi, '\n');
     var tempDiv = document.createElement('div');
     tempDiv.innerHTML = htmlReplaced;
@@ -11620,14 +11632,12 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
       var nameForLookup = displayRaw;
       var idInBracket = '';
 
-      // 1. Tách mã HS nếu có ở cuối hoặc ở giữa dạng (022)
       var mCode = nameForLookup.match(/\((\d{2,6})\)/);
       if (mCode) {
         idInBracket = padId3(mCode[1]);
         nameForLookup = nameForLookup.replace(mCode[0], '').trim();
       }
 
-      // 2. Bóc tách nhãn "(Đi bù...)" hoặc "(Học bù...)" hoặc "(Bù...)"
       var makeUpSuffix = '';
       var mMakeUp = nameForLookup.match(/\(([^)]*(?:đi\s*bù|học\s*bù|\bbù\b)[^)]*)\)/i);
       if (mMakeUp) {
@@ -11638,7 +11648,6 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
       var cleanTargetName = cleanName(nameForLookup);
       var cleanBaseNameOnly = cleanName(nameForLookup.replace(/\s*\([^)]*\)\s*/g, ' ').trim());
 
-      // 3. Tìm bản ghi điểm danh khớp với học sinh này trong ngày stdDate
       var matchedRec = dayRecs.find(function(a) {
         if (idInBracket && padId3(a.studentId) === idInBracket) return true;
         var aName = cleanName(a.studentName);
@@ -11651,7 +11660,6 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
         return false;
       });
 
-      // 4. Tìm hồ sơ gốc của học sinh để luôn lấy đúng Họ Tên đầy đủ & Mã HS
       var stuObj = allStudents.find(function(s) {
         if (matchedRec && padId3(s.id) === padId3(matchedRec.studentId)) return true;
         if (idInBracket && padId3(s.id) === idInBracket) return true;
@@ -11668,7 +11676,6 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
       var dotColor = isMakeUpStudent ? '#9333ea' : '#10b981';
       var cardBorderColor = isMakeUpStudent ? '#d8b4fe' : '#cbd5e1';
 
-      // Đảm bảo luôn lấy được Họ và Tên thật (kể cả khi dòng gốc chỉ còn mã 022)
       var realNameDisplay = (stuObj && stuObj.name) ? stuObj.name : (matchedRec && matchedRec.studentName ? matchedRec.studentName : nameForLookup);
       var makeUpClassText = makeUpSuffix || (isMakeUpStudent && stuObj && stuObj.className ? ('Bù ' + stuObj.className) : '');
       var makeUpBadgeHtml = makeUpClassText
@@ -11683,18 +11690,18 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
 
       var cardItemHtml = '';
       if (!isStaff) {
-        cardItemHtml = '<div class="ov-stu-card-row" style="display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;box-sizing:border-box;background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">' +
-          '<div style="display:flex;align-items:baseline;gap:4px;min-width:0;flex-wrap:wrap;">' +
+        cardItemHtml = '<div class="ov-stu-card-row" style="background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.03);gap:6px;">' +
+          '<div style="display:flex;align-items:baseline;gap:4px;min-width:0;flex:1;flex-wrap:wrap;">' +
             '<span class="ov-stu-name-text" style="font-weight:700;color:#1e293b;font-size:12.5px;">' + realNameDisplay + '</span>' +
             makeUpBadgeHtml +
           '</div>' +
-          (curNote ? '<span style="font-size:11px;font-weight:600;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:2px 6px;border-radius:6px;font-style:italic;">' + safeNoteHtml + '</span>' : '') +
+          (curNote ? '<span style="font-size:11px;font-weight:600;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:2px 6px;border-radius:6px;font-style:italic;flex-shrink:0;">' + safeNoteHtml + '</span>' : '') +
         '</div>';
       } else {
-        cardItemHtml = '<div class="ov-stu-card-row" style="display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;box-sizing:border-box;background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.04);">' +
-          // Bên trái: Chấm tròn nhỏ + Họ và Tên đầy đủ (không cắt ...) + Mã HS chữ nhỏ gọn
+        cardItemHtml = '<div class="ov-stu-card-row" style="background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.04);gap:6px;">' +
+          // Cột Trái: Co giãn linh hoạt (flex: 1 1 0%), không bao giờ đẩy cột Phải ra ngoài khung
           '<div class="ov-stu-name-col" onclick="if(typeof quickEditAttendance===\'function\' && \'' + safeStuIdJs + '\') quickEditAttendance(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\')" ' +
-               'style="display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 58%;cursor:pointer;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
+               'style="display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 0%;cursor:pointer;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
             '<span style="width:5px;height:5px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;"></span>' +
             '<div style="min-width:0;flex:1;line-height:1.25;">' +
               '<span class="ov-stu-name-text" style="font-weight:700;color:#0f172a;font-size:12.5px;">' + realNameDisplay + '</span>' +
@@ -11702,11 +11709,11 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
               (makeUpBadgeHtml ? ' ' + makeUpBadgeHtml : '') +
             '</div>' +
           '</div>' +
-          // Bên phải: Ô Ghi chú gọn gàng + Nút Lưu (✓) + Nút Xóa (×)
-          '<div class="ov-stu-note-col" style="display:flex;align-items:center;gap:3px;flex:0 0 42%;min-width:0;max-width:210px;">' +
+          // Cột Phải: Cố định chiều rộng gọn gàng (126px trên mobile, 185px trên PC), luôn nằm trọn bên trong viền
+          '<div class="ov-stu-note-col" style="display:flex;align-items:center;gap:3px;flex:0 0 185px;width:185px;max-width:45%;min-width:0;">' +
             '<input type="text" id="' + inputId + '" class="ov-stu-note-input" value="' + safeNoteHtml + '" placeholder="Ghi chú..." ' +
               'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\'); }" ' +
-              'style="width:100%;min-width:0;padding:4px 6px;font-size:11px;border:1px solid #cbd5e1;border-radius:6px;background:' + (curNote ? '#ecfdf5' : '#f8fafc') + ';color:#0f172a;font-weight:600;outline:none;box-sizing:border-box;">' +
+              'style="width:100%;min-width:0;flex:1 1 auto;padding:4px 6px;font-size:11px;border:1px solid #cbd5e1;border-radius:6px;background:' + (curNote ? '#ecfdf5' : '#f8fafc') + ';color:#0f172a;font-weight:600;outline:none;box-sizing:border-box;">' +
             '<button type="button" class="ov-stu-note-btn" onclick="saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
               'style="width:23px;height:23px;border-radius:6px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;display:flex;align-items:center;justify-content:center;font-size:10.5px;cursor:pointer;flex-shrink:0;" title="Lưu ghi chú">' +
               '<i class="fa-solid fa-check"></i>' +
@@ -11734,7 +11741,7 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
       if (alreadyInsideMakeUpBox) {
         finalHtml += makeUpCards.join('');
       } else {
-        finalHtml += '<div class="ov-makeup-group-box" style="margin-top:' + (normalCards.length > 0 ? '8px' : '0') + ';background:#faf5ff;border:1px solid #d8b4fe;border-radius:12px;padding:8px 8px 3px 8px;">' +
+        finalHtml += '<div class="ov-makeup-group-box" style="margin-top:' + (normalCards.length > 0 ? '8px' : '0') + ';background:#faf5ff;border:1px solid #d8b4fe;border-radius:12px;padding:8px 8px 3px 8px;width:100%;box-sizing:border-box;">' +
           '<div style="font-weight:800;color:#6b21a8;font-size:11.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">' +
             '<span style="width:8px;height:8px;border-radius:50%;background:#9333ea;display:inline-block;"></span>' +
             '<span>Học bù (' + makeUpCards.length + ')</span>' +
@@ -11744,16 +11751,19 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
       }
     }
 
+    // KHÓA CHẶT 3 TẦNG THẺ CHA BAO QUANH (chống lỗi thẻ cha có width cố định hoặc grid 2 cột đẩy tràn khung Vắng)
     el.setAttribute('data-note-upgraded', '1');
-    el.style.cssText = 'display:flex !important; flex-direction:column !important; width:100% !important; max-width:100% !important; box-sizing:border-box !important; white-space:normal !important; grid-column:1 / -1 !important;';
-    if (el.parentElement && el.parentElement !== container) {
-      var pStyle = window.getComputedStyle(el.parentElement);
-      if (pStyle.display === 'flex' || pStyle.display === 'inline-flex' || pStyle.display === 'grid') {
-        el.parentElement.style.flexDirection = 'column';
-        el.parentElement.style.alignItems = 'stretch';
-        el.parentElement.style.gridTemplateColumns = '1fr';
+    el.classList.add('ov-upgraded-list-wrap');
+    el.style.cssText = 'display:flex !important; flex-direction:column !important; width:100% !important; max-width:100% !important; min-width:0 !important; box-sizing:border-box !important; white-space:normal !important; grid-column:1 / -1 !important;';
+
+    var p1 = el.parentElement;
+    if (p1 && p1 !== container) {
+      p1.classList.add('ov-day-status-box');
+      if (p1.parentElement && p1.parentElement !== container) {
+        p1.parentElement.classList.add('ov-day-status-box');
       }
     }
+
     el.innerHTML = finalHtml;
   });
 }
