@@ -7767,6 +7767,89 @@ function exportTuitionExcel() {
       }
     };
 
+    // Hàm Lưu & Xóa ghi chú trực tiếp tại ô Tổng quan theo ngày
+    function saveOverviewDayStudentNote(studentId, stdDate, inputId, fallbackName) {
+      var inp = document.getElementById(inputId);
+      var newNote = inp ? inp.value.trim() : '';
+      var cleanId = formatStudentId(studentId);
+      if (!appData.attendance) appData.attendance = [];
+
+      var activeStudents = getActiveStudents() || [];
+      var stuObj = activeStudents.find(function(s) {
+        return (cleanId && formatStudentId(s.id) === cleanId) || (fallbackName && cleanName(s.name) === cleanName(fallbackName));
+      });
+
+      var recIdx = appData.attendance.findIndex(function(a) {
+        if (toStandardDateStr(a.date) !== stdDate) return false;
+        if (cleanId && formatStudentId(a.studentId) === cleanId) return true;
+        if (fallbackName && cleanName(a.studentName) === cleanName(fallbackName)) return true;
+        return stuObj && cleanName(a.studentName) === cleanName(stuObj.name);
+      });
+
+      var savedStatus = 'Có mặt';
+      var savedGrade = stuObj ? (stuObj.className || stuObj.grade || '') : '';
+      var savedName = stuObj ? stuObj.name : (fallbackName || '');
+      var actualId = stuObj ? stuObj.id : studentId;
+
+      if (recIdx >= 0) {
+        savedStatus = appData.attendance[recIdx].status || savedStatus;
+        savedGrade = appData.attendance[recIdx].grade || savedGrade;
+        savedName = appData.attendance[recIdx].studentName || savedName;
+        actualId = appData.attendance[recIdx].studentId || actualId;
+        appData.attendance[recIdx].note = newNote;
+      } else {
+        appData.attendance.push({
+          date: stdDate,
+          studentId: actualId,
+          studentName: savedName,
+          grade: savedGrade,
+          status: savedStatus,
+          note: newNote
+        });
+      }
+
+      if (typeof currentAttendanceState !== 'undefined' && currentAttendanceState[actualId] && toStandardDateStr(currentAttendanceState[actualId].date) === stdDate) {
+        currentAttendanceState[actualId].note = newNote;
+      }
+
+      if (inp) {
+        inp.value = newNote;
+        inp.style.borderColor = '#10b981';
+        inp.style.backgroundColor = newNote ? '#ecfdf5' : '#f8fafc';
+        setTimeout(function() {
+          if (inp) inp.style.borderColor = '#cbd5e1';
+        }, 700);
+      }
+      var delBtn = document.getElementById(inputId + '_del');
+      if (delBtn) delBtn.style.opacity = newNote ? '1' : '0.35';
+
+      showToast(newNote ? ('✓ Đã lưu ghi chú cho ' + savedName + '!') : ('✓ Đã xóa ghi chú của ' + savedName + '!'));
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(function(resData) {
+            if (resData && resData.students) appData = resData;
+          })
+          .withFailureHandler(function(err) {
+            showToast('Lỗi lưu ghi chú: ' + (err.message || err), true);
+          })
+          .saveAttendance(sessionStorage.getItem('sessionToken'), [{
+            date: stdDate,
+            studentId: actualId,
+            studentName: savedName,
+            grade: savedGrade,
+            status: savedStatus,
+            note: newNote
+          }]);
+      }
+    }
+
+    function deleteOverviewDayStudentNote(studentId, stdDate, inputId, fallbackName) {
+      var inp = document.getElementById(inputId);
+      if (inp) inp.value = '';
+      saveOverviewDayStudentNote(studentId, stdDate, inputId, fallbackName);
+    }
+
     function renderAttendanceByDateOutput() {
       var container = document.getElementById('classOverviewContainer');
       if (!container) return;
@@ -7812,7 +7895,6 @@ function exportTuitionExcel() {
         var mClass = (cFilter === 'ALL' || origClass === cFilter);
 
         if (mGrade && mClass) {
-          // Không tạo ngày lẻ loi ở lớp gốc nếu hôm đó chỉ có học sinh đi học bù sang lớp khác
           if (cFilter !== 'ALL' && stStatus === 'Học bù') {
             var targetCl = String(r.grade || r.className || '').replace(/^Lớp\s+/i, '').trim();
             if (targetCl && targetCl !== cFilter) return;
@@ -7828,6 +7910,7 @@ function exportTuitionExcel() {
           if (!dateMap[dStr]) dateMap[dStr] = [];
           dateMap[dStr].push({
             record: r,
+            studentId: student.id,
             studentName: student.name,
             origClass: origClass
           });
@@ -7858,6 +7941,7 @@ function exportTuitionExcel() {
               if (!alreadyAdded) {
                 dateMap[dStr].push({
                   record: r,
+                  studentId: student.id,
                   studentName: student.name,
                   origClass: origClass
                 });
@@ -7874,88 +7958,133 @@ function exportTuitionExcel() {
         return;
       }
 
+      var isMobile = window.innerWidth <= 640;
+
+      // Hàm tạo 1 hàng học sinh chuẩn xác (Không chứa ký tự "•", khóa cứng chiều rộng 100% trên mọi màn hình)
+      function buildDayStudentRow(item, dStr, idx) {
+        var r = item.record;
+        var st = String(r.status || 'Có mặt').trim();
+        var isMakeUp = (st === 'Học bù');
+        var stuId = item.studentId || r.studentId || '';
+        var cleanId = formatStudentId(stuId);
+        var curNote = String(r.note || '').trim();
+
+        var inputId = 'ov_daynote_' + dStr.replace(/\D/g, '') + '_' + (cleanId || idx) + '_' + idx;
+        var safeStuIdJs = String(stuId).replace(/'/g, "\\'");
+        var safeNameJs = String(item.studentName || '').replace(/'/g, "\\'");
+        var safeStatusJs = st.replace(/'/g, "\\'");
+        var safeNoteHtml = curNote.replace(/"/g, '&quot;');
+
+        var dotColor = isMakeUp ? '#9333ea' : '#10b981';
+        var borderColor = isMakeUp ? '#d8b4fe' : '#cbd5e1';
+        var makeUpTag = isMakeUp
+          ? ' <span style="font-size:9.5px;font-weight:700;color:#7e22ce;background:#f3e8ff;padding:1px 5px;border-radius:4px;white-space:nowrap;display:inline-block;">Bù' + (item.origClass ? ' - ' + item.origClass : '') + '</span>'
+          : '';
+
+        var rightColWidth = isMobile ? '124px' : '205px';
+        var rowPad = isMobile ? '5px 6px' : '6px 10px';
+        var nameFontSize = isMobile ? '12px' : '12.5px';
+
+        return '<div style="display:grid !important;grid-template-columns:minmax(0,1fr) ' + rightColWidth + ' !important;align-items:center !important;gap:6px !important;width:100% !important;max-width:100% !important;box-sizing:border-box !important;background:#ffffff;border:1px solid ' + borderColor + ';border-radius:10px;padding:' + rowPad + ';margin-bottom:6px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">' +
+          // Cột Trái: Tên học sinh + Mã HS (Bấm vào để mở bảng Sửa điểm danh)
+          '<div onclick="quickEditAttendance(\'' + safeStuIdJs + '\', \'' + dStr + '\', \'' + safeStatusJs + '\')" style="display:flex !important;align-items:center !important;gap:5px !important;min-width:0 !important;width:100% !important;cursor:pointer;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
+            '<span style="width:6px;height:6px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;display:inline-block;"></span>' +
+            '<div style="min-width:0;flex:1;line-height:1.25;word-break:break-word;white-space:normal;">' +
+              '<span style="font-weight:700;color:#0f172a;font-size:' + nameFontSize + ';">' + item.studentName + '</span>' +
+              (cleanId ? ' <span style="font-size:9.5px;font-family:monospace;color:#64748b;font-weight:600;white-space:nowrap;">(' + cleanId + ')</span>' : '') +
+              makeUpTag +
+            '</div>' +
+          '</div>' +
+          // Cột Phải: Ô ghi chú + Nút Lưu (✓) + Nút Xóa (×) cố định độ rộng bằng nhau 100% ở mọi dòng
+          '<div style="display:flex !important;align-items:center !important;justify-content:flex-end !important;gap:3px !important;width:' + rightColWidth + ' !important;max-width:' + rightColWidth + ' !important;box-sizing:border-box !important;">' +
+            '<input type="text" id="' + inputId + '" value="' + safeNoteHtml + '" placeholder="Ghi chú..." ' +
+              'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + dStr + '\', \'' + inputId + '\', \'' + safeNameJs + '\'); }" ' +
+              'style="flex:1 1 0% !important;width:100% !important;min-width:0 !important;padding:4px 6px;font-size:11px;border:1px solid #cbd5e1;border-radius:6px;background:' + (curNote ? '#ecfdf5' : '#f8fafc') + ';color:#0f172a;font-weight:600;outline:none;box-sizing:border-box !important;">' +
+            '<button type="button" onclick="saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + dStr + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
+              'style="width:22px;height:22px;border-radius:6px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;flex-shrink:0;" title="Lưu ghi chú">' +
+              '<i class="fa-solid fa-check"></i>' +
+            '</button>' +
+            '<button type="button" id="' + inputId + '_del" onclick="deleteOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + dStr + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
+              'style="width:22px;height:22px;border-radius:6px;background:#fff1f2;color:#e11d48;border:1px solid #fecdd3;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;flex-shrink:0;opacity:' + (curNote ? '1' : '0.35') + ';" title="Xóa ghi chú">' +
+              '<i class="fa-solid fa-xmark"></i>' +
+            '</button>' +
+          '</div>' +
+        '</div>';
+      }
+
       container.innerHTML = sortedDates.map(function(dStr) {
         var dayRecords = dateMap[dStr];
-        var groups = { 'Có mặt': [], 'Báo bù': [], 'Vắng CP': [], 'Vắng KP': [] };
-        var makeUpCount = 0;
+        var groups = { 'Có mặt': [], 'Học bù': [], 'Báo bù': [], 'Vắng CP': [], 'Vắng KP': [] };
 
-        dayRecords.forEach(function(item) {
-          var r = item.record;
-          var st = String(r.status || '').trim();
-          var noteText = r.note ? ' (' + r.note + ')' : '';
-
-          if (st === 'Học bù') {
-            makeUpCount++;
-            var classTag = item.origClass ? (' - ' + item.origClass) : '';
-            // Đưa trực tiếp vào danh sách "Có mặt" với nhãn màu tím (bỏ cột Học bù riêng ở giữa)
-            var purplePresentHtml = '<span class="text-purple-700 font-extrabold bg-purple-100/80 px-1.5 py-0.5 rounded border border-purple-200 inline-block my-0.5">' +
-              item.studentName + ' (Đi bù' + classTag + ')' + noteText +
-            '</span>';
-            groups['Có mặt'].push(purplePresentHtml);
-          } else if (groups[st] !== undefined) {
-            groups[st].push(item.studentName + noteText);
+        dayRecords.forEach(function(item, idx) {
+          var st = String(item.record.status || '').trim();
+          if (groups[st] !== undefined) {
+            groups[st].push(buildDayStudentRow(item, dStr, idx));
           }
         });
 
+        var makeUpCount = groups['Học bù'].length;
+        var totalPresentCount = groups['Có mặt'].length + makeUpCount;
         var blocksHtml = [];
 
-        // 1. CỘT CÓ MẶT (Bao gồm cả học sinh chính khóa + học sinh đi bù màu tím)
-        if (groups['Có mặt'].length > 0) {
+        // 1. CỘT CÓ MẶT (Bao gồm học sinh chính khóa + Khung tím Học bù riêng biệt)
+        if (totalPresentCount > 0) {
           var presentTitle = makeUpCount > 0
-            ? '🟢 Có mặt (' + groups['Có mặt'].length + ': ' + (groups['Có mặt'].length - makeUpCount) + ' chính + ' + makeUpCount + ' bù)'
+            ? '🟢 Có mặt (' + totalPresentCount + ': ' + groups['Có mặt'].length + ' chính + ' + makeUpCount + ' bù)'
             : '🟢 Có mặt (' + groups['Có mặt'].length + ')';
+
+          var makeUpSectionHtml = makeUpCount > 0
+            ? '<div style="display:block !important;width:100% !important;box-sizing:border-box !important;margin-top:8px;background:#faf5ff;border:1px solid #d8b4fe;border-radius:10px;padding:8px 8px 2px 8px;">' +
+                '<div style="font-weight:700;color:#6b21a8;font-size:11.5px;margin-bottom:6px;">🟣 Học bù (' + makeUpCount + ')</div>' +
+                '<div style="display:block !important;width:100% !important;">' + groups['Học bù'].join('') + '</div>' +
+              '</div>'
+            : '';
+
           blocksHtml.push(
-            '<div class="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-1.5 flex-1 min-w-[240px]">' +
-              '<div class="font-bold text-emerald-800 border-b border-emerald-200 pb-1.5">' + presentTitle + '</div>' +
-              '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
-                groups['Có mặt'].map(function(n) { return '• ' + n; }).join('<br>') +
-              '</div>' +
+            '<div style="flex:1 1 320px;min-width:0;width:100%;box-sizing:border-box;background:#ecfdf5;padding:' + (isMobile ? '8px 6px' : '14px') + ';border-radius:14px;border:1px solid #bbf7d0;">' +
+              '<div style="font-weight:700;color:#065f46;border-bottom:1px solid #bbf7d0;padding-bottom:6px;margin-bottom:8px;font-size:12.5px;">' + presentTitle + '</div>' +
+              '<div style="display:block !important;width:100% !important;">' + groups['Có mặt'].join('') + '</div>' +
+              makeUpSectionHtml +
             '</div>'
           );
         }
 
-        // 2. CỘT VẮNG (Gộp chung vào 1 cột, bên trong phân biệt rõ Vắng có phép & Vắng không phép)
+        // 2. CỘT VẮNG (Gộp chung vào 1 cột, bên trong phân biệt rõ Vắng có phép, Vắng không phép, Báo bù)
         var totalAbsent = groups['Vắng CP'].length + groups['Vắng KP'].length + groups['Báo bù'].length;
         if (totalAbsent > 0) {
           var absentSubSections = [];
 
           if (groups['Vắng CP'].length > 0) {
             absentSubSections.push(
-              '<div class="bg-amber-50/90 p-2.5 rounded-lg border border-amber-200 space-y-1">' +
-                '<div class="font-bold text-amber-800 text-[11px]">🟡 Vắng có phép (' + groups['Vắng CP'].length + ')</div>' +
-                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
-                  groups['Vắng CP'].map(function(n) { return '• ' + n; }).join('<br>') +
-                '</div>' +
+              '<div style="display:block !important;width:100% !important;box-sizing:border-box !important;background:#fffbeb;padding:' + (isMobile ? '8px 6px 2px 6px' : '10px 10px 4px 10px') + ';border-radius:10px;border:1px solid #fde68a;margin-bottom:8px;">' +
+                '<div style="font-weight:700;color:#92400e;font-size:11.5px;margin-bottom:6px;">🟡 Vắng có phép (' + groups['Vắng CP'].length + ')</div>' +
+                '<div style="display:block !important;width:100% !important;">' + groups['Vắng CP'].join('') + '</div>' +
               '</div>'
             );
           }
 
           if (groups['Vắng KP'].length > 0) {
             absentSubSections.push(
-              '<div class="bg-red-50/90 p-2.5 rounded-lg border border-red-200 space-y-1">' +
-                '<div class="font-bold text-red-800 text-[11px]">🔴 Vắng không phép (' + groups['Vắng KP'].length + ')</div>' +
-                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
-                  groups['Vắng KP'].map(function(n) { return '• ' + n; }).join('<br>') +
-                '</div>' +
+              '<div style="display:block !important;width:100% !important;box-sizing:border-box !important;background:#fff1f2;padding:' + (isMobile ? '8px 6px 2px 6px' : '10px 10px 4px 10px') + ';border-radius:10px;border:1px solid #fecdd3;margin-bottom:8px;">' +
+                '<div style="font-weight:700;color:#9f1239;font-size:11.5px;margin-bottom:6px;">🔴 Vắng không phép (' + groups['Vắng KP'].length + ')</div>' +
+                '<div style="display:block !important;width:100% !important;">' + groups['Vắng KP'].join('') + '</div>' +
               '</div>'
             );
           }
 
           if (groups['Báo bù'].length > 0) {
             absentSubSections.push(
-              '<div class="bg-blue-50/90 p-2.5 rounded-lg border border-blue-200 space-y-1">' +
-                '<div class="font-bold text-blue-800 text-[11px]">🔵 Báo bù (' + groups['Báo bù'].length + ')</div>' +
-                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
-                  groups['Báo bù'].map(function(n) { return '• ' + n; }).join('<br>') +
-                '</div>' +
+              '<div style="display:block !important;width:100% !important;box-sizing:border-box !important;background:#eff6ff;padding:' + (isMobile ? '8px 6px 2px 6px' : '10px 10px 4px 10px') + ';border-radius:10px;border:1px solid #bfdbfe;margin-bottom:8px;">' +
+                '<div style="font-weight:700;color:#1e40af;font-size:11.5px;margin-bottom:6px;">🔵 Báo bù (' + groups['Báo bù'].length + ')</div>' +
+                '<div style="display:block !important;width:100% !important;">' + groups['Báo bù'].join('') + '</div>' +
               '</div>'
             );
           }
 
           blocksHtml.push(
-            '<div class="bg-rose-50/40 p-3.5 rounded-xl border border-rose-200 space-y-2.5 flex-1 min-w-[240px]">' +
-              '<div class="font-bold text-rose-800 border-b border-rose-200 pb-1.5">🔴 Vắng (' + totalAbsent + ')</div>' +
-              '<div class="space-y-2">' + absentSubSections.join('') + '</div>' +
+            '<div style="flex:1 1 320px;min-width:0;width:100%;box-sizing:border-box;background:#fff1f2;padding:' + (isMobile ? '8px 6px' : '14px') + ';border-radius:14px;border:1px solid #fecdd3;">' +
+              '<div style="font-weight:700;color:#9f1239;border-bottom:1px solid #fecdd3;padding-bottom:6px;margin-bottom:8px;font-size:12.5px;">🔴 Vắng (' + totalAbsent + ')</div>' +
+              '<div style="display:block !important;width:100% !important;">' + absentSubSections.join('') + '</div>' +
             '</div>'
           );
         }
@@ -7964,22 +8093,20 @@ function exportTuitionExcel() {
           ? 'Tổng điểm danh: ' + dayRecords.length + ' em (' + makeUpCount + ' bù)'
           : 'Tổng điểm danh: ' + dayRecords.length + ' em';
 
-        return '<div class="bg-white rounded-2xl shadow-sm border overflow-hidden space-y-3 p-5">' +
+        return '<div class="bg-white rounded-2xl shadow-sm border overflow-hidden space-y-3" style="padding:' + (isMobile ? '10px 6px' : '20px') + ';width:100%;box-sizing:border-box;">' +
           '<div class="flex flex-wrap items-center justify-between gap-2 border-b pb-3">' +
-            '<h3 class="font-black text-brand-dark text-base uppercase flex items-center gap-2"><i class="fa-solid fa-calendar-day text-emerald-600"></i> Ngày ' + formatDateWithDay(dStr) + '</h3>' +
+            '<h3 class="font-black text-brand-dark text-sm sm:text-base uppercase flex items-center gap-2"><i class="fa-solid fa-calendar-day text-emerald-600"></i> Ngày ' + formatDateWithDay(dStr) + '</h3>' +
             '<div class="flex items-center gap-2 flex-wrap">' +
-              // Nút 1: Xếp chỗ ngồi kiểm tra
               '<button type="button" onclick="openSeatingArrangementModal(\'' + dStr + '\')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer">' +
                 '<i class="fa-solid fa-chair"></i> Xếp chỗ kiểm tra' +
               '</button>' +
-              // Nút 2: Vòng quay may mắn
               '<button type="button" onclick="openLuckyWheelModal(\'' + dStr + '\')" class="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer">' +
                 '<i class="fa-solid fa-dharmachakra"></i> Vòng quay may mắn' +
               '</button>' +
               '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">' + totalText + '</span>' +
             '</div>' +
           '</div>' +
-          '<div class="flex flex-wrap gap-4 text-xs items-start">' +
+          '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;width:100%;box-sizing:border-box;">' +
             blocksHtml.join('') +
           '</div>' +
         '</div>';
