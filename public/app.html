@@ -3801,6 +3801,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
   }
 }
 
+    // 1. Hàm nạp danh sách học sinh giới thiệu
     function updateReferrerDropdown() {
       var datalistEl = document.getElementById('listReferrerStudents');
       var inputEl = document.getElementById('stuReferrerInput');
@@ -3844,7 +3845,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       };
     }
 
-  // 1. Mở Modal Bảng Thống Kê Tiền Chi
+    // 2. Mở Modal Bảng Thống Kê Tiền Chi
     function openExpenseModal() {
       try {
         if (typeof syncReferralExpenses === 'function') {
@@ -3860,17 +3861,16 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-    // 2. Đóng Modal Bảng Thống Kê Tiền Chi
+    // 3. Đóng Modal Bảng Thống Kê Tiền Chi
     function closeExpenseModal() {
       var modal = document.getElementById('expenseModal');
       if (modal) modal.classList.add('hidden');
     }
 
-    // 3. Xử lý nút bấm "+ Thêm khoản chi mới"
+    // 4. Xử lý nút bấm "+ Thêm khoản chi mới"
     function openAddExpenseRowModal() {
       if (!appData.expenses) appData.expenses = [];
       
-      // Thêm một dòng trống thủ công (ngoài danh sách giới thiệu tự động)
       var customExp = {
         id: 'CUST_' + Date.now(),
         khoanChi: 'Chi phí khác',
@@ -3884,10 +3884,10 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
       appData.expenses.push(customExp);
       renderExpenseTable();
-      showToast('Đã thêm dòng chi phí mới. Hãy điền thông tin và bấm "Lưu thay đổi"!');
+      showToast('Đã thêm dòng chi phí mới!');
     }
 
-    // 4. Xóa dòng khoản chi thủ công
+    // 5. Xóa dòng khoản chi thủ công
     function removeExpenseRow(indexInFiltered, filterMode) {
       if (!confirm('Xác nhận xóa khoản chi này?')) return;
       
@@ -3900,61 +3900,65 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var targetExp = filtered[indexInFiltered];
       if (targetExp) {
         appData.expenses = appData.expenses.filter(function(e) { return e !== targetExp; });
-        
-        // Nếu đã lưu trên Supabase thì gọi xóa
-        if (targetExp.id && typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run.deleteExpense === 'function') {
-          google.script.run.deleteExpense(sessionStorage.getItem('sessionToken'), targetExp.id);
-        }
         renderExpenseTable();
         showToast('Đã xóa khoản chi!');
       }
     }
 
-    // 5. Lưu toàn bộ dữ liệu chỉnh sửa trong bảng chi phí lên Supabase
-   function saveAllExpensesData() {
-      var tbody = document.getElementById('expenseTableBody');
-      if (!tbody) return;
+    // 6. Tự động nhận diện học sinh giới thiệu để đưa vào bảng chi phí
+    function syncReferralExpenses() {
+      if (!appData.expenses) appData.expenses = [];
+      var activeStudents = getActiveStudents() || [];
 
-      var rows = tbody.querySelectorAll('tr');
-      var filterMode = document.getElementById('expenseFilterMode') ? document.getElementById('expenseFilterMode'].value : 'MONTH';
-      var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth'].value : getCurrentMonthStr();
-      
-      var filtered = (appData.expenses || []).filter(function(exp) {
-        if (filterMode === 'ALL') return true;
-        return isSameMonth(exp.thang, currentMonthStr);
+      activeStudents.forEach(function(s) {
+        if (!s.nguoi_gioi_thieu) return;
+        
+        var referrer = activeStudents.find(function(ref) { return formatStudentId(ref.id) === formatStudentId(s.nguoi_gioi_thieu); });
+        if (!referrer) return;
+
+        var referrerName = referrer.name + ' (' + formatStudentId(referrer.id) + ')';
+        var referredNameCode = s.name + ' (' + formatStudentId(s.id) + ')';
+
+        var receipts = (appData.tuition || []).filter(function(t) {
+          return formatStudentId(t.studentId) === formatStudentId(s.id) && (t.method === 'Tiền mặt' || t.method === 'Chuyển khoản');
+        });
+
+        var noiDungText = referredNameCode;
+        if (receipts.length > 0) {
+          receipts.sort(function(a, b) { return toStandardDateStr(a.date).localeCompare(toStandardDateStr(b.date)); });
+          var firstReceipt = receipts[0];
+          noiDungText += ' — đã đóng tháng ' + (firstReceipt.month || 'đầu tiên');
+        } else {
+          var startM = s.startMonth ? ('tháng ' + s.startMonth) : 'chưa đóng học phí';
+          noiDungText += ' — ' + startM;
+        }
+
+        var exists = appData.expenses.some(function(exp) {
+          return exp.maHsDuocGioiThieu === formatStudentId(s.id);
+        });
+
+        if (!exists) {
+          var newExp = {
+            khoanChi: referrerName,
+            noiDung: noiDungText,
+            soTien: 0,
+            ngayChi: '',
+            ghiChu: 'Thưởng giới thiệu học viên',
+            thang: s.startMonth ? ('Tháng ' + s.startMonth.replace('Tháng ', '')) : getCurrentMonthStr(),
+            maHsDuocGioiThieu: formatStudentId(s.id)
+          };
+          appData.expenses.push(newExp);
+        } else {
+          var expObj = appData.expenses.find(function(exp) { return exp.maHsDuocGioiThieu === formatStudentId(s.id); });
+          if (expObj) {
+            expObj.khoanChi = referrerName;
+            expObj.noiDung = noiDungText;
+          }
+        }
       });
-
-      rows.forEach(function(row, idx) {
-        var exp = filtered[idx];
-        if (!exp) return;
-
-        var inpKhoan = row.querySelector('.inp-khoan');
-        var inpNoiDung = row.querySelector('.inp-noidung');
-        var inpTien = row.querySelector('.inp-tien');
-        var inpNgay = row.querySelector('.inp-ngay');
-        var inpNote = row.querySelector('.inp-note');
-
-        if (inpKhoan) exp.khoanChi = inpKhoan.value.trim();
-        if (inpNoiDung) exp.noiDung = inpNoiDung.value.trim();
-        if (inpTien) exp.soTien = Number(inpTien.value) || 0; // Nhận số tiền theo đơn vị nghìn đồng
-        if (inpNgay) exp.ngayChi = inpNgay.value;
-        if (inpNote) exp.ghiChu = inpNote.value.trim();
-      });
-
-      showToast('Đang lưu thay đổi...');
-
-      if (typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run.saveAllExpenses === 'function') {
-        google.script.run.withSuccessHandler(function() {
-          showToast('✓ Đã lưu tất cả khoản chi lên hệ thống thành công!');
-          renderExpenseTable();
-        }).saveAllExpenses(sessionStorage.getItem('sessionToken'), appData.expenses);
-      } else {
-        showToast('✓ Đã lưu thay đổi thành công!');
-        renderExpenseTable();
-      }
     }
 
-    // 6. Vẽ bảng thống kê với các ô input có thể chỉnh sửa trực tiếp
+    // 7. Vẽ bảng thống kê tiền chi (Đơn vị nghìn đồng)
     function renderExpenseTable() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
@@ -3984,7 +3988,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<td class="p-2 text-center font-bold text-slate-400">' + (idx + 1) + '</td>' +
           '<td class="p-2"><input type="text" value="' + (exp.khoanChi || '') + '" class="inp-khoan w-full px-2.5 py-1.5 border rounded-lg bg-white font-bold text-slate-800 text-xs"></td>' +
           '<td class="p-2"><input type="text" value="' + (exp.noiDung || '') + '" class="inp-noidung w-full px-2.5 py-1.5 border rounded-lg bg-white font-medium text-slate-700 text-xs"></td>' +
-          // Ô số tiền hiển thị dạng số nguyên nghìn đồng (vd: 651 thay vì 651.000)
+          // Nhập số tiền theo đơn vị nghìn đồng (vd: nhập 651 là 651 nghìn)
           '<td class="p-2"><input type="number" value="' + (exp.soTien || '') + '" class="inp-tien w-full px-2.5 py-1.5 border rounded-lg bg-white font-mono font-bold text-emerald-700 text-xs text-right" placeholder="VD: 500"></td>' +
           '<td class="p-2"><input type="date" value="' + (exp.ngayChi || '') + '" class="inp-ngay w-full px-2 py-1.5 border rounded-lg bg-white text-xs font-medium text-slate-700"></td>' +
           '<td class="p-2"><input type="text" value="' + (exp.ghiChu || '') + '" class="inp-note w-full px-2.5 py-1.5 border rounded-lg bg-white text-xs text-slate-600" placeholder="Ghi chú..."></td>' +
@@ -3992,10 +3996,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         '</tr>';
       }).join('');
 
-      // Tổng tiền hiển thị trong Modal (nhân với 1.000đ để quy đổi hoặc giữ dạng nghìn đồng tùy ý thầy, ở đây hiển thị rõ dạng tổng nghìn đồng hoặc VNĐ)
       document.getElementById('expenseModalTotalAmount').innerText = formatMoney(totalExpenseSum) + ' nghìn đ';
-      
-      // Tổng tiền hiển thị ngoài ô Tiền Chi ở tab Học phí (quy đổi ra VNĐ đầy đủ)
       if (document.getElementById('statGrandExpense')) {
         document.getElementById('statGrandExpense').innerText = formatMoney(totalExpenseSum * 1000) + ' đ';
       }
