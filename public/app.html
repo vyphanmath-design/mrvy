@@ -7828,7 +7828,6 @@ function exportTuitionExcel() {
           if (!dateMap[dStr]) dateMap[dStr] = [];
           dateMap[dStr].push({
             record: r,
-            studentId: student.id,
             studentName: student.name,
             origClass: origClass
           });
@@ -7859,7 +7858,6 @@ function exportTuitionExcel() {
               if (!alreadyAdded) {
                 dateMap[dStr].push({
                   record: r,
-                  studentId: student.id,
                   studentName: student.name,
                   origClass: origClass
                 });
@@ -7876,142 +7874,86 @@ function exportTuitionExcel() {
         return;
       }
 
-      var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
-      var isStaff = (role === 'ADMIN' || role === 'ASSISTANT');
-
-      // Hàm vẽ trực tiếp 1 khung nhỏ cho từng học sinh + ô Ghi chú kế bên (thẳng hàng 100%)
-      function renderStudentItemBox(item, dStr, idx) {
-        var r = item.record;
-        var st = String(r.status || 'Có mặt').trim();
-        var isMakeUp = (st === 'Học bù');
-        var stuId = item.studentId || r.studentId || '';
-        var cleanId = formatStudentId(stuId);
-        var curNote = String(r.note || '').trim();
-
-        var inputId = 'ov_daynote_' + dStr.replace(/\D/g, '') + '_' + (cleanId || idx) + '_' + idx;
-        var safeStuIdJs = String(stuId).replace(/'/g, "\\'");
-        var safeNameJs = String(item.studentName || '').replace(/'/g, "\\'");
-        var safeStatusJs = st.replace(/'/g, "\\'");
-        var safeNoteHtml = curNote.replace(/"/g, '&quot;');
-
-        var dotClass = isMakeUp ? 'bg-purple-600' : 'bg-emerald-500';
-        var borderClass = isMakeUp ? 'border-purple-200' : 'border-slate-200/90';
-        var makeUpTag = isMakeUp
-          ? ' <span class="text-[9.5px] font-bold text-purple-700 bg-purple-100 px-1 py-0.5 rounded whitespace-nowrap">Bù' + (item.origClass ? ' - ' + item.origClass : '') + '</span>'
-          : '';
-
-        if (!isStaff) {
-          return '<div class="flex items-center justify-between gap-2 w-full bg-white border ' + borderClass + ' rounded-lg px-2 py-1.5 shadow-2xs">' +
-            '<div class="flex items-center gap-1.5 min-w-0 flex-1">' +
-              '<span class="w-1.5 h-1.5 rounded-full ' + dotClass + ' shrink-0"></span>' +
-              '<div class="min-w-0 flex-1 leading-tight break-words">' +
-                '<span class="font-bold text-slate-800 text-xs">' + item.studentName + '</span>' +
-                (cleanId ? ' <span class="text-[9.5px] font-mono text-slate-400 font-semibold">(' + cleanId + ')</span>' : '') +
-                makeUpTag +
-              '</div>' +
-            '</div>' +
-            (curNote ? '<span class="text-[10.5px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded italic shrink-0">' + safeNoteHtml + '</span>' : '') +
-          '</div>';
-        }
-
-        return '<div class="grid grid-cols-[minmax(0,1fr)_126px] sm:grid-cols-[minmax(0,1fr)_205px] items-center gap-1.5 sm:gap-2 w-full bg-white border ' + borderClass + ' rounded-lg px-1.5 sm:px-2.5 py-1.5 shadow-2xs">' +
-          // Cột trái: Bấm vào tên đổi trạng thái điểm danh (kể cả học sinh đi bù)
-          '<div onclick="quickEditAttendance(\'' + safeStuIdJs + '\', \'' + dStr + '\', \'' + safeStatusJs + '\')" class="flex items-center gap-1.5 min-w-0 cursor-pointer hover:text-emerald-700" title="Bấm vào tên để đổi trạng thái điểm danh">' +
-            '<span class="w-1.5 h-1.5 rounded-full ' + dotClass + ' shrink-0"></span>' +
-            '<div class="min-w-0 flex-1 leading-tight break-words">' +
-              '<span class="font-bold text-slate-900 text-[12px] sm:text-xs">' + item.studentName + '</span>' +
-              (cleanId ? ' <span class="text-[9px] sm:text-[10px] font-mono text-slate-400 font-semibold whitespace-nowrap">(' + cleanId + ')</span>' : '') +
-              makeUpTag +
-            '</div>' +
-          '</div>' +
-          // Cột phải: Ô ghi chú + Nút Lưu (✓) + Nút Xóa (×) cố định độ rộng bằng nhau ở mọi hàng
-          '<div class="flex items-center justify-end gap-1 w-full min-w-0">' +
-            '<input type="text" id="' + inputId + '" value="' + safeNoteHtml + '" placeholder="Ghi chú..." ' +
-              'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + dStr + '\', \'' + inputId + '\', \'' + safeNameJs + '\'); }" ' +
-              'class="w-full min-w-0 flex-1 px-1.5 py-1 text-[10.5px] sm:text-[11px] border border-slate-200 rounded-md ' + (curNote ? 'bg-emerald-50/70' : 'bg-slate-50/80') + ' focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:outline-none text-slate-800 font-semibold">' +
-            '<button type="button" onclick="saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + dStr + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
-              'class="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-200 flex items-center justify-center text-[10px] transition shrink-0 cursor-pointer" title="Lưu ghi chú">' +
-              '<i class="fa-solid fa-check"></i>' +
-            '</button>' +
-            '<button type="button" id="' + inputId + '_del" onclick="deleteOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + dStr + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
-              'class="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 flex items-center justify-center text-[10px] transition shrink-0 cursor-pointer ' + (curNote ? 'opacity-100' : 'opacity-35') + '" title="Xóa ghi chú">' +
-              '<i class="fa-solid fa-xmark"></i>' +
-            '</button>' +
-          '</div>' +
-        '</div>';
-      }
-
       container.innerHTML = sortedDates.map(function(dStr) {
         var dayRecords = dateMap[dStr];
-        var groups = { 'Có mặt': [], 'Học bù': [], 'Báo bù': [], 'Vắng CP': [], 'Vắng KP': [] };
+        var groups = { 'Có mặt': [], 'Báo bù': [], 'Vắng CP': [], 'Vắng KP': [] };
+        var makeUpCount = 0;
 
-        dayRecords.forEach(function(item, idx) {
-          var st = String(item.record.status || '').trim();
-          if (groups[st] !== undefined) {
-            groups[st].push(renderStudentItemBox(item, dStr, idx));
+        dayRecords.forEach(function(item) {
+          var r = item.record;
+          var st = String(r.status || '').trim();
+          var noteText = r.note ? ' (' + r.note + ')' : '';
+
+          if (st === 'Học bù') {
+            makeUpCount++;
+            var classTag = item.origClass ? (' - ' + item.origClass) : '';
+            // Đưa trực tiếp vào danh sách "Có mặt" với nhãn màu tím (bỏ cột Học bù riêng ở giữa)
+            var purplePresentHtml = '<span class="text-purple-700 font-extrabold bg-purple-100/80 px-1.5 py-0.5 rounded border border-purple-200 inline-block my-0.5">' +
+              item.studentName + ' (Đi bù' + classTag + ')' + noteText +
+            '</span>';
+            groups['Có mặt'].push(purplePresentHtml);
+          } else if (groups[st] !== undefined) {
+            groups[st].push(item.studentName + noteText);
           }
         });
 
-        var makeUpCount = groups['Học bù'].length;
-        var totalPresentCount = groups['Có mặt'].length + makeUpCount;
         var blocksHtml = [];
 
-        // 1. CỘT CÓ MẶT (Bao gồm danh sách chính khóa + khung màu tím Học bù riêng biệt)
-        if (totalPresentCount > 0) {
+        // 1. CỘT CÓ MẶT (Bao gồm cả học sinh chính khóa + học sinh đi bù màu tím)
+        if (groups['Có mặt'].length > 0) {
           var presentTitle = makeUpCount > 0
-            ? '🟢 Có mặt (' + totalPresentCount + ': ' + groups['Có mặt'].length + ' chính + ' + makeUpCount + ' bù)'
+            ? '🟢 Có mặt (' + groups['Có mặt'].length + ': ' + (groups['Có mặt'].length - makeUpCount) + ' chính + ' + makeUpCount + ' bù)'
             : '🟢 Có mặt (' + groups['Có mặt'].length + ')';
-
-          var makeUpBoxHtml = makeUpCount > 0
-            ? '<div class="bg-purple-50/90 p-2 sm:p-2.5 rounded-lg border border-purple-200 space-y-1.5 mt-2">' +
-                '<div class="font-bold text-purple-800 text-[11px]">🟣 Học bù (' + makeUpCount + ')</div>' +
-                '<div class="space-y-1.5">' + groups['Học bù'].join('') + '</div>' +
-              '</div>'
-            : '';
-
           blocksHtml.push(
-            '<div class="bg-emerald-50 p-2 sm:p-3.5 rounded-xl border border-emerald-200 space-y-1.5 flex-1 min-w-[260px] w-full">' +
+            '<div class="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 space-y-1.5 flex-1 min-w-[240px]">' +
               '<div class="font-bold text-emerald-800 border-b border-emerald-200 pb-1.5">' + presentTitle + '</div>' +
-              '<div class="space-y-1.5">' + groups['Có mặt'].join('') + '</div>' +
-              makeUpBoxHtml +
+              '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
+                groups['Có mặt'].map(function(n) { return '• ' + n; }).join('<br>') +
+              '</div>' +
             '</div>'
           );
         }
 
-        // 2. CỘT VẮNG (Gộp chung vào 1 cột, bên trong phân biệt rõ Vắng có phép, Vắng không phép, Báo bù)
+        // 2. CỘT VẮNG (Gộp chung vào 1 cột, bên trong phân biệt rõ Vắng có phép & Vắng không phép)
         var totalAbsent = groups['Vắng CP'].length + groups['Vắng KP'].length + groups['Báo bù'].length;
         if (totalAbsent > 0) {
           var absentSubSections = [];
 
           if (groups['Vắng CP'].length > 0) {
             absentSubSections.push(
-              '<div class="bg-amber-50/90 p-2 sm:p-2.5 rounded-lg border border-amber-200 space-y-1.5">' +
+              '<div class="bg-amber-50/90 p-2.5 rounded-lg border border-amber-200 space-y-1">' +
                 '<div class="font-bold text-amber-800 text-[11px]">🟡 Vắng có phép (' + groups['Vắng CP'].length + ')</div>' +
-                '<div class="space-y-1.5">' + groups['Vắng CP'].join('') + '</div>' +
+                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
+                  groups['Vắng CP'].map(function(n) { return '• ' + n; }).join('<br>') +
+                '</div>' +
               '</div>'
             );
           }
 
           if (groups['Vắng KP'].length > 0) {
             absentSubSections.push(
-              '<div class="bg-red-50/90 p-2 sm:p-2.5 rounded-lg border border-red-200 space-y-1.5">' +
+              '<div class="bg-red-50/90 p-2.5 rounded-lg border border-red-200 space-y-1">' +
                 '<div class="font-bold text-red-800 text-[11px]">🔴 Vắng không phép (' + groups['Vắng KP'].length + ')</div>' +
-                '<div class="space-y-1.5">' + groups['Vắng KP'].join('') + '</div>' +
+                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
+                  groups['Vắng KP'].map(function(n) { return '• ' + n; }).join('<br>') +
+                '</div>' +
               '</div>'
             );
           }
 
           if (groups['Báo bù'].length > 0) {
             absentSubSections.push(
-              '<div class="bg-blue-50/90 p-2 sm:p-2.5 rounded-lg border border-blue-200 space-y-1.5">' +
+              '<div class="bg-blue-50/90 p-2.5 rounded-lg border border-blue-200 space-y-1">' +
                 '<div class="font-bold text-blue-800 text-[11px]">🔵 Báo bù (' + groups['Báo bù'].length + ')</div>' +
-                '<div class="space-y-1.5">' + groups['Báo bù'].join('') + '</div>' +
+                '<div class="text-slate-700 font-medium space-y-0.5 text-[11px]">' +
+                  groups['Báo bù'].map(function(n) { return '• ' + n; }).join('<br>') +
+                '</div>' +
               '</div>'
             );
           }
 
           blocksHtml.push(
-            '<div class="bg-rose-50/40 p-2 sm:p-3.5 rounded-xl border border-rose-200 space-y-2 flex-1 min-w-[260px] w-full">' +
+            '<div class="bg-rose-50/40 p-3.5 rounded-xl border border-rose-200 space-y-2.5 flex-1 min-w-[240px]">' +
               '<div class="font-bold text-rose-800 border-b border-rose-200 pb-1.5">🔴 Vắng (' + totalAbsent + ')</div>' +
               '<div class="space-y-2">' + absentSubSections.join('') + '</div>' +
             '</div>'
@@ -8022,20 +7964,22 @@ function exportTuitionExcel() {
           ? 'Tổng điểm danh: ' + dayRecords.length + ' em (' + makeUpCount + ' bù)'
           : 'Tổng điểm danh: ' + dayRecords.length + ' em';
 
-        return '<div class="bg-white rounded-2xl shadow-sm border overflow-hidden space-y-3 p-2.5 sm:p-5">' +
+        return '<div class="bg-white rounded-2xl shadow-sm border overflow-hidden space-y-3 p-5">' +
           '<div class="flex flex-wrap items-center justify-between gap-2 border-b pb-3">' +
-            '<h3 class="font-black text-brand-dark text-sm sm:text-base uppercase flex items-center gap-2"><i class="fa-solid fa-calendar-day text-emerald-600"></i> Ngày ' + formatDateWithDay(dStr) + '</h3>' +
+            '<h3 class="font-black text-brand-dark text-base uppercase flex items-center gap-2"><i class="fa-solid fa-calendar-day text-emerald-600"></i> Ngày ' + formatDateWithDay(dStr) + '</h3>' +
             '<div class="flex items-center gap-2 flex-wrap">' +
+              // Nút 1: Xếp chỗ ngồi kiểm tra
               '<button type="button" onclick="openSeatingArrangementModal(\'' + dStr + '\')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer">' +
                 '<i class="fa-solid fa-chair"></i> Xếp chỗ kiểm tra' +
               '</button>' +
+              // Nút 2: Vòng quay may mắn
               '<button type="button" onclick="openLuckyWheelModal(\'' + dStr + '\')" class="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer">' +
                 '<i class="fa-solid fa-dharmachakra"></i> Vòng quay may mắn' +
               '</button>' +
               '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">' + totalText + '</span>' +
             '</div>' +
           '</div>' +
-          '<div class="flex flex-col lg:flex-row gap-3 sm:gap-4 text-xs items-stretch lg:items-start">' +
+          '<div class="flex flex-wrap gap-4 text-xs items-start">' +
             blocksHtml.join('') +
           '</div>' +
         '</div>';
