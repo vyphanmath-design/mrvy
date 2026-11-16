@@ -169,7 +169,8 @@ async function getInitialData(supabase, token) {
     cnxData,
     bvData,
     ldData,
-    dktData
+    dktData,
+    cpData
   ] = await Promise.all([
     fetchAllRows(supabase, 'cau_hinh', 'id', true),
     fetchAllRows(supabase, 'hoc_sinh', 'id', true),
@@ -178,9 +179,21 @@ async function getInitialData(supabase, token) {
     fetchAllRows(supabase, 'cong_no_xoa', 'id', true),
     fetchAllRows(supabase, 'bai_viet', 'id', false),
     fetchAllRows(supabase, 'lich_day', null, true),
-    fetchAllRows(supabase, 'diem_kiem_tra', 'id', true)
+    fetchAllRows(supabase, 'diem_kiem_tra', 'id', true),
+    fetchAllRows(supabase, 'chi_phi', 'id', true)
   ]);
-
+// Map dữ liệu chi phí trả về client
+  const expenses = (cpData || []).map((r) => ({
+    id: r.id,
+    khoanChi: String(r.khoan_chi || '').trim(),
+    noiDung: String(r.noi_dung || '').trim(),
+    soTien: Number(r.so_tien) || 0,
+    ngayChi: String(r.ngay_chi || '').trim(),
+    ghiChu: String(r.ghi_chu || '').trim(),
+    thang: String(r.thang || '').trim(),
+    maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || '').trim()
+  }));
+  
   let avatarUrl = '';
   const customRates = [];
   (chData || []).forEach((r) => {
@@ -840,6 +853,23 @@ export default async function handler(req, res) {
           .from('diem_kiem_tra')
           .update({ cong_bo: Boolean(isPublished) })
           .eq('ma_bai', String(examId || '').trim());
+        const data = await getInitialData(supabase, token);
+        return res.json({ result: data });
+      }
+
+
+        case 'saveExpense': {
+        const [token, expenseData] = args;
+        await requireRole_(supabase, token, ['ADMIN']);
+        await supabase.from('chi_phi').insert({
+          khoan_chi: expenseData.khoanChi || '',
+          noi_dung: expenseData.noiDung || '',
+          so_tien: Number(expenseData.soTien) || 0,
+          ngay_chi: expenseData.ngayChi || '',
+          ghi_chu: expenseData.ghiChu || '',
+          thang: expenseData.thang || '',
+          ma_hs_duoc_gioi_thieu: expenseData.maHsDuocGioiThieu || ''
+        });
         const data = await getInitialData(supabase, token);
         return res.json({ result: data });
       }
