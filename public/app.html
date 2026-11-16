@@ -11713,6 +11713,38 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
   var role = (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser.role || '').toUpperCase() : '';
   var isStaff = (role === 'ADMIN' || role === 'ASSISTANT');
 
+  // BƯỚC QUAN TRỌNG NHẤT: Tìm tất cả các thẻ <span> hoặc <div> con chỉ chứa 1 dòng "• Tên" 
+  // và phá bỏ thẻ bọc riêng lẻ của chúng (đổi thành văn bản thuần + <br>) để hộp 2 học sinh có cấu trúc giống hệt hộp 1, 4, 5 học sinh!
+  var leafBullets = Array.from(container.querySelectorAll('span, div, p, li')).filter(function(node) {
+    if (node.getAttribute('data-note-upgraded') === '1' || node.closest('[data-note-upgraded="1"]')) return false;
+    var t = (node.textContent || '').trim();
+    if (t.indexOf('•') !== 0) return false;
+    // Chỉ lấy thẻ chứa đúng 1 dấu "•" duy nhất (tức là thẻ bọc lẻ 1 học sinh)
+    return t.split('•').filter(Boolean).length === 1 && node.querySelectorAll('div, p, ul, table').length === 0;
+  });
+
+  leafBullets.forEach(function(leaf) {
+    var parent = leaf.parentElement;
+    if (!parent || parent === container) return;
+    // Nếu trong cùng thẻ cha có từ 2 học sinh trở lên đang bị tách thành các thẻ rời (như trường hợp 2 học sinh bị lỗi),
+    // gộp phẳng toàn bộ về dạng "• Học sinh 1 <br> • Học sinh 2" ngay trên thẻ cha!
+    var siblingBullets = Array.from(parent.children || []).filter(function(ch) {
+      return (ch.textContent || '').trim().indexOf('•') === 0;
+    });
+    if (siblingBullets.length >= 2) {
+      var combinedLines = siblingBullets.map(function(ch) {
+        return (ch.textContent || '').trim();
+      }).join('<br>');
+
+      // Xóa các thẻ rời của từng học sinh và thay bằng 1 khối duy nhất chứa <br>
+      var singleHolder = document.createElement('div');
+      singleHolder.innerHTML = combinedLines;
+      parent.insertBefore(singleHolder, siblingBullets[0]);
+      siblingBullets.forEach(function(ch) { ch.remove(); });
+      parent.style.cssText += ';display:block !important;width:100% !important;box-sizing:border-box !important;';
+    }
+  });
+
   var allElements = container.querySelectorAll('div, p, ul, li, span');
 
   allElements.forEach(function(el) {
@@ -11817,7 +11849,7 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
 
       var cardItemHtml = '';
       if (!isStaff) {
-        cardItemHtml = '<div class="ov-stu-card-row" style="background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.03);gap:6px;">' +
+        cardItemHtml = '<div class="ov-stu-card-row" style="display:flex !important;align-items:center !important;justify-content:space-between !important;width:100% !important;box-sizing:border-box !important;background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.03);gap:6px;">' +
           '<div style="display:flex;align-items:baseline;gap:4px;min-width:0;flex:1;flex-wrap:wrap;">' +
             '<span class="ov-stu-name-text" style="font-weight:700;color:#1e293b;font-size:12.5px;">' + realNameDisplay + '</span>' +
             makeUpBadgeHtml +
@@ -11825,10 +11857,9 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
           (curNote ? '<span style="font-size:11px;font-weight:600;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:2px 6px;border-radius:6px;font-style:italic;flex-shrink:0;">' + safeNoteHtml + '</span>' : '') +
         '</div>';
       } else {
-        cardItemHtml = '<div class="ov-stu-card-row" style="background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.04);gap:6px;">' +
-          // Cột Trái: Co giãn linh hoạt (flex: 1 1 0%), không bao giờ đẩy cột Phải ra ngoài khung
+        cardItemHtml = '<div class="ov-stu-card-row" style="display:flex !important;align-items:center !important;justify-content:space-between !important;width:100% !important;box-sizing:border-box !important;background:#ffffff;border:1px solid ' + cardBorderColor + ';border-radius:10px;padding:6px 8px;margin-bottom:5px;box-shadow:0 1px 2px rgba(0,0,0,0.04);gap:6px;">' +
           '<div class="ov-stu-name-col" onclick="if(typeof quickEditAttendance===\'function\' && \'' + safeStuIdJs + '\') quickEditAttendance(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + safeStatusJs + '\')" ' +
-               'style="display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 0%;cursor:pointer;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
+               'style="display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 58%;cursor:pointer;" title="Bấm vào tên để đổi trạng thái điểm danh">' +
             '<span style="width:5px;height:5px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;"></span>' +
             '<div style="min-width:0;flex:1;line-height:1.25;">' +
               '<span class="ov-stu-name-text" style="font-weight:700;color:#0f172a;font-size:12.5px;">' + realNameDisplay + '</span>' +
@@ -11836,11 +11867,10 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
               (makeUpBadgeHtml ? ' ' + makeUpBadgeHtml : '') +
             '</div>' +
           '</div>' +
-          // Cột Phải: Cố định chiều rộng gọn gàng (126px trên mobile, 185px trên PC), luôn nằm trọn bên trong viền
-          '<div class="ov-stu-note-col" style="display:flex;align-items:center;gap:3px;flex:0 0 185px;width:185px;max-width:45%;min-width:0;">' +
+          '<div class="ov-stu-note-col" style="display:flex;align-items:center;gap:3px;flex:0 0 42%;min-width:0;max-width:210px;">' +
             '<input type="text" id="' + inputId + '" class="ov-stu-note-input" value="' + safeNoteHtml + '" placeholder="Ghi chú..." ' +
               'onkeydown="if(event.key===\'Enter\'){ event.preventDefault(); saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\'); }" ' +
-              'style="width:100%;min-width:0;flex:1 1 auto;padding:4px 6px;font-size:11px;border:1px solid #cbd5e1;border-radius:6px;background:' + (curNote ? '#ecfdf5' : '#f8fafc') + ';color:#0f172a;font-weight:600;outline:none;box-sizing:border-box;">' +
+              'style="width:100%;min-width:0;padding:4px 6px;font-size:11px;border:1px solid #cbd5e1;border-radius:6px;background:' + (curNote ? '#ecfdf5' : '#f8fafc') + ';color:#0f172a;font-weight:600;outline:none;box-sizing:border-box;">' +
             '<button type="button" class="ov-stu-note-btn" onclick="saveOverviewDayStudentNote(\'' + safeStuIdJs + '\', \'' + stdDate + '\', \'' + inputId + '\', \'' + safeNameJs + '\')" ' +
               'style="width:23px;height:23px;border-radius:6px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;display:flex;align-items:center;justify-content:center;font-size:10.5px;cursor:pointer;flex-shrink:0;" title="Lưu ghi chú">' +
               '<i class="fa-solid fa-check"></i>' +
@@ -11863,49 +11893,31 @@ function upgradeOverviewDateCardsWithNoteBoxes() {
     var parentText = (el.parentElement && el.parentElement.textContent) ? el.parentElement.textContent : '';
     var alreadyInsideMakeUpBox = /🟣\s*(Học\s*bù|Đi\s*bù)/i.test(parentText) && normalCards.length === 0;
 
-    // Hàm bọc danh sách thẻ học sinh vào bảng <table> 1 cột dọc (và chèn thẻ ẩn để children.length không bao giờ bằng 2)
-    function wrapCardsVerticalLocked(cardsArr) {
-      if (!cardsArr || cardsArr.length === 0) return '';
-      var rows = cardsArr.map(function(c) {
-        return '<tr style="display:table-row !important;width:100% !important;"><td style="display:table-cell !important;width:100% !important;padding:0 !important;border:none !important;">' + c + '</td></tr>';
-      }).join('');
-      return '<table style="display:table !important;width:100% !important;max-width:100% !important;border-collapse:collapse !important;border:none !important;margin:0 !important;padding:0 !important;table-layout:fixed !important;">' +
-        '<tbody style="display:table-row-group !important;width:100% !important;">' +
-          rows +
-          '<tr style="display:none !important;"><td></td></tr>' +
-          '<tr style="display:none !important;"><td></td></tr>' +
-        '</tbody>' +
-      '</table>' +
-      '<span style="display:none !important;"></span><span style="display:none !important;"></span>';
-    }
-
-    var finalHtml = wrapCardsVerticalLocked(normalCards);
+    var finalHtml = normalCards.join('');
     if (makeUpCards.length > 0) {
       if (alreadyInsideMakeUpBox) {
-        finalHtml += wrapCardsVerticalLocked(makeUpCards);
+        finalHtml += makeUpCards.join('');
       } else {
-        finalHtml += '<div style="display:block !important;width:100% !important;box-sizing:border-box !important;margin-top:' + (normalCards.length > 0 ? '8px' : '0') + ';background:#faf5ff;border:1px solid #d8b4fe;border-radius:12px;padding:8px 8px 3px 8px;">' +
+        finalHtml += '<div class="ov-makeup-group-box" style="margin-top:' + (normalCards.length > 0 ? '8px' : '0') + ';background:#faf5ff;border:1px solid #d8b4fe;border-radius:12px;padding:8px 8px 3px 8px;">' +
           '<div style="font-weight:800;color:#6b21a8;font-size:11.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px;">' +
             '<span style="width:8px;height:8px;border-radius:50%;background:#9333ea;display:inline-block;"></span>' +
             '<span>Học bù (' + makeUpCards.length + ')</span>' +
           '</div>' +
-          wrapCardsVerticalLocked(makeUpCards) +
+          makeUpCards.join('') +
         '</div>';
       }
     }
 
-    el.setAttribute('data-note-upgraded', '1');
-    el.style.cssText = 'display:block !important; width:100% !important; max-width:100% !important; min-width:0 !important; box-sizing:border-box !important; white-space:normal !important; grid-column:1 / -1 !important;';
+    // Đổi bản thân thẻ el (nếu đang là <span>) thành <div> block 100% để không bao giờ xếp ngang với thẻ khác!
+    var blockContainer = document.createElement('div');
+    blockContainer.setAttribute('data-note-upgraded', '1');
+    blockContainer.style.cssText = 'display:block !important; width:100% !important; max-width:100% !important; box-sizing:border-box !important; white-space:normal !important; grid-column:1 / -1 !important;';
+    blockContainer.innerHTML = finalHtml;
+
     if (el.parentElement && el.parentElement !== container) {
       el.parentElement.style.cssText += ';display:block !important; width:100% !important; max-width:100% !important; box-sizing:border-box !important;';
-      // Nếu thẻ cha đang có đúng 2 phần tử con (Tiêu đề + Danh sách), chèn thêm 1 span ẩn để các script khác không biến thẻ cha thành 2 cột ngang
-      if (el.parentElement.children.length === 2) {
-        var dummy = document.createElement('span');
-        dummy.style.display = 'none';
-        el.parentElement.appendChild(dummy);
-      }
     }
-    el.innerHTML = finalHtml;
+    el.replaceWith(blockContainer);
   });
 }
 
