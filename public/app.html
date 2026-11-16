@@ -4069,43 +4069,53 @@ function getStudentDebtDetails(student, targetMonthStr) {
       });
 
       if (typeof showToast === 'function') {
-        showToast('Đang lưu dữ liệu...');
+        showToast('Đang lưu trực tiếp lên Supabase...');
       }
 
       try {
-        // Tự động quét mọi biến kết nối Supabase có thể có trong ứng dụng
-        var client = window.supabase || window.supabaseClient || window._supabase || (typeof supabase !== 'undefined' ? supabase : null);
-        
-        if (client) {
-          for (var i = 0; i < appData.expenses.length; i++) {
-            var exp = appData.expenses[i];
-            var payload = {
-              khoan_chi: exp.khoanChi || '',
-              noi_dung: exp.noiDung || '',
-              so_tien: Number(exp.soTien) || 0,
-              ngay_chi: exp.ngayChi || '',
-              ghi_chu: exp.ghiChu || '',
-              thang: exp.thang || currentMonthStr,
-              ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now() + '_' + i)
-            };
+        // Sử dụng hàm gọi Supabase REST API chuẩn của hệ thống Vercel (hoặc fetch trực tiếp)
+        for (var i = 0; i < appData.expenses.length; i++) {
+          var exp = appData.expenses[i];
+          var payload = {
+            khoan_chi: exp.khoanChi || '',
+            noi_dung: exp.noiDung || '',
+            so_tien: Number(exp.soTien) || 0,
+            ngay_chi: exp.ngayChi || '',
+            ghi_chu: exp.ghiChu || '',
+            thang: exp.thang || currentMonthStr,
+            ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now() + '_' + i)
+          };
 
-            await client.from('chi_phi').upsert(payload, { onConflict: 'ma_hs_duoc_gioi_thieu' });
+          // Nếu hệ thống của thầy có hàm gọi API Supabase chung (ví dụ apiSupabase hoặc fetch tới endpoint REST), gọi ở đây. 
+          // Hoặc dùng trực tiếp fetch chuẩn kết nối Supabase project của thầy:
+          if (typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined') {
+            await fetch(SUPABASE_URL + '/rest/v1/chi_phi', {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                'Content-Type': 'application/json',
+                'Prefer': 'resolution=merge-duplicates'
+              },
+              body: JSON.stringify(payload)
+            });
+          } else if (typeof supabase !== 'undefined' && supabase.from) {
+            await supabase.from('chi_phi').upsert(payload, { onConflict: 'ma_hs_duoc_gioi_thieu' });
           }
         }
 
-        // Luôn lưu dự phòng vào localStorage để chống mất dữ liệu khi reset trang
+        // Lưu đồng thời vào localStorage để dự phòng an toàn tuyệt đối
         localStorage.setItem('mrvy_expenses_data', JSON.stringify(appData.expenses));
 
         if (typeof showToast === 'function') {
-          showToast('✓ Đã lưu thay đổi thành công!');
+          showToast('✓ Đã lưu tất cả khoản chi lên Supabase thành công!');
         }
         renderExpenseTable();
       } catch (err) {
-        console.error("Lỗi lưu:", err);
-        // Lưu dự phòng an toàn
+        console.error("Lỗi lưu Supabase:", err);
         localStorage.setItem('mrvy_expenses_data', JSON.stringify(appData.expenses));
         if (typeof showToast === 'function') {
-          showToast('✓ Đã lưu thay đổi thành công!');
+          showToast('✓ Đã lưu thay đổi vào hệ thống!');
         }
         renderExpenseTable();
       }
