@@ -11255,10 +11255,9 @@ function applyGuestStudentLock() {
       }
 
       // 2. CHỐNG TRÀN & CHỐNG ĐÈ TÊN HỌC SINH Ở PHẦN "NHẬP ĐIỂM" (HÌNH 2)
-      var noteInputs = Array.from(document.querySelectorAll('input[placeholder="Ghi chú"], input[placeholder*="Ghi chú"]'));
+      var noteInputs = Array.from(document.querySelectorAll('#manualScoreStudentsGrid input[placeholder*="Ghi chú"]'));
       noteInputs.forEach(function(noteInp) {
-        // Chỉ tác động lên các dòng nhập điểm bài kiểm tra (không phải bảng điểm danh)
-        if (noteInp.id && noteInp.id.startsWith('note_')) return;
+        if (noteInp.closest('#classOverviewContainer') || noteInp.closest('#tab-diemdanh')) return;
 
         // Tìm thẻ khung của từng học sinh (chứa STT + Avatar + Tên HS + Ô điểm + Ô Ghi chú)
         var itemCard = noteInp.parentElement;
