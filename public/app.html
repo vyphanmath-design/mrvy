@@ -3801,8 +3801,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
   }
 }
 
-  // 1. Hàm nạp danh sách học sinh giới thiệu
-    function updateReferrerDropdown() {
+ function updateReferrerDropdown() {
       var datalistEl = document.getElementById('listReferrerStudents');
       var inputEl = document.getElementById('stuReferrerInput');
       var hiddenInput = document.getElementById('stuReferrer');
@@ -3845,7 +3844,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
       };
     }
 
-    // 2. Mở Modal Bảng Thống Kê Tiền Chi
     function openExpenseModal() {
       try {
         if (typeof syncReferralExpenses === 'function') {
@@ -3861,20 +3859,18 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-    // 3. Đóng Modal Bảng Thống Kê Tiền Chi
     function closeExpenseModal() {
       var modal = document.getElementById('expenseModal');
       if (modal) modal.classList.add('hidden');
     }
 
-   // 4. Xử lý nút bấm "+ Thêm khoản chi mới" (Để trống, không bị dính chữ cũ)
     function openAddExpenseRowModal() {
       if (!appData.expenses) appData.expenses = [];
       
       var customExp = {
         id: 'CUST_' + Date.now(),
-        khoanChi: '', // Để trống
-        noiDung: '',   // Để trống
+        khoanChi: '',
+        noiDung: '',
         soTien: 0,
         ngayChi: new Date().toISOString().split('T')[0],
         ghiChu: '',
@@ -3887,11 +3883,10 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (typeof showToast === 'function') showToast('Đã thêm dòng mới!');
     }
 
-    // 5. Xóa dòng khoản chi (Đồng thời xóa trên Supabase)
     async function removeExpenseRow(indexInFiltered, filterMode) {
       if (!confirm('Xác nhận xóa khoản chi này?')) return;
       
-      var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth'].value : getCurrentMonthStr();
+      var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth').value : getCurrentMonthStr();
       var filtered = (appData.expenses || []).filter(function(exp) {
         if (filterMode === 'ALL') return true;
         return isSameMonth(exp.thang, currentMonthStr);
@@ -3902,7 +3897,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         appData.expenses = appData.expenses.filter(function(e) { return e !== targetExp; });
         
         try {
-          if (targetExp.maHsDuocGioiThieu) {
+          if (targetExp.maHsDuocGioiThieu && typeof supabase !== 'undefined') {
             await supabase.from('chi_phi').delete().eq('ma_hs_duoc_gioi_thieu', targetExp.maHsDuocGioiThieu);
           }
         } catch (err) {
@@ -3914,7 +3909,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-    // 6. Tự động nhận diện học sinh giới thiệu để đưa vào bảng chi phí
     function syncReferralExpenses() {
       if (!appData.expenses) appData.expenses = [];
       var activeStudents = (typeof getActiveStudents === 'function') ? getActiveStudents() : (appData.students || []);
@@ -3967,7 +3961,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
       });
     }
 
-    // 7. Cập nhật giá trị từng ô trực tiếp khi người dùng nhập xong (không làm mất focus)
     function updateExpField(filteredIdx, field, value, filterMode) {
       var feeMonthEl = document.getElementById('feeOverviewMonth');
       var currentMonthStr = feeMonthEl ? feeMonthEl.value : getCurrentMonthStr();
@@ -3986,7 +3979,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
           targetExp[field] = value.trim();
         }
 
-        // Cập nhật lại tổng tiền hiển thị ngay lập tức
         var totalExpenseSum = expenses.reduce(function(sum, e) { return sum + (Number(e.soTien) || 0); }, 0);
         var totalAmtEl = document.getElementById('expenseModalTotalAmount');
         if (totalAmtEl) totalAmtEl.innerText = formatMoney(totalExpenseSum) + ' nghìn đ';
@@ -3995,7 +3987,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-    // 8. Vẽ bảng thống kê tiền chi (Cập nhật placeholder mờ để dễ nhập)
     function renderExpenseTable() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
@@ -4044,7 +4035,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-    // 9. Hàm lưu toàn bộ dữ liệu thay đổi trong bảng chi phí
     async function saveAllExpensesData() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
@@ -4060,7 +4050,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
         return isSameMonth(exp.thang, currentMonthStr);
       });
 
-      // Cập nhật giá trị từ các ô input vào mảng tạm
       rows.forEach(function(row, idx) {
         var exp = filtered[idx];
         if (!exp) return;
@@ -4083,21 +4072,20 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
 
       try {
-        // Duyệt qua từng khoản chi và gọi lệnh upsert trực tiếp lên bảng chi_phi của Supabase
-        for (var i = 0; i < appData.expenses.length; i++) {
-          var exp = appData.expenses[i];
-          var payload = {
-            khoan_chi: exp.khoanChi || '',
-            noi_dung: exp.noiDung || '',
-            so_tien: Number(exp.soTien) || 0,
-            ngay_chi: exp.ngayChi || '',
-            ghi_chu: exp.ghiChu || '',
-            thang: exp.thang || currentMonthStr,
-            ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now())
-          };
-
-          // Dùng upsert dựa vào cột định danh ma_hs_duoc_gioi_thieu để thêm mới hoặc cập nhật
-          await supabase.from('chi_phi').upsert(payload, { onConflict: 'ma_hs_duoc_gioi_thieu' });
+        if (typeof supabase !== 'undefined') {
+          for (var i = 0; i < appData.expenses.length; i++) {
+            var exp = appData.expenses[i];
+            var payload = {
+              khoan_chi: exp.khoanChi || '',
+              noi_dung: exp.noiDung || '',
+              so_tien: Number(exp.soTien) || 0,
+              ngay_chi: exp.ngayChi || '',
+              ghi_chu: exp.ghiChu || '',
+              thang: exp.thang || currentMonthStr,
+              ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now())
+            };
+            await supabase.from('chi_phi').upsert(payload, { onConflict: 'ma_hs_duoc_gioi_thieu' });
+          }
         }
 
         if (typeof showToast === 'function') {
