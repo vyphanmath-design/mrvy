@@ -3867,14 +3867,14 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (modal) modal.classList.add('hidden');
     }
 
-    // 4. Xử lý nút bấm "+ Thêm khoản chi mới"
+   // 4. Xử lý nút bấm "+ Thêm khoản chi mới" (Để trống, không bị dính chữ cũ)
     function openAddExpenseRowModal() {
       if (!appData.expenses) appData.expenses = [];
       
       var customExp = {
         id: 'CUST_' + Date.now(),
-        khoanChi: 'Chi phí khác',
-        noiDung: 'Nhập nội dung khoản chi...',
+        khoanChi: '', // Để trống
+        noiDung: '',   // Để trống
         soTien: 0,
         ngayChi: new Date().toISOString().split('T')[0],
         ghiChu: '',
@@ -3884,7 +3884,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
       appData.expenses.push(customExp);
       renderExpenseTable();
-      if (typeof showToast === 'function') showToast('Đã thêm dòng chi phí mới!');
+      if (typeof showToast === 'function') showToast('Đã thêm dòng mới!');
     }
 
     // 5. Xóa dòng khoản chi thủ công
@@ -3986,7 +3986,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-    // 8. Vẽ bảng thống kê tiền chi (Đơn vị nghìn đồng)
+    // 8. Vẽ bảng thống kê tiền chi (Cập nhật placeholder mờ để dễ nhập)
     function renderExpenseTable() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
@@ -4018,8 +4018,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
         return '<tr class="hover:bg-slate-50 transition border-b border-slate-100">' +
           '<td class="p-2 text-center font-bold text-slate-400">' + (idx + 1) + '</td>' +
-          '<td class="p-2"><input type="text" value="' + (exp.khoanChi || '').replace(/"/g, '&quot;') + '" onchange="updateExpField(' + idx + ', \'khoanChi\', this.value, \'' + filterMode + '\')" class="inp-khoan w-full px-2.5 py-1.5 border rounded-lg bg-white font-bold text-slate-800 text-xs"></td>' +
-          '<td class="p-2"><input type="text" value="' + (exp.noiDung || '').replace(/"/g, '&quot;') + '" onchange="updateExpField(' + idx + ', \'noiDung\', this.value, \'' + filterMode + '\')" class="inp-noidung w-full px-2.5 py-1.5 border rounded-lg bg-white font-medium text-slate-700 text-xs"></td>' +
+          '<td class="p-2"><input type="text" value="' + (exp.khoanChi || '').replace(/"/g, '&quot;') + '" onchange="updateExpField(' + idx + ', \'khoanChi\', this.value, \'' + filterMode + '\')" class="inp-khoan w-full px-2.5 py-1.5 border rounded-lg bg-white font-bold text-slate-800 text-xs" placeholder="Tên khoản chi..."></td>' +
+          '<td class="p-2"><input type="text" value="' + (exp.noiDung || '').replace(/"/g, '&quot;') + '" onchange="updateExpField(' + idx + ', \'noiDung\', this.value, \'' + filterMode + '\')" class="inp-noidung w-full px-2.5 py-1.5 border rounded-lg bg-white font-medium text-slate-700 text-xs" placeholder="Nội dung..."></td>' +
           '<td class="p-2"><input type="number" value="' + (exp.soTien || '') + '" onchange="updateExpField(' + idx + ', \'soTien\', this.value, \'' + filterMode + '\')" class="inp-tien w-full px-2.5 py-1.5 border rounded-lg bg-white font-mono font-bold text-emerald-700 text-xs text-right" placeholder="VD: 500"></td>' +
           '<td class="p-2"><input type="date" value="' + (exp.ngayChi || '') + '" onchange="updateExpField(' + idx + ', \'ngayChi\', this.value, \'' + filterMode + '\')" class="inp-ngay w-full px-2 py-1.5 border rounded-lg bg-white text-xs font-medium text-slate-700"></td>' +
           '<td class="p-2"><input type="text" value="' + (exp.ghiChu || '').replace(/"/g, '&quot;') + '" onchange="updateExpField(' + idx + ', \'ghiChu\', this.value, \'' + filterMode + '\')" class="inp-note w-full px-2.5 py-1.5 border rounded-lg bg-white text-xs text-slate-600" placeholder="Ghi chú..."></td>' +
