@@ -4035,7 +4035,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
-  async function saveAllExpensesData() {
+ async function saveAllExpensesData() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
 
@@ -4050,7 +4050,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         return isSameMonth(exp.thang, currentMonthStr);
       });
 
-      // Cập nhật giá trị từ các ô input vào mảng tạm
+      // Lấy trực tiếp dữ liệu từ các ô input trên giao diện ngay khi bấm lưu
       rows.forEach(function(row, idx) {
         var exp = filtered[idx];
         if (!exp) return;
@@ -4069,11 +4069,11 @@ function getStudentDebtDetails(student, targetMonthStr) {
       });
 
       if (typeof showToast === 'function') {
-        showToast('Đang lưu trực tiếp lên Supabase...');
+        showToast('Đang lưu lên Supabase...');
       }
 
       try {
-        // Sử dụng hàm gọi Supabase REST API chuẩn của hệ thống Vercel (hoặc fetch trực tiếp)
+        // Gửi trực tiếp lên bảng chi_phi của Supabase
         for (var i = 0; i < appData.expenses.length; i++) {
           var exp = appData.expenses[i];
           var payload = {
@@ -4086,8 +4086,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
             ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now() + '_' + i)
           };
 
-          // Nếu hệ thống của thầy có hàm gọi API Supabase chung (ví dụ apiSupabase hoặc fetch tới endpoint REST), gọi ở đây. 
-          // Hoặc dùng trực tiếp fetch chuẩn kết nối Supabase project của thầy:
           if (typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined') {
             await fetch(SUPABASE_URL + '/rest/v1/chi_phi', {
               method: 'POST',
@@ -4104,7 +4102,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           }
         }
 
-        // Lưu đồng thời vào localStorage để dự phòng an toàn tuyệt đối
+        // Lưu dự phòng an toàn vào localStorage
         localStorage.setItem('mrvy_expenses_data', JSON.stringify(appData.expenses));
 
         if (typeof showToast === 'function') {
