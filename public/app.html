@@ -1765,7 +1765,9 @@
 
   <script>
     var appData = { 
-      students: [], attendance: [], tuition: [], avatarUrl: '', customRates: [], dismissedKeys: [], posts: [], scheduleNote: { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] }
+      students: [], attendance: [], tuition: [], avatarUrl: '', customRates: [], dismissedKeys: [], posts: [], 
+      expenses: [], // <--- Thêm trường này để chứa dữ liệu chi phí
+      scheduleNote: { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] }
     };
 
     // ==================== DUY TRÌ ĐĂNG NHẬP BỀN VỮNG (LOCALSTORAGE) ====================
@@ -3799,6 +3801,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
   }
 }
 
+   // 1. Hàm nạp danh sách học sinh giới thiệu (chỉ khai báo 1 lần duy nhất)
     function updateReferrerDropdown() {
       var datalistEl = document.getElementById('listReferrerStudents');
       var inputEl = document.getElementById('stuReferrerInput');
@@ -3842,55 +3845,12 @@ function getStudentDebtDetails(student, targetMonthStr) {
       };
     }
 
-    function updateReferrerDropdown() {
-      var datalistEl = document.getElementById('listReferrerStudents');
-      var inputEl = document.getElementById('stuReferrerInput');
-      var hiddenInput = document.getElementById('stuReferrer');
-      if (!datalistEl || !inputEl) return;
-
-      var activeStus = (typeof getActiveStudents === 'function') ? getActiveStudents() : (appData.students || []);
-      
-      activeStus.sort(function(a, b) {
-        var nameA = cleanName(a.name);
-        var nameB = cleanName(b.name);
-        if (nameA !== nameB) return nameA.localeCompare(nameB, 'vi');
-        return formatStudentId(a.id).localeCompare(formatStudentId(b.id));
-      });
-
-      datalistEl.innerHTML = activeStus.map(function(s) {
-        var sId = formatStudentId(s.id);
-        var className = s.className || s.grade || 'Chưa xếp';
-        return '<option value="' + s.name + ' — Lớp ' + className + ' (Mã: ' + sId + ')"></option>';
-      }).join('');
-
-      inputEl.oninput = function() {
-        var val = inputEl.value.trim();
-        if (!val) {
-          if (hiddenInput) hiddenInput.value = '';
-          return;
-        }
-        
-        var matched = activeStus.find(function(s) {
-          var sId = formatStudentId(s.id);
-          var className = s.className || s.grade || 'Chưa xếp';
-          var fullStr = s.name + ' — Lớp ' + className + ' (Mã: ' + sId + ')';
-          return fullStr.toLowerCase() === val.toLowerCase() || val.includes('(Mã: ' + sId + ')');
-        });
-
-        if (matched && hiddenInput) {
-          hiddenInput.value = formatStudentId(matched.id);
-        } else if (hiddenInput) {
-          hiddenInput.value = '';
-        }
-      };
-    }
-
+    // 2. Hàm đồng bộ hóa khoản chi phí hoa hồng giới thiệu
     function syncReferralExpenses() {
       if (!appData.expenses) appData.expenses = [];
       var activeStudents = getActiveStudents() || [];
 
       activeStudents.forEach(function(s) {
-        // Kiểm tra xem học sinh này có người giới thiệu không (lấy từ cột nguoi_gioi_thieu)
         if (!s.nguoi_gioi_thieu) return;
         
         var referrer = activeStudents.find(function(ref) { return formatStudentId(ref.id) === formatStudentId(s.nguoi_gioi_thieu); });
@@ -3899,7 +3859,6 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var referrerName = referrer.name + ' (' + formatStudentId(referrer.id) + ')';
         var referredNameCode = s.name + ' (' + formatStudentId(s.id) + ')';
 
-        // Kiểm tra các phiếu thu của học sinh được giới thiệu
         var receipts = (appData.tuition || []).filter(function(t) {
           return formatStudentId(t.studentId) === formatStudentId(s.id) && (t.method === 'Tiền mặt' || t.method === 'Chuyển khoản');
         });
@@ -3910,12 +3869,10 @@ function getStudentDebtDetails(student, targetMonthStr) {
           var firstReceipt = receipts[0];
           noiDungText += ' — đã đóng tháng ' + (firstReceipt.month || 'đầu tiên');
         } else {
-          // Nếu chưa có phiếu thu, lấy tháng bắt đầu đi học (startMonth) nếu có, không thì báo chưa đóng
           var startM = s.startMonth ? ('tháng ' + s.startMonth) : 'chưa đóng học phí';
           noiDungText += ' — ' + startM;
         }
 
-        // Kiểm tra xem đã lưu trong bảng chi phí chưa
         var exists = appData.expenses.some(function(exp) {
           return exp.maHsDuocGioiThieu === formatStudentId(s.id);
         });
@@ -3924,20 +3881,21 @@ function getStudentDebtDetails(student, targetMonthStr) {
           var newExp = {
             khoanChi: referrerName,
             noiDung: noiDungText,
-            soTien: 0, // Số tiền mặc định 0 đ để thầy điền
-            ngayChi: '', // Bỏ trống
+            soTien: 0,
+            ngayChi: '',
             ghiChu: 'Thưởng giới thiệu học viên',
             thang: s.startMonth ? ('Tháng ' + s.startMonth.replace('Tháng ', '')) : getCurrentMonthStr(),
             maHsDuocGioiThieu: formatStudentId(s.id)
           };
           appData.expenses.push(newExp);
           
-          // Đồng bộ ngầm lên Supabase bảng chi_phi
+          // GỌI LỆNH LƯU LÊN SUPABASE (Đã bổ sung phần này để không bị mất dữ liệu)
           if (typeof google !== 'undefined' && google.script && google.script.run) {
-            google.script.run.saveExpense(sessionStorage.getItem('sessionToken'), newExp);
+            google.script.run.withSuccessHandler(function(res) {
+              console.log("Đã lưu khoản chi lên Supabase thành công!");
+            }).saveExpense(sessionStorage.getItem('sessionToken'), newExp);
           }
         } else {
-          // Cập nhật lại nội dung nếu có thay đổi trạng thái đóng học phí
           var expObj = appData.expenses.find(function(exp) { return exp.maHsDuocGioiThieu === formatStudentId(s.id); });
           if (expObj) {
             expObj.khoanChi = referrerName;
@@ -3947,6 +3905,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       });
     }
 
+    // 3. Hàm render bảng thống kê tiền chi
     function renderExpenseTable() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
