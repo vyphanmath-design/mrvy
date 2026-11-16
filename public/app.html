@@ -3911,13 +3911,13 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     // 5. Lưu toàn bộ dữ liệu chỉnh sửa trong bảng chi phí lên Supabase
-    function saveAllExpensesData() {
+   function saveAllExpensesData() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
 
       var rows = tbody.querySelectorAll('tr');
-      var filterMode = document.getElementById('expenseFilterMode') ? document.getElementById('expenseFilterMode').value : 'MONTH';
-      var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth').value : getCurrentMonthStr();
+      var filterMode = document.getElementById('expenseFilterMode') ? document.getElementById('expenseFilterMode'].value : 'MONTH';
+      var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth'].value : getCurrentMonthStr();
       
       var filtered = (appData.expenses || []).filter(function(exp) {
         if (filterMode === 'ALL') return true;
@@ -3936,21 +3936,20 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
         if (inpKhoan) exp.khoanChi = inpKhoan.value.trim();
         if (inpNoiDung) exp.noiDung = inpNoiDung.value.trim();
-        if (inpTien) exp.soTien = Number(String(inpTien.value).replace(/\D/g, '')) || 0;
+        if (inpTien) exp.soTien = Number(inpTien.value) || 0; // Nhận số tiền theo đơn vị nghìn đồng
         if (inpNgay) exp.ngayChi = inpNgay.value;
         if (inpNote) exp.ghiChu = inpNote.value.trim();
       });
 
       showToast('Đang lưu thay đổi...');
 
-      // Gửi toàn bộ lên server/Supabase
       if (typeof google !== 'undefined' && google.script && google.script.run && typeof google.script.run.saveAllExpenses === 'function') {
         google.script.run.withSuccessHandler(function() {
           showToast('✓ Đã lưu tất cả khoản chi lên hệ thống thành công!');
           renderExpenseTable();
         }).saveAllExpenses(sessionStorage.getItem('sessionToken'), appData.expenses);
       } else {
-        showToast('✓ Đã lưu thay đổi (Bản local)!');
+        showToast('✓ Đã lưu thay đổi thành công!');
         renderExpenseTable();
       }
     }
@@ -3973,7 +3972,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
       if (filtered.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-slate-400 font-medium">Chưa có khoản chi nào trong mục này. Bấm "+ Thêm khoản chi mới" để tạo.</td></tr>';
-        document.getElementById('expenseModalTotalAmount').innerText = '0 đ';
+        document.getElementById('expenseModalTotalAmount').innerText = '0 nghìn đ';
         if (document.getElementById('statGrandExpense')) document.getElementById('statGrandExpense').innerText = '0 đ';
         return;
       }
@@ -3985,15 +3984,21 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<td class="p-2 text-center font-bold text-slate-400">' + (idx + 1) + '</td>' +
           '<td class="p-2"><input type="text" value="' + (exp.khoanChi || '') + '" class="inp-khoan w-full px-2.5 py-1.5 border rounded-lg bg-white font-bold text-slate-800 text-xs"></td>' +
           '<td class="p-2"><input type="text" value="' + (exp.noiDung || '') + '" class="inp-noidung w-full px-2.5 py-1.5 border rounded-lg bg-white font-medium text-slate-700 text-xs"></td>' +
-          '<td class="p-2"><input type="text" value="' + (exp.soTien ? formatMoney(exp.soTien) : '') + '" oninput="formatCurrencyInput(this)" class="inp-tien w-full px-2.5 py-1.5 border rounded-lg bg-white font-mono font-bold text-emerald-700 text-xs text-right" placeholder="0"></td>' +
+          // Ô số tiền hiển thị dạng số nguyên nghìn đồng (vd: 651 thay vì 651.000)
+          '<td class="p-2"><input type="number" value="' + (exp.soTien || '') + '" class="inp-tien w-full px-2.5 py-1.5 border rounded-lg bg-white font-mono font-bold text-emerald-700 text-xs text-right" placeholder="VD: 500"></td>' +
           '<td class="p-2"><input type="date" value="' + (exp.ngayChi || '') + '" class="inp-ngay w-full px-2 py-1.5 border rounded-lg bg-white text-xs font-medium text-slate-700"></td>' +
           '<td class="p-2"><input type="text" value="' + (exp.ghiChu || '') + '" class="inp-note w-full px-2.5 py-1.5 border rounded-lg bg-white text-xs text-slate-600" placeholder="Ghi chú..."></td>' +
           '<td class="p-2 text-center"><button type="button" onclick="removeExpenseRow(' + idx + ', \'' + filterMode + '\')" class="text-red-500 hover:text-red-700 p-1.5 font-bold cursor-pointer" title="Xóa dòng"><i class="fa-solid fa-trash-can"></i></button></td>' +
         '</tr>';
       }).join('');
 
-      document.getElementById('expenseModalTotalAmount').innerText = formatMoney(totalExpenseSum) + ' đ';
-      if (document.getElementById('statGrandExpense')) document.getElementById('statGrandExpense').innerText = formatMoney(totalExpenseSum) + ' đ';
+      // Tổng tiền hiển thị trong Modal (nhân với 1.000đ để quy đổi hoặc giữ dạng nghìn đồng tùy ý thầy, ở đây hiển thị rõ dạng tổng nghìn đồng hoặc VNĐ)
+      document.getElementById('expenseModalTotalAmount').innerText = formatMoney(totalExpenseSum) + ' nghìn đ';
+      
+      // Tổng tiền hiển thị ngoài ô Tiền Chi ở tab Học phí (quy đổi ra VNĐ đầy đủ)
+      if (document.getElementById('statGrandExpense')) {
+        document.getElementById('statGrandExpense').innerText = formatMoney(totalExpenseSum * 1000) + ' đ';
+      }
     }
 
     function initAllDropdowns() {
@@ -12913,7 +12918,7 @@ function applyGuestStudentLock() {
               <th class="p-2.5 text-center w-12">STT</th>
               <th class="p-2.5 min-w-[160px]">Khoản Chi (Người giới thiệu)</th>
               <th class="p-2.5 min-w-[220px]">Nội Dung (Học sinh được giới thiệu)</th>
-              <th class="p-2.5 text-right min-w-[130px]">Số Tiền (đ)</th>
+              <th class="p-2.5 text-right min-w-[130px]">Số Tiền (nghìn)</th>
               <th class="p-2.5 text-center min-w-[130px]">Ngày Tháng</th>
               <th class="p-2.5 min-w-[180px]">Ghi Chú</th>
               <th class="p-2.5 text-center w-16">Xóa</th>
