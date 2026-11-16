@@ -3887,11 +3887,11 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (typeof showToast === 'function') showToast('Đã thêm dòng mới!');
     }
 
-    // 5. Xóa dòng khoản chi thủ công
-    function removeExpenseRow(indexInFiltered, filterMode) {
+    // 5. Xóa dòng khoản chi (Đồng thời xóa trên Supabase)
+    async function removeExpenseRow(indexInFiltered, filterMode) {
       if (!confirm('Xác nhận xóa khoản chi này?')) return;
       
-      var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth').value : getCurrentMonthStr();
+      var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth'].value : getCurrentMonthStr();
       var filtered = (appData.expenses || []).filter(function(exp) {
         if (filterMode === 'ALL') return true;
         return isSameMonth(exp.thang, currentMonthStr);
@@ -3900,6 +3900,15 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var targetExp = filtered[indexInFiltered];
       if (targetExp) {
         appData.expenses = appData.expenses.filter(function(e) { return e !== targetExp; });
+        
+        try {
+          if (targetExp.maHsDuocGioiThieu) {
+            await supabase.from('chi_phi').delete().eq('ma_hs_duoc_gioi_thieu', targetExp.maHsDuocGioiThieu);
+          }
+        } catch (err) {
+          console.error("Lỗi xóa trên Supabase:", err);
+        }
+
         renderExpenseTable();
         if (typeof showToast === 'function') showToast('Đã xóa khoản chi!');
       }
@@ -4036,11 +4045,71 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     // 9. Hàm lưu toàn bộ dữ liệu thay đổi trong bảng chi phí
-    function saveAllExpensesData() {
+    async function saveAllExpensesData() {
+      var tbody = document.getElementById('expenseTableBody');
+      if (!tbody) return;
+
+      var rows = tbody.querySelectorAll('tr');
+      var filterModeEl = document.getElementById('expenseFilterMode');
+      var filterMode = filterModeEl ? filterModeEl.value : 'MONTH';
+      var feeMonthEl = document.getElementById('feeOverviewMonth');
+      var currentMonthStr = feeMonthEl ? feeMonthEl.value : getCurrentMonthStr();
+      
+      var filtered = (appData.expenses || []).filter(function(exp) {
+        if (filterMode === 'ALL') return true;
+        return isSameMonth(exp.thang, currentMonthStr);
+      });
+
+      // Cập nhật giá trị từ các ô input vào mảng tạm
+      rows.forEach(function(row, idx) {
+        var exp = filtered[idx];
+        if (!exp) return;
+
+        var inpKhoan = row.querySelector('.inp-khoan');
+        var inpNoiDung = row.querySelector('.inp-noidung');
+        var inpTien = row.querySelector('.inp-tien');
+        var inpNgay = row.querySelector('.inp-ngay');
+        var inpNote = row.querySelector('.inp-note');
+
+        if (inpKhoan) exp.khoanChi = inpKhoan.value.trim();
+        if (inpNoiDung) exp.noiDung = inpNoiDung.value.trim();
+        if (inpTien) exp.soTien = Number(inpTien.value) || 0;
+        if (inpNgay) exp.ngayChi = inpNgay.value;
+        if (inpNote) exp.ghiChu = inpNote.value.trim();
+      });
+
       if (typeof showToast === 'function') {
-        showToast('✓ Đã lưu thay đổi thành công!');
+        showToast('Đang lưu lên Supabase...');
       }
-      renderExpenseTable();
+
+      try {
+        // Duyệt qua từng khoản chi và gọi lệnh upsert trực tiếp lên bảng chi_phi của Supabase
+        for (var i = 0; i < appData.expenses.length; i++) {
+          var exp = appData.expenses[i];
+          var payload = {
+            khoan_chi: exp.khoanChi || '',
+            noi_dung: exp.noiDung || '',
+            so_tien: Number(exp.soTien) || 0,
+            ngay_chi: exp.ngayChi || '',
+            ghi_chu: exp.ghiChu || '',
+            thang: exp.thang || currentMonthStr,
+            ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now())
+          };
+
+          // Dùng upsert dựa vào cột định danh ma_hs_duoc_gioi_thieu để thêm mới hoặc cập nhật
+          await supabase.from('chi_phi').upsert(payload, { onConflict: 'ma_hs_duoc_gioi_thieu' });
+        }
+
+        if (typeof showToast === 'function') {
+          showToast('✓ Đã lưu tất cả khoản chi lên Supabase thành công!');
+        }
+        renderExpenseTable();
+      } catch (err) {
+        console.error("Lỗi lưu Supabase:", err);
+        if (typeof showToast === 'function') {
+          showToast('❌ Lỗi lưu: ' + err.message);
+        }
+      }
     }
 
     function initAllDropdowns() {
