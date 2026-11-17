@@ -93,44 +93,30 @@ function hashPassword_(password) {
   return crypto.createHash('sha256').update(rawPass, 'utf8').digest('hex');
 }
 
-// --- TẠO & GIẢI MÃ TOKEN TỰ THÂN ---
-function createSelfToken_(userObj) {
-  const payload = {
+// PHIÊN ĐĂNG NHẬP BỀN VỮNG: token ngẫu nhiên lưu trên Supabase, không tự hết hạn.
+// Chạy file tao_bang_phien_dang_nhap.sql trong Supabase SQL Editor trước khi triển khai.
+async function createPersistentSession_(supabase, userObj) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const { error } = await supabase.from('mrvy_sessions').insert({
+    token_hash: crypto.createHash('sha256').update(token).digest('hex'),
     username: String(userObj.username || ''),
     name: String(userObj.name || ''),
-    role: String(userObj.role || 'STUDENT').toUpperCase().trim(),
-    exp: Date.now() + 12 * 60 * 60 * 1000 // 12 tiếng
-  };
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+    role: String(userObj.role || 'STUDENT').toUpperCase().trim()
+  });
+  if (error) throw new Error('Không tạo được phiên đăng nhập: ' + error.message);
+  return token;
 }
 
 async function verifySessionToken_(supabase, token) {
-  if (!token) return null;
-  const cleanToken = String(token).trim();
-
-  try {
-    const decoded = Buffer.from(cleanToken, 'base64').toString('utf8');
-    if (decoded.startsWith('{')) {
-      const obj = JSON.parse(decoded);
-      if (obj && obj.username && obj.role) {
-        if (obj.exp && Date.now() > Number(obj.exp)) return null;
-        return obj;
-      }
-    }
-  } catch (e) {}
-
-  try {
-    const { data: sess } = await supabase
-      .from('sessions')
-      .select('*')
-      .eq('token', cleanToken)
-      .single();
-    if (sess && (!sess.expires_at || Date.now() <= Number(sess.expires_at))) {
-      return { username: sess.username, name: sess.name, role: sess.role };
-    }
-  } catch (e) {}
-
-  return null;
+  if (!token || typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const { data, error } = await supabase
+    .from('mrvy_sessions')
+    .select('username,name,role')
+    .eq('token_hash', tokenHash)
+    .maybeSingle();
+  if (error) throw new Error('Không kiểm tra được phiên đăng nhập: ' + error.message);
+  return data ? { username: data.username, name: data.name, role: data.role } : null;
 }
 
 async function requireRole_(supabase, token, allowedRoles) {
@@ -315,13 +301,13 @@ export default async function handler(req, res) {
   const { action, args = [] } = req.body || {};
 
   try {
+    const supabase = getSupabase();
+
     if (action === 'createGuestSession') {
       const guestUser = { username: 'guest', name: 'Khách', role: 'GUEST' };
-      const token = createSelfToken_(guestUser);
+      const token = await createPersistentSession_(supabase, guestUser);
       return res.status(200).json({ result: { success: true, token, user: guestUser } });
     }
-
-    const supabase = getSupabase();
 
     switch (action) {
       case 'checkLogin': {
@@ -351,7 +337,7 @@ export default async function handler(req, res) {
 
             if (isValid) {
               const userObj = { username: sheetUser, name: sheetName, role: sheetRole || 'STUDENT' };
-              const token = createSelfToken_(userObj);
+              const token = await createPersistentSession_(supabase, userObj);
               return res.json({ result: { success: true, token, user: userObj } });
             } else {
               return res.json({ result: { success: false, message: 'Mật khẩu không chính xác!' } });
@@ -367,7 +353,7 @@ export default async function handler(req, res) {
             const defaultPass = formatStudentId(stuId);
             if (p === defaultPass || p === stuId) {
               const userObj2 = { username: defaultPass, name: stuName, role: 'STUDENT' };
-              const token2 = createSelfToken_(userObj2);
+              const token2 = await createPersistentSession_(supabase, userObj2);
               return res.json({ result: { success: true, token: token2, user: userObj2 } });
             } else {
               return res.json({ result: { success: false, message: 'Mật khẩu không chính xác!' } });
@@ -391,6 +377,13 @@ export default async function handler(req, res) {
       }
 
       case 'logoutSession': {
+        const [token] = args;
+        if (typeof token === 'string' && /^[a-f0-9]{64}$/.test(token)) {
+          const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+          const { error } = await supabase.from('mrvy_sessions')
+            .delete().eq('token_hash', tokenHash);
+          if (error) throw new Error('Không thu hồi được phiên đăng nhập: ' + error.message);
+        }
         return res.json({ result: { success: true } });
       }
 
