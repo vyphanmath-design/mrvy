@@ -3885,28 +3885,32 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
     async function removeExpenseRow(indexInFiltered, filterMode) {
       if (!confirm('Xác nhận xóa khoản chi này?')) return;
-      
       var currentMonthStr = document.getElementById('feeOverviewMonth') ? document.getElementById('feeOverviewMonth').value : getCurrentMonthStr();
       var filtered = (appData.expenses || []).filter(function(exp) {
-        if (filterMode === 'ALL') return true;
-        return isSameMonth(exp.thang, currentMonthStr);
+        return filterMode === 'ALL' || isSameMonth(exp.thang, currentMonthStr);
       });
-
       var targetExp = filtered[indexInFiltered];
-      if (targetExp) {
-        appData.expenses = appData.expenses.filter(function(e) { return e !== targetExp; });
-        
+      if (!targetExp) return;
+      // Xóa trong Supabase TRƯỚC khi xóa khỏi giao diện.
+      if (targetExp.id !== undefined && targetExp.id !== null && !String(targetExp.id).startsWith('CUST_')) {
         try {
-          if (targetExp.maHsDuocGioiThieu && typeof supabase !== 'undefined') {
-            await supabase.from('chi_phi').delete().eq('ma_hs_duoc_gioi_thieu', targetExp.maHsDuocGioiThieu);
+          var response = await fetch('/api/rpc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({action: 'deleteExpense', args: [sessionStorage.getItem('sessionToken'), targetExp.id]})
+          });
+          var result = await response.json();
+          if (!response.ok || result.error || !result.result || !result.result.success) {
+            throw new Error(result.error || (result.result && result.result.message) || 'Xóa không thành công');
           }
         } catch (err) {
-          console.error("Lỗi xóa trên Supabase:", err);
+          showToast('Không thể xóa trên Supabase: ' + err.message, true);
+          return;
         }
-
-        renderExpenseTable();
-        if (typeof showToast === 'function') showToast('Đã xóa khoản chi!');
       }
+      appData.expenses = appData.expenses.filter(function(e) { return e !== targetExp; });
+      renderExpenseTable();
+      if (typeof showToast === 'function') showToast('Đã xóa khoản chi!');
     }
 
     function syncReferralExpenses() {
@@ -4035,90 +4039,49 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
     }
 
- async function saveAllExpensesData() {
+    async function saveAllExpensesData() {
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
-
-      var rows = tbody.querySelectorAll('tr');
       var filterModeEl = document.getElementById('expenseFilterMode');
       var filterMode = filterModeEl ? filterModeEl.value : 'MONTH';
       var feeMonthEl = document.getElementById('feeOverviewMonth');
       var currentMonthStr = feeMonthEl ? feeMonthEl.value : getCurrentMonthStr();
-      
       var filtered = (appData.expenses || []).filter(function(exp) {
-        if (filterMode === 'ALL') return true;
-        return isSameMonth(exp.thang, currentMonthStr);
+        return filterMode === 'ALL' || isSameMonth(exp.thang, currentMonthStr);
       });
-
-      // Lấy trực tiếp dữ liệu từ các ô input trên giao diện ngay khi bấm lưu
-      rows.forEach(function(row, idx) {
+      tbody.querySelectorAll('tr').forEach(function(row, idx) {
         var exp = filtered[idx];
         if (!exp) return;
-
-        var inpKhoan = row.querySelector('.inp-khoan');
-        var inpNoiDung = row.querySelector('.inp-noidung');
-        var inpTien = row.querySelector('.inp-tien');
-        var inpNgay = row.querySelector('.inp-ngay');
-        var inpNote = row.querySelector('.inp-note');
-
-        if (inpKhoan) exp.khoanChi = inpKhoan.value.trim();
-        if (inpNoiDung) exp.noiDung = inpNoiDung.value.trim();
-        if (inpTien) exp.soTien = Number(inpTien.value) || 0;
-        if (inpNgay) exp.ngayChi = inpNgay.value;
-        if (inpNote) exp.ghiChu = inpNote.value.trim();
+        var inputs = {khoanChi: '.inp-khoan', noiDung: '.inp-noidung', soTien: '.inp-tien', ngayChi: '.inp-ngay', ghiChu: '.inp-note'};
+        Object.keys(inputs).forEach(function(key) {
+          var input = row.querySelector(inputs[key]);
+          if (input) exp[key] = key === 'soTien' ? Number(input.value) : input.value.trim();
+        });
       });
-
-      if (typeof showToast === 'function') {
-        showToast('Đang lưu lên Supabase...');
-      }
-
+      var saveBtn = document.getElementById('btnSaveExpenses');
+      if (saveBtn && saveBtn.disabled) return;
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.classList.add('opacity-60'); }
       try {
-        // Gửi trực tiếp lên bảng chi_phi của Supabase
-        for (var i = 0; i < appData.expenses.length; i++) {
-          var exp = appData.expenses[i];
-          var payload = {
-            khoan_chi: exp.khoanChi || '',
-            noi_dung: exp.noiDung || '',
-            so_tien: Number(exp.soTien) || 0,
-            ngay_chi: exp.ngayChi || '',
-            ghi_chu: exp.ghiChu || '',
-            thang: exp.thang || currentMonthStr,
-            ma_hs_duoc_gioi_thieu: exp.maHsDuocGioiThieu || ('MANUAL_' + Date.now() + '_' + i)
-          };
-
-          if (typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined') {
-            await fetch(SUPABASE_URL + '/rest/v1/chi_phi', {
-              method: 'POST',
-              headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-                'Content-Type': 'application/json',
-                'Prefer': 'resolution=merge-duplicates'
-              },
-              body: JSON.stringify(payload)
-            });
-          } else if (typeof supabase !== 'undefined' && supabase.from) {
-            await supabase.from('chi_phi').upsert(payload, { onConflict: 'ma_hs_duoc_gioi_thieu' });
-          }
+        var response = await fetch('/api/rpc', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ action: 'saveExpenses', args: [sessionStorage.getItem('sessionToken'), appData.expenses || []] })
+        });
+        var result = await response.json();
+        if (!response.ok || result.error || !result.result || result.result.success !== true || !Array.isArray(result.result.expenses)) {
+          throw new Error(result.error || (result.result && result.result.message) || 'Máy chủ không xác nhận lưu thành công');
         }
-
-        // Lưu dự phòng an toàn vào localStorage
-        localStorage.setItem('mrvy_expenses_data', JSON.stringify(appData.expenses));
-
-        if (typeof showToast === 'function') {
-          showToast('✓ Đã lưu tất cả khoản chi lên Supabase thành công!');
-        }
+        appData.expenses = result.result.expenses;
         renderExpenseTable();
+        if (typeof showToast === 'function') showToast('Đã lưu khoản chi lên Supabase thành công!');
       } catch (err) {
-        console.error("Lỗi lưu Supabase:", err);
-        localStorage.setItem('mrvy_expenses_data', JSON.stringify(appData.expenses));
-        if (typeof showToast === 'function') {
-          showToast('✓ Đã lưu thay đổi vào hệ thống!');
-        }
-        renderExpenseTable();
+        console.error('Lỗi lưu khoản chi:', err);
+        if (typeof showToast === 'function') showToast('Chưa lưu được lên Supabase: ' + err.message, true);
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.classList.remove('opacity-60'); }
       }
     }
-    
+
     function initAllDropdowns() {
       initDynamicGradeDropdowns();
       updateClassDropdown();
@@ -13052,7 +13015,7 @@ function applyGuestStudentLock() {
           Tổng tiền chi hiển thị: <span id="expenseModalTotalAmount" class="font-mono text-base text-red-600 font-black">0 đ</span>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="saveAllExpensesData()" class="bg-brand-green hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl text-xs shadow-md transition cursor-pointer">
+          <button id="btnSaveExpenses" onclick="saveAllExpensesData()" class="bg-brand-green hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl text-xs shadow-md transition cursor-pointer">
             <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu thay đổi
           </button>
           <button onclick="closeExpenseModal()" class="px-5 py-2 rounded-xl text-xs font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 transition cursor-pointer">Đóng</button>
