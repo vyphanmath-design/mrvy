@@ -3801,48 +3801,99 @@ function getStudentDebtDetails(student, targetMonthStr) {
   }
 }
 
- function updateReferrerDropdown() {
-      var datalistEl = document.getElementById('listReferrerStudents');
-      var inputEl = document.getElementById('stuReferrerInput');
-      var hiddenInput = document.getElementById('stuReferrer');
-      if (!datalistEl || !inputEl) return;
+ 
+function updateReferrerDropdown() {
+  var datalistEl = document.getElementById('listReferrerStudents');
+  var inputEl = document.getElementById('stuReferrerInput');
+  var hiddenInput = document.getElementById('stuReferrer');
 
-      var activeStus = (typeof getActiveStudents === 'function') ? getActiveStudents() : (appData.students || []);
-      
-      activeStus.sort(function(a, b) {
-        var nameA = cleanName(a.name);
-        var nameB = cleanName(b.name);
-        if (nameA !== nameB) return nameA.localeCompare(nameB, 'vi');
-        return formatStudentId(a.id).localeCompare(formatStudentId(b.id));
-      });
+  if (!datalistEl || !inputEl) return;
 
-      datalistEl.innerHTML = activeStus.map(function(s) {
-        var sId = formatStudentId(s.id);
-        var className = s.className || s.grade || 'Chưa xếp';
-        return '<option value="' + s.name + ' — Lớp ' + className + ' (Mã: ' + sId + ')"></option>';
-      }).join('');
+  var activeStus = (typeof getActiveStudents === 'function')
+    ? getActiveStudents()
+    : (appData.students || []);
 
-      inputEl.oninput = function() {
-        var val = inputEl.value.trim();
-        if (!val) {
-          if (hiddenInput) hiddenInput.value = '';
-          return;
-        }
-        
-        var matched = activeStus.find(function(s) {
-          var sId = formatStudentId(s.id);
-          var className = s.className || s.grade || 'Chưa xếp';
-          var fullStr = s.name + ' — Lớp ' + className + ' (Mã: ' + sId + ')';
-          return fullStr.toLowerCase() === val.toLowerCase() || val.includes('(Mã: ' + sId + ')');
-        });
+  // Chuẩn hóa chữ để tìm không phân biệt dấu
+  function normalizeText(str) {
+    return String(str || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
 
-        if (matched && hiddenInput) {
-          hiddenInput.value = formatStudentId(matched.id);
-        } else if (hiddenInput) {
-          hiddenInput.value = '';
-        }
-      };
+  // Tạo tên hiển thị
+  function getStudentLabel(s) {
+    var sId = formatStudentId(s.id);
+    var lop = s.className || s.grade || 'Chưa xếp';
+
+    return s.name + ' — Lớp ' + lop + ' (Mã: ' + sId + ')';
+  }
+
+  // Ban đầu không hiển thị bất kỳ học sinh nào
+  datalistEl.innerHTML = '';
+
+  inputEl.oninput = function() {
+    var val = inputEl.value.trim();
+    var keyword = normalizeText(val);
+
+    datalistEl.innerHTML = '';
+
+    // Kiểm tra người dùng đã chọn học sinh chưa
+    var selected = activeStus.find(function(s) {
+      return getStudentLabel(s) === val;
+    });
+
+    if (selected) {
+      if (hiddenInput) {
+        hiddenInput.value = formatStudentId(selected.id);
+      }
+      return;
     }
+
+    // Chưa chọn hợp lệ thì xóa mã cũ
+    if (hiddenInput) hiddenInput.value = '';
+
+    // Không tìm khi chưa nhập đủ 2 ký tự
+    if (keyword.length < 2) return;
+
+    var isCodeSearch = /^\d+$/.test(keyword);
+
+    // Tìm mã học sinh phải nhập đủ 3 chữ số
+    if (isCodeSearch && keyword.length < 3) return;
+
+    var results = activeStus.filter(function(s) {
+      var name = normalizeText(s.name);
+      var code = formatStudentId(s.id);
+
+      if (isCodeSearch) {
+        return code === keyword;
+      }
+
+      // Chỉ nhận từ hoàn chỉnh, không nhận 1 phần từ
+      return (' ' + name + ' ').includes(
+        ' ' + keyword + ' '
+      );
+    });
+
+    // Sắp xếp theo tên
+    results.sort(function(a, b) {
+      return normalizeText(a.name).localeCompare(
+        normalizeText(b.name), 'vi'
+      );
+    });
+
+    // Chỉ hiển thị tối đa 15 kết quả
+    results.slice(0, 15).forEach(function(s) {
+      var option = document.createElement('option');
+      option.value = getStudentLabel(s);
+      datalistEl.appendChild(option);
+    });
+  };
+}
+
 
     function openExpenseModal() {
       try {
