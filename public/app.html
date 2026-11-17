@@ -736,9 +736,10 @@
         <div id="attSubTabOverviewPanel" class="space-y-6">
           <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl shadow-sm border text-xs">
             <div class="flex flex-wrap items-center gap-3">
-              <span class="font-bold text-slate-700 text-sm admin-only">Chọn xem theo Lớp:</span>
-              <select id="overviewGradeFilter" onchange="onOverviewGradeChange()" class="admin-only px-3 py-1.5 border rounded-lg bg-white font-bold text-slate-700 text-xs grade-filter-options-hide"></select>
-              <select id="overviewClassFilter" onchange="renderAttendanceOverviewClass()" class="admin-only px-3 py-1.5 border rounded-lg bg-white font-medium text-xs">
+              <!-- Bộ lọc Khối/Lớp cũ: giữ ID ẩn để các chức năng hiện có không lỗi.
+                   Giao diện dùng danh sách lớp mới, không hiển thị hai bộ lọc trùng lặp. -->
+              <select id="overviewGradeFilter" onchange="onOverviewGradeChange()" class="grade-filter-options-hide" style="display:none!important" aria-hidden="true" tabindex="-1"></select>
+              <select id="overviewClassFilter" onchange="renderAttendanceOverviewClass()" style="display:none!important" aria-hidden="true" tabindex="-1">
                 <option value="ALL">Tất cả Lớp</option>
               </select>
 
@@ -1849,6 +1850,8 @@
       var filterHide = '<option value="NONE" selected>-- Chưa chọn Khối (Ẩn) --</option><option value="ALL">Tất cả Khối</option>' + optionsBasic;
       document.querySelectorAll('.grade-filter-options-hide').forEach(function(el) {
         el.innerHTML = filterHide;
+        // Tab Điểm danh > Tổng Quan: mặc định hiện tất cả khối/lớp.
+        if (el.id === 'overviewGradeFilter') el.value = 'ALL';
       });
 
       var filterAll = '<option value="ALL">Tất cả Khối</option>' + optionsBasic;
