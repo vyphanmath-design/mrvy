@@ -304,7 +304,8 @@ async function getInitialData(supabase, token) {
     dismissedKeys,
     posts,
     scheduleNote,
-    examScores
+    examScores,
+    expenses
   };
 }
 
@@ -858,20 +859,60 @@ export default async function handler(req, res) {
       }
 
 
-        case 'saveExpense': {
-        const [token, expenseData] = args;
+      // Lưu tập trung qua API máy chủ; không gửi Supabase key xuống trình duyệt.
+      case 'saveExpenses': {
+        const [token, expenseList] = args;
         await requireRole_(supabase, token, ['ADMIN']);
-        await supabase.from('chi_phi').insert({
-          khoan_chi: expenseData.khoanChi || '',
-          noi_dung: expenseData.noiDung || '',
-          so_tien: Number(expenseData.soTien) || 0,
-          ngay_chi: expenseData.ngayChi || '',
-          ghi_chu: expenseData.ghiChu || '',
-          thang: expenseData.thang || '',
-          ma_hs_duoc_gioi_thieu: expenseData.maHsDuocGioiThieu || ''
-        });
-        const data = await getInitialData(supabase, token);
-        return res.json({ result: data });
+        if (!Array.isArray(expenseList)) throw new Error('Danh sách khoản chi không hợp lệ');
+        if (expenseList.length > 2000) throw new Error('Vượt quá giới hạn 2.000 khoản chi/lần lưu');
+
+        for (const exp of expenseList) {
+          if (!exp || typeof exp !== 'object') throw new Error('Dữ liệu khoản chi không hợp lệ');
+          const money = Number(exp.soTien);
+          if (!Number.isFinite(money) || money < 0) throw new Error('Số tiền chi không hợp lệ');
+          const row = {
+            khoan_chi: String(exp.khoanChi || '').trim(),
+            noi_dung: String(exp.noiDung || '').trim(),
+            so_tien: money,
+            ngay_chi: exp.ngayChi || null,
+            ghi_chu: String(exp.ghiChu || '').trim(),
+            thang: String(exp.thang || '').trim(),
+            ma_hs_duoc_gioi_thieu: String(exp.maHsDuocGioiThieu || '').trim()
+          };
+          if (!row.thang) throw new Error('Thiếu tháng của khoản chi');
+          let query;
+          if (exp.id !== undefined && exp.id !== null && !String(exp.id).startsWith('CUST_')) {
+            query = supabase.from('chi_phi').update(row).eq('id', exp.id).select('id');
+          } else {
+            query = supabase.from('chi_phi').insert(row).select('id');
+          }
+          const { data, error } = await query;
+          if (error) throw new Error('Không thể lưu khoản chi: ' + error.message);
+          if (!data || data.length !== 1) throw new Error('Không xác nhận được bản ghi khoản chi đã lưu');
+        }
+        const saved = await fetchAllRows(supabase, 'chi_phi', 'id', true);
+        return res.json({ result: { success: true, expenses: saved.map(r => ({
+          id: r.id,
+          khoanChi: String(r.khoan_chi || ''),
+          noiDung: String(r.noi_dung || ''),
+          soTien: Number(r.so_tien) || 0,
+          ngayChi: String(r.ngay_chi || '').slice(0, 10),
+          ghiChu: String(r.ghi_chu || ''),
+          thang: String(r.thang || ''),
+          maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || '')
+        })) } });
+      }
+
+      case 'deleteExpense': {
+        const [token, expenseId] = args;
+        await requireRole_(supabase, token, ['ADMIN']);
+        if (expenseId === undefined || expenseId === null || String(expenseId).startsWith('CUST_')) {
+          throw new Error('ID khoản chi không hợp lệ');
+        }
+        const { data, error } = await supabase.from('chi_phi').delete().eq('id', expenseId).select('id');
+        if (error) throw new Error('Không thể xóa khoản chi: ' + error.message);
+        if (!data || data.length !== 1) throw new Error('Không tìm thấy khoản chi để xóa');
+        return res.json({ result: { success: true } });
       }
 
       case 'deleteExamColumn': {
