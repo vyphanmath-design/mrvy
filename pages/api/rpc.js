@@ -177,7 +177,8 @@ async function getInitialData(supabase, token) {
     ngayChi: String(r.ngay_chi || '').trim(),
     ghiChu: String(r.ghi_chu || '').trim(),
     thang: String(r.thang || '').trim(),
-    maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || '').trim()
+    maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || '').trim(),
+    loaiChi: String(r.loai_chi || '').trim() || (/^\d{1,6}$/.test(String(r.ma_hs_duoc_gioi_thieu || '').trim()) ? 'GIOI_THIEU' : 'KHAC')
   }));
   
   let avatarUrl = '';
@@ -255,6 +256,7 @@ async function getInitialData(supabase, token) {
   }));
 
   const scheduleNote = { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] };
+  let wheelPrizes = [];
   (ldData || []).forEach((r) => {
     const key = String(r.key_type || '').trim();
     const val = String(r.content_json || '');
@@ -264,6 +266,7 @@ async function getInitialData(supabase, token) {
         else if (key === 'NOTE_NHA') scheduleNote.noteNha = JSON.parse(val);
         else if (key === 'TKB_DATA') scheduleNote.tkbData = JSON.parse(val);
         else if (key === 'CUSTOM_STATS') scheduleNote.customStats = JSON.parse(val);
+        else if (key === 'WHEEL_PRIZES') { const parsed = JSON.parse(val); if (Array.isArray(parsed)) wheelPrizes = parsed.filter(p => typeof p === 'string'); }
       } catch (e) {}
     }
   });
@@ -291,7 +294,8 @@ async function getInitialData(supabase, token) {
     posts,
     scheduleNote,
     examScores,
-    expenses
+    expenses,
+    wheelPrizes
   };
 }
 
@@ -870,7 +874,8 @@ export default async function handler(req, res) {
             ngay_chi: exp.ngayChi || null,
             ghi_chu: String(exp.ghiChu || '').trim(),
             thang: String(exp.thang || '').trim(),
-            ma_hs_duoc_gioi_thieu: String(exp.maHsDuocGioiThieu || '').trim()
+            ma_hs_duoc_gioi_thieu: String(exp.maHsDuocGioiThieu || '').trim(),
+            loai_chi: exp.loaiChi === 'GIOI_THIEU' ? 'GIOI_THIEU' : 'KHAC'
           };
           if (!row.thang) throw new Error('Thiếu tháng của khoản chi');
           let query;
@@ -892,8 +897,24 @@ export default async function handler(req, res) {
           ngayChi: String(r.ngay_chi || '').slice(0, 10),
           ghiChu: String(r.ghi_chu || ''),
           thang: String(r.thang || ''),
-          maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || '')
+          maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || ''),
+          loaiChi: String(r.loai_chi || 'KHAC')
         })) } });
+      }
+
+      case 'saveWheelPrizes': {
+        const [token, payload] = args;
+        await requireRole_(supabase, token, ['ADMIN']);
+        if (!Array.isArray(payload) || payload.length < 1 || payload.length > 40 ||
+            payload.some(p => typeof p !== 'string' || !p.trim() || p.trim().length > 80)) {
+          throw new Error('Danh sách phần thưởng phải có 1–40 dòng, mỗi dòng tối đa 80 ký tự');
+        }
+        const prizes = payload.map(p => p.trim());
+        const { error } = await supabase.from('lich_day').upsert({
+          key_type: 'WHEEL_PRIZES', content_json: JSON.stringify(prizes)
+        }, {onConflict: 'key_type'});
+        if (error) throw new Error('Không thể lưu phần thưởng: ' + error.message);
+        return res.json({result: {success: true, prizes}});
       }
 
       case 'deleteExpense': {
