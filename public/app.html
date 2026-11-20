@@ -10237,7 +10237,7 @@ function applyGuestStudentLock() {
       var isStaff = (role === 'ADMIN' || role === 'ASSISTANT');
       var cleanTargetId = formatStudentId(studentId);
 
-      var stu = (getActiveStudents() || []).find(function(s) {
+      var stu = (appData.students || []).find(function(s) {
         return formatStudentId(s.id) === cleanTargetId || String(s.id).trim() === String(studentId).trim();
       });
       if (!stu) {
@@ -10312,6 +10312,17 @@ function applyGuestStudentLock() {
                 '<input type="text" id="inlineEditParentPhone" value="' + cleanPhonePar + '" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-mono font-bold text-blue-800">' +
               '</div>' +
               '<div class="sm:col-span-2 md:col-span-3">' +
+                '<label class="block font-bold text-slate-700 mb-1">Học sinh giới thiệu (mã HS)</label>' +
+                '<select id="inlineEditReferrer" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-medium text-slate-800">' +
+                  '<option value="">Không có người giới thiệu</option>' +
+                  (appData.students || []).filter(function(r){ return String(r.id) !== String(stu.id); }).map(function(r){
+                    var rid = formatStudentId(r.id);
+                    return '<option value="' + rid + '" ' + (rid === formatStudentId(stu.nguoi_gioi_thieu || '') ? 'selected' : '') + '>' +
+                      String(r.name || '').replace(/&/g,'&amp;').replace(/</g,'&lt;') + ' (Mã ' + rid + ')</option>';
+                  }).join('') +
+                '</select>' +
+              '</div>' +
+              '<div class="sm:col-span-2 md:col-span-3">' +
                 '<label class="block font-bold text-slate-700 mb-1">Ghi Chú</label>' +
                 '<input type="text" id="inlineEditNote" value="' + (stu.note || '').replace(/"/g, '&quot;') + '" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-medium text-slate-700">' +
               '</div>' +
@@ -10345,6 +10356,14 @@ function applyGuestStudentLock() {
           '</div>' +
           '<div class="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4">' +
             editFormHtml +
+            (isStaff && /NGHỈ|NGHI/.test(String(stu.statusNghi || '').toUpperCase()) ?
+              '<div class="bg-white rounded-2xl border border-amber-200 p-4 mb-4 space-y-2">' +
+                '<h4 class="font-black text-amber-900">Thu học phí bổ sung sau khi nghỉ</h4>' +
+                '<p class="text-xs text-slate-600">Nợ còn lại theo hồ sơ: <b>' + (parseSavedLeaveDebt(stu).totalDebt || 0).toLocaleString('vi-VN') + ' đ</b>. Khoản thu sẽ được ghi lịch sử, không xóa dữ liệu cũ.</p>' +
+                '<div class="flex flex-wrap gap-2"><input id="postLeavePayAmount" type="number" min="1" step="1000" placeholder="Số tiền đã đóng (đ)" class="min-w-[180px] flex-1 border rounded-lg px-3 py-2 text-sm">' +
+                '<input id="postLeavePayNote" type="text" placeholder="Ghi chú / hình thức thu" class="min-w-[180px] flex-1 border rounded-lg px-3 py-2 text-sm">' +
+                '<button type="button" onclick="savePostLeavePayment(\'' + stu.id + '\')" class="bg-amber-600 text-white rounded-lg px-4 py-2 font-bold text-xs">Ghi nhận thu bổ sung</button></div>' +
+              '</div>' : '') +
             profileHtml +
           '</div>' +
         '</div>';
@@ -10380,6 +10399,7 @@ function applyGuestStudentLock() {
       var phoneVal = document.getElementById('inlineEditPhone') ? document.getElementById('inlineEditPhone').value.trim() : '';
       var parentPhoneVal = document.getElementById('inlineEditParentPhone') ? document.getElementById('inlineEditParentPhone').value.trim() : '';
       var noteVal = document.getElementById('inlineEditNote') ? document.getElementById('inlineEditNote').value.trim() : '';
+      var referrerVal = document.getElementById('inlineEditReferrer') ? document.getElementById('inlineEditReferrer').value : '';
 
       if (!nameVal) return showToast('Vui lòng nhập Họ và Tên học sinh!', true);
 
@@ -10397,7 +10417,8 @@ function applyGuestStudentLock() {
         school: schoolVal,
         phone: phoneVal,
         parentPhone: parentPhoneVal,
-        note: noteVal
+        note: noteVal,
+        nguoi_gioi_thieu: referrerVal
       };
 
       // Gọi trực tiếp hàm updateStudent đã có sẵn trong pages/api/rpc.js
@@ -10817,6 +10838,7 @@ function applyGuestStudentLock() {
           window.onGradeFilterChange
         );
         if (typeof renderStudentsTable === 'function') renderStudentsTable();
+        renderSelectedClassTools(selectionValue);
 
       } else if (contextKey === 'attDailyTab') {
         var pairDD = getDailyAttendanceSelectPair();
@@ -10901,6 +10923,7 @@ function applyGuestStudentLock() {
           stuPanel.parentNode.insertBefore(dirStu, stuPanel);
         }
         dirStu.innerHTML = buildClassDirectoryCardHtml('studentTab', true, true);
+        renderSelectedClassTools(activeClassSelection.studentTab);
       }
 
       // 2. TAB ĐIỂM DANH NGÀY: Bám trực tiếp vào ô "🔍 Tìm tên..." (luôn hiển thị trên màn hình) để đặt khung Chọn Lớp ngay phía trên nó
@@ -13047,5 +13070,98 @@ function applyGuestStudentLock() {
     </div>
   </div>
   
+<script>
+// MRVY: Công cụ lớp học và thu sau nghỉ, giữ nguyên bộ điểm / xếp chỗ đã có.
+function mrvyEscape(s) { return String(s == null ? '' : s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function renderSelectedClassTools(cl) {
+  var host = document.getElementById('stuSubTabListPanel');
+  if(!host) return;
+  var panel=document.getElementById('mrvyClassTools');
+  if(!panel){panel=document.createElement('div');panel.id='mrvyClassTools';panel.className='rounded-2xl border border-indigo-200 bg-indigo-50 p-3 flex flex-wrap gap-2 items-center';host.insertBefore(panel, host.children[1] || null);}
+  if(!cl || ['ALL','NONE','NGHI','DISABLED'].includes(cl)){panel.classList.add('hidden');return;}
+  panel.classList.remove('hidden');
+  panel.innerHTML='<span class="font-black text-sm text-indigo-900 mr-2">LỚP '+mrvyEscape(cl)+'</span>'+
+  '<button type="button" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs" onclick="mrvyShowClassScores()">📊 Bảng điểm</button>'+
+  '<button type="button" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs" onclick="mrvyOpenClassSeating()">🪑 Sơ đồ lớp</button>';
+}
+function mrvyShowClassScores(){
+  var cl=activeClassSelection.studentTab;
+  if(!cl) return;
+  if(typeof switchTab==='function') switchTab('tab-hoso');
+  if(typeof switchHosoSubTab==='function') switchHosoSubTab('scores');
+  var sel=document.getElementById('scoreClassSelect');
+  if(sel){
+    if(!Array.from(sel.options).some(function(o){return o.value===cl;}))sel.add(new Option('Lớp '+cl,cl));
+    sel.value=cl;
+    sel.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  if(typeof renderClassScoreboard==='function')renderClassScoreboard();
+}
+function mrvyOpenClassSeating(){
+  var cl=activeClassSelection.studentTab;
+  if(!cl || ['ALL','NONE','NGHI'].includes(cl))return;
+  if(typeof openSeatingArrangementModal!=='function'){alert('Chưa tải được bộ xếp chỗ.');return;}
+  var list=(appData.students||[]).filter(function(s){return String(s.className||'').trim()===cl && !/NGHỈ|NGHI/.test(String(s.statusNghi||'').toUpperCase());})
+    .map(function(s){return {id:formatStudentId(s.id),name:s.name,className:cl,isMakeUp:false};});
+  if(!list.length){showToast('Lớp chưa có học sinh!',true);return;}
+  var orig=window.getPresentStudentsForOverviewDate;
+  window.getPresentStudentsForOverviewDate=function(){return list.slice();};
+  try {openSeatingArrangementModal(new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}));}
+  finally {window.getPresentStudentsForOverviewDate=orig;}
+  var st=window.__seatingState;
+  st.className=cl;st.mrvyClassMode=true;st.students=list.slice();
+  var saved=(appData.scheduleNote && appData.scheduleNote.seatingLayouts||{})[cl];
+  var top=document.querySelector('#seatingExamModal #seatingStatusBanner');
+  if(top && !document.getElementById('mrvySaveSeatBtn')){
+    var actions=document.createElement('div');actions.className='flex gap-2 flex-wrap mt-2';
+    actions.innerHTML='<button id="mrvySaveSeatBtn" type="button" class="rounded-xl px-4 py-2 bg-emerald-700 text-white font-bold" onclick="mrvySaveSeating()">💾 Lưu sơ đồ lên Supabase</button>'+
+    '<button type="button" class="rounded-xl px-4 py-2 bg-indigo-100 text-indigo-900 font-bold" onclick="mrvyRestoreSeating()">↩ Tải sơ đồ đã lưu</button>';
+    top.after(actions);
+  }
+  if(saved)mrvyRestoreSeating();else window.renderSeatingBoard();
+}
+function mrvyRestoreSeating(){
+  var st=window.__seatingState;var data=((appData.scheduleNote||{}).seatingLayouts||{})[st.className];
+  if(!data){showToast('Lớp này chưa có sơ đồ đã lưu!',true);return;}
+  st.colsGroup=data.colsGroup;st.rowsCount=data.rowsCount;st.seatsPerRow=data.seatsPerRow;st.mode=data.mode;
+  var lookup={};st.students.forEach(function(s){lookup[formatStudentId(s.id)]=s;});
+  st.students=(data.studentIds||[]).map(function(id){return lookup[formatStudentId(id)];}).filter(Boolean);
+  // Thêm học sinh mới chưa có trong sơ đồ cũ vào cuối
+  Object.values(lookup).forEach(function(s){if(!st.students.some(function(t){return t.id===s.id;}))st.students.push(s);});
+  st.history=[st.students.slice()];st.cleared=false;
+  var fields={seatColsInput:st.colsGroup,seatRowsInput:st.rowsCount,seatPerRowInput:st.seatsPerRow,seatModeSelect:st.mode};
+  Object.keys(fields).forEach(function(id){var el=document.getElementById(id);if(el)el.value=fields[id];});
+  window.renderSeatingBoard();showToast('Đã tải sơ đồ lớp '+st.className);
+}
+function mrvySaveSeating(){
+  var st=window.__seatingState;
+  if(!st || !st.mrvyClassMode)return;
+  if(st.cleared){showToast('Sơ đồ đang trống, không lưu!',true);return;}
+  var btn=document.getElementById('mrvySaveSeatBtn');if(btn)btn.disabled=true;
+  var data={colsGroup:st.colsGroup,rowsCount:st.rowsCount,seatsPerRow:st.seatsPerRow,mode:st.mode,studentIds:st.students.map(function(s){return formatStudentId(s.id);})};
+  google.script.run.withSuccessHandler(function(response){
+    if(btn)btn.disabled=false;
+    if(response && response.success===false){showToast(response.message||'Không lưu được sơ đồ',true);return;}
+    if(!appData.scheduleNote)appData.scheduleNote={};
+    if(!appData.scheduleNote.seatingLayouts)appData.scheduleNote.seatingLayouts={};
+    appData.scheduleNote.seatingLayouts[st.className]=data;
+    showToast('Đã lưu sơ đồ lớp '+st.className+' lên Supabase!');
+  }).withFailureHandler(function(e){if(btn)btn.disabled=false;showToast('Lỗi lưu sơ đồ: '+e.message,true);})
+    .saveClassSeating(sessionStorage.getItem('sessionToken'),st.className,data);
+}
+function savePostLeavePayment(id){
+  var amount=Number((document.getElementById('postLeavePayAmount')||{}).value);
+  var note=(document.getElementById('postLeavePayNote')||{}).value||'';
+  if(!Number.isSafeInteger(amount)||amount<=0)return showToast('Nhập số tiền nguyên dương hợp lệ!',true);
+  if(!confirm('Xác nhận thu bổ sung '+amount.toLocaleString('vi-VN')+' đ cho HS '+id+'?'))return;
+  google.script.run.withSuccessHandler(function(data){
+    if(data&&data.success===false){showToast(data.message||'Lỗi ghi nhận',true);return;}
+    if(data&&data.students)appData=data;
+    if(typeof renderAllViews==='function')renderAllViews();
+    openFullStudentProfileStaff(id);showToast('Đã ghi nhận học phí bổ sung.');
+  }).withFailureHandler(function(err){showToast('Không ghi nhận được: '+err.message,true);})
+  .recordPostLeavePayment(sessionStorage.getItem('sessionToken'),id,amount,note);
+}
+</script>
 </body>
 </html>
