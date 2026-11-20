@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "TOÁN MR VY – Quản lý và tra cứu",
+  "short_name": "TOÁN MR VY",
+  "description": "Tra cứu học sinh, quản lý lớp học, học phí và thời khóa biểu TOÁN MR VY.",
+  "lang": "vi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eef4fc",
+  "theme_color": "#0b2447",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
