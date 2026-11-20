@@ -4393,6 +4393,20 @@ function getStudentDebtDetails(student, targetMonthStr) {
             studentQueue = [];
             renderStudentQueue();
             renderAllViews();
+            // Chỉ chuyển danh sách khi máy chủ đã xác nhận lưu thành công.
+            if (data && data.success !== false && Array.isArray(data.students)) {
+              switchStudentSubTab('list');
+              var lastClass = String((listToSave[listToSave.length - 1] || {}).className || '').trim();
+              if (lastClass && typeof selectClassFromDirectory === 'function') {
+                selectClassFromDirectory('studentTab', lastClass);
+              }
+              // Thêm mới có mã tăng dần, luôn nằm cuối danh sách của lớp.
+              var names = listToSave.map(function(s){return String(s.name||'').trim().toLowerCase();});
+              var rows = Array.from(document.querySelectorAll('#studentTableBody tr'));
+              var recent = rows.filter(function(tr){return names.some(function(n){return n && tr.textContent.toLowerCase().includes(n);});});
+              recent.forEach(function(tr){tr.style.boxShadow='inset 4px 0 0 #10b981';tr.style.backgroundColor='#ecfdf5';});
+              if (recent.length) recent[recent.length-1].scrollIntoView({behavior:'smooth',block:'nearest'});
+            }
             showToast('Đã đồng bộ thành công và làm mới dữ liệu!');
           })
           .withFailureHandler(function(err) {
@@ -10424,6 +10438,7 @@ function applyGuestStudentLock() {
       // Gọi trực tiếp hàm updateStudent đã có sẵn trong pages/api/rpc.js
       google.script.run
         .withSuccessHandler(function(data) {
+          if (data && data.success === false) { showToast(data.message || 'Không thể lưu hồ sơ', true); return; }
           if (data) appData = data;
           renderAllViews();
           openFullStudentProfileStaff(stuId);
@@ -10828,6 +10843,7 @@ function applyGuestStudentLock() {
       activeClassSelection[contextKey] = selectionValue;
 
       if (contextKey === 'studentTab') {
+        if (typeof window.mrvyCloseInlineClassScores === 'function' && document.getElementById('mrvyInlineScores')) window.mrvyCloseInlineClassScores();
         if (appData && Array.isArray(appData.students)) {
           appData.students = sortStudentsByClassThenId(appData.students);
         }
@@ -13087,15 +13103,15 @@ function renderSelectedClassTools(cl) {
 function mrvyShowClassScores(){
   var cl=activeClassSelection.studentTab;
   if(!cl) return;
-  if(typeof switchTab==='function') switchTab('tab-hoso');
-  if(typeof switchHosoSubTab==='function') switchHosoSubTab('scores');
+  // Không chuyển tab: di chuyển bảng điểm thật vào khung xem mở rộng của lớp.
+  if(typeof mrvyOpenInlineClassScores === 'function') mrvyOpenInlineClassScores(cl);
   var sel=document.getElementById('scoreClassSelect');
   if(sel){
     if(!Array.from(sel.options).some(function(o){return o.value===cl;}))sel.add(new Option('Lớp '+cl,cl));
     sel.value=cl;
     sel.dispatchEvent(new Event('change',{bubbles:true}));
   }
-  if(typeof renderClassScoreboard==='function')renderClassScoreboard();
+  if(typeof renderScoreSectionAll==='function')renderScoreSectionAll();
 }
 function mrvyOpenClassSeating(){
   var cl=activeClassSelection.studentTab;
@@ -13162,6 +13178,253 @@ function savePostLeavePayment(id){
   }).withFailureHandler(function(err){showToast('Không ghi nhận được: '+err.message,true);})
   .recordPostLeavePayment(sessionStorage.getItem('sessionToken'),id,amount,note);
 }
+</script>
+<script>
+// MRVY bổ sung: truy cập hồ sơ học sinh đã chuyển kho nghỉ (không chỉnh sửa nợ bằng tay).
+function mrvyArchivedEscape(v){return String(v==null?'':v).replace(/[&<>"']/g,function(x){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x];});}
+function mrvyOpenArchivedList(){
+  var list=(appData&&appData.archivedStudents)||[];
+  var old=document.getElementById('mrvyArchivedOverlay');if(old)old.remove();
+  var el=document.createElement('div');el.id='mrvyArchivedOverlay';el.className='fixed inset-0 z-[1000] bg-black/50 p-3 md:p-8 overflow-auto';
+  el.innerHTML='<div class="bg-white max-w-4xl mx-auto rounded-2xl p-4 md:p-6">'+
+    '<div class="flex justify-between items-center gap-3 mb-4"><h2 class="font-black text-xl">Học sinh đã chuyển kho nghỉ ('+list.length+')</h2><button class="bg-slate-100 rounded-xl px-4 py-2" onclick="document.getElementById(\'mrvyArchivedOverlay\').remove()">Đóng</button></div>'+
+    '<input id="mrvyArchivedSearch" class="border rounded-xl p-3 w-full mb-3" placeholder="Tìm mã hoặc tên học sinh đã nghỉ..." oninput="mrvyRenderArchivedRows()">'+
+    '<div id="mrvyArchivedRows" class="space-y-2"></div></div>';
+  document.body.appendChild(el);mrvyRenderArchivedRows();
+}
+function mrvyRenderArchivedRows(){
+ var all=(appData&&appData.archivedStudents)||[], q=(document.getElementById('mrvyArchivedSearch')?.value||'').toLowerCase().trim();
+ var host=document.getElementById('mrvyArchivedRows');if(!host)return;
+ host.innerHTML=all.filter(s=>(s.name+' '+s.id).toLowerCase().includes(q)).slice(0,150).map(s=>
+ '<div class="flex flex-wrap justify-between gap-2 border rounded-xl p-3"><div><b>'+mrvyArchivedEscape(s.name)+'</b> ('+mrvyArchivedEscape(s.id)+') · '+mrvyArchivedEscape(s.className)+'<p class="text-xs text-red-700">'+mrvyArchivedEscape(s.note)+'</p></div>'+ 
+ '<button class="bg-emerald-600 text-white rounded-lg px-3 py-1" onclick="mrvyEditArchived(\''+mrvyArchivedEscape(s.id)+'\')">Sửa hồ sơ / thu nợ</button></div>').join('') || '<p>Không có hồ sơ phù hợp.</p>';
+}
+function mrvyEditArchived(id){
+ var s=(appData.archivedStudents||[]).find(x=>String(x.id)===String(id));if(!s)return;
+ var prev=document.getElementById('mrvyArchivedEditor');if(prev)prev.remove();
+ var box=document.createElement('div');box.id='mrvyArchivedEditor';box.className='fixed inset-0 z-[1001] bg-black/60 p-3 md:p-10 overflow-auto';
+ var fields=[['Tên','name'],['Khối','grade'],['Lớp','className'],['Trường','school'],['SĐT học sinh','phone'],['SĐT phụ huynh','parentPhone'],['Mã người giới thiệu','nguoi_gioi_thieu']];
+ box.innerHTML='<div class="bg-white max-w-2xl mx-auto p-5 rounded-2xl space-y-3"><h3 class="font-black text-lg">Sửa hồ sơ đã nghỉ · '+mrvyArchivedEscape(id)+'</h3>'+
+  '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+fields.map(([label,key])=>'<label class="text-xs font-semibold">'+label+'<input data-arc-field="'+key+'" class="border p-2 rounded-lg w-full mt-1" value="'+mrvyArchivedEscape(s[key])+'"></label>').join('')+'</div>'+
+  '<p class="text-xs text-red-700">Ghi chú nợ hiện tại (chỉ đọc): '+mrvyArchivedEscape(s.note)+'</p>'+
+  '<div class="border-t pt-3 space-y-2"><b>Thu học phí bổ sung sau nghỉ</b><input id="mrvyArchivePay" type="number" min="1" step="1000" placeholder="Số tiền (đ)" class="border p-2 rounded-lg w-full">'+
+  '<input id="mrvyArchivePayNote" placeholder="Ghi chú khoản thu" class="border p-2 rounded-lg w-full"></div>'+
+  '<div class="flex flex-wrap justify-end gap-2"><button class="border px-4 py-2 rounded-lg" onclick="document.getElementById(\'mrvyArchivedEditor\').remove()">Đóng</button>'+ 
+  '<button id="mrvyArcSaveBtn" class="bg-emerald-600 text-white px-4 py-2 rounded-lg" onclick="mrvySaveArchived(\''+mrvyArchivedEscape(id)+'\')">Lưu thông tin</button>'+ 
+  '<button id="mrvyArcPayBtn" class="bg-amber-600 text-white px-4 py-2 rounded-lg" onclick="mrvyPayArchived(\''+mrvyArchivedEscape(id)+'\')">Ghi nhận thu nợ</button></div></div>';
+ document.body.appendChild(box);
+}
+function mrvySaveArchived(id){
+ var s={id};document.querySelectorAll('#mrvyArchivedEditor [data-arc-field]').forEach(el=>s[el.dataset.arcField]=el.value.trim());
+ var btn=document.getElementById('mrvyArcSaveBtn');btn.disabled=true;
+ google.script.run.withSuccessHandler(d=>{btn.disabled=false;if(d?.success===false){showToast(d.message||'Lỗi lưu',true);return;}appData=d;document.getElementById('mrvyArchivedEditor')?.remove();mrvyRenderArchivedRows();showToast('Đã lưu hồ sơ nghỉ lên Supabase');})
+ .withFailureHandler(e=>{btn.disabled=false;showToast(e.message,true);}).updateArchivedStudent(sessionStorage.getItem('sessionToken'),s);
+}
+function mrvyPayArchived(id){
+ var amt=Number(document.getElementById('mrvyArchivePay')?.value),note=document.getElementById('mrvyArchivePayNote')?.value||'';
+ if(!Number.isSafeInteger(amt)||amt<=0)return showToast('Nhập số tiền nguyên dương',true);
+ if(!confirm('Xác nhận thu '+amt.toLocaleString('vi-VN')+' đ từ học sinh '+id+'?'))return;
+ var btn=document.getElementById('mrvyArcPayBtn');btn.disabled=true;
+ google.script.run.withSuccessHandler(d=>{btn.disabled=false;if(d?.success===false){showToast(d.message||'Lỗi thu nợ',true);return;}appData=d;document.getElementById('mrvyArchivedEditor')?.remove();mrvyRenderArchivedRows();showToast('Đã cập nhật nợ và ghi lịch sử thu');})
+ .withFailureHandler(e=>{btn.disabled=false;showToast(e.message,true);}).recordPostLeavePayment(sessionStorage.getItem('sessionToken'),id,amt,note);
+}
+function mrvyInsertArchivedButton(){
+ var h=document.getElementById('stuSubTabListPanel');if(!h||document.getElementById('mrvyArchivedBtn'))return;
+ var b=document.createElement('button');b.id='mrvyArchivedBtn';b.type='button';b.className='px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 font-bold text-xs';b.innerHTML='📁 Học sinh đã chuyển kho nghỉ';b.onclick=mrvyOpenArchivedList;
+ var top=h.querySelector('.flex.flex-col.md\\:flex-row');(top||h).appendChild(b);
+}
+document.addEventListener('DOMContentLoaded',mrvyInsertArchivedButton);
+</script>
+<script>
+// MRVY PATCH 2026-11: bảng điểm xem tại chỗ; nhảy đúng lớp sau đăng ký;
+// kéo thả sơ đồ vào ô trống và đổi vị trí (máy tính + chạm hai ô trên điện thoại).
+(function(){
+  'use strict';
+  var scorePlaceholder = null;
+  window.mrvyOpenInlineClassScores = function(cl) {
+    var host = document.getElementById('stuSubTabListPanel');
+    var scores = document.getElementById('hosoSubTabScoresPanel');
+    if (!host || !scores) return;
+    var container = document.getElementById('mrvyInlineScores');
+    if (!container) {
+      container = document.createElement('section');
+      container.id = 'mrvyInlineScores';
+      container.className = 'bg-white rounded-2xl border-2 border-indigo-200 p-3 sm:p-5 my-4 shadow-sm';
+      var tools = document.getElementById('mrvyClassTools');
+      if (tools) tools.insertAdjacentElement('afterend',container);
+      else host.prepend(container);
+    }
+    if (!scorePlaceholder) {
+      scorePlaceholder = document.createComment('MRVY vị trí bảng điểm gốc');
+      scores.parentNode.insertBefore(scorePlaceholder,scores);
+    }
+    container.replaceChildren();
+    var header = document.createElement('div');
+    header.className = 'flex flex-wrap items-center justify-between gap-2 mb-3 border-b pb-3';
+    var title = document.createElement('h3');
+    title.className = 'font-black text-indigo-900 text-sm sm:text-base';
+    title.textContent = '📊 BẢNG ĐIỂM LỚP '+cl;
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold';
+    close.textContent = '✕ Đóng – Về danh sách lớp';
+    close.addEventListener('click',window.mrvyCloseInlineClassScores);
+    header.append(title,close); container.append(header,scores);
+    scores.classList.remove('hidden'); container.classList.remove('hidden');
+    var sel=document.getElementById('scoreClassSelect');
+    if(sel){
+      if(!Array.from(sel.options).some(function(o){return o.value===cl;})) sel.add(new Option('Lớp '+cl,cl));
+      sel.value=cl; sel.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    if(typeof renderScoreSectionAll==='function') renderScoreSectionAll();
+    container.scrollIntoView({block:'start',behavior:'smooth'});
+  };
+  window.mrvyCloseInlineClassScores = function(){
+    var cont=document.getElementById('mrvyInlineScores');
+    var scores=document.getElementById('hosoSubTabScoresPanel');
+    if(scorePlaceholder && scorePlaceholder.parentNode && scores){
+      scorePlaceholder.parentNode.insertBefore(scores,scorePlaceholder);
+      scorePlaceholder.remove();scorePlaceholder=null;
+    }
+    if(cont) cont.remove();
+    // Trả về danh sách đã chọn, không chuyển qua tab Hồ sơ.
+    var dir=document.getElementById('dirCardStudentTab');
+    if(dir) dir.scrollIntoView({block:'start',behavior:'smooth'});
+  };
+  // Với bài kiểm tra, giữ mọi thao tác xếp ngẫu nhiên/hoàn tác/xóa gốc.
+  // Chỉ thay phần hiển thị các ô và lưu vị trí chi tiết.
+  function st(){return window.__seatingState;}
+  function validSlots(){
+    var x=st(), slots=[];
+    for(var g=0;g<x.colsGroup;g++)for(var r=0;r<x.rowsCount;r++)for(var c=0;c<x.seatsPerRow;c++){
+      if(x.mode==='full' || (r%2===0 ? c%2===0 : c%2===1))
+        slots.push((g*x.rowsCount+r)*x.seatsPerRow+c);
+    }
+    return slots;
+  }
+  function placeInitial(){
+    var x=st(), max=x.colsGroup*x.rowsCount*x.seatsPerRow, map=Array(max).fill(null);
+    if(!x.cleared) validSlots().forEach(function(pos,i){if(x.students[i])map[pos]=String(x.students[i].id);});
+    x.mrvySeatMap=map;
+  }
+  function safe(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function findSeatElements(){
+    var root=document.getElementById('seatingBoardContent');if(!root)return [];
+    var groups=root.lastElementChild;if(!groups)return [];
+    var seats=[];
+    Array.from(groups.children).forEach(function(group){
+      Array.from(group.children).slice(1).forEach(function(row){
+        Array.from(row.children).forEach(function(cell){seats.push(cell);});
+      });
+    });
+    return seats;
+  }
+  function moveSeat(from,to){
+    var x=st(),a=x.mrvySeatMap;
+    if(!a||!Number.isInteger(from)||!Number.isInteger(to)||from===to||from<0||to<0||from>=a.length||to>=a.length)return;
+    if(!a[from])return;
+    var t=a[from];a[from]=a[to];a[to]=t;
+    x.cleared=false;
+    x.mrvyDirtySeats=true;
+    x.mrvySelectedSeat=null;
+    if(typeof window.renderSeatingBoard==='function') window.renderSeatingBoard();
+  }
+  window.mrvyMoveSeat=moveSeat;
+  function decorateSeating(){
+    var x=st();if(!x)return;
+    var cells=findSeatElements(), total=x.colsGroup*x.rowsCount*x.seatsPerRow;
+    if(cells.length!==total)return;
+    if(!Array.isArray(x.mrvySeatMap)||x.mrvySeatMap.length!==total)placeInitial();
+    var lookup={};(x.students||[]).forEach(function(s){lookup[String(s.id)]=s;});
+    var cnt=0;
+    cells.forEach(function(cell,idx){
+      var id=x.cleared?null:x.mrvySeatMap[idx], s=id&&lookup[String(id)];
+      cell.dataset.mrvySeat=String(idx);
+      cell.setAttribute('role','button');cell.setAttribute('tabindex','0');
+      cell.style.cursor='pointer';cell.style.touchAction='manipulation';
+      cell.style.minHeight='54px';
+      cell.style.borderRadius='12px';
+      cell.style.padding='6px 3px';
+      cell.style.textAlign='center';
+      if(s){
+        cnt++;cell.draggable=true;
+        cell.style.background=s.isMakeUp?'#fff7ed':'#ecfdf5';
+        cell.style.border='2px solid '+(s.isMakeUp?'#f97316':'#10b981');
+        var name=String(s.name||'').trim().split(/\s+/);var short=name.length>2?name.slice(-2).join(' '):name.join(' ');
+        cell.innerHTML='<div style="font-size:12px;font-weight:900;color:#0f172a">'+safe(short)+'</div><div style="font-size:10px;font-weight:700;color:#475569">'+safe(s.id)+'</div>';
+      }else{
+        cell.draggable=false;cell.style.background='#f8fafc';
+        cell.style.border='1.5px dashed #cbd5e1';cell.innerHTML='';
+      }
+      if(idx===x.mrvySelectedSeat)cell.style.outline='3px solid #4f46e5';
+      cell.addEventListener('dragstart',function(ev){if(!s)return ev.preventDefault(); x.mrvyDragFrom=idx;ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',String(idx));});
+      cell.addEventListener('dragover',function(ev){ev.preventDefault();ev.dataTransfer.dropEffect='move';});
+      cell.addEventListener('drop',function(ev){ev.preventDefault();var a=Number(ev.dataTransfer.getData('text/plain'));if(!Number.isInteger(a))a=x.mrvyDragFrom;moveSeat(a,idx);});
+      cell.addEventListener('click',function(){
+        if(Number.isInteger(x.mrvySelectedSeat)){
+          if(x.mrvySelectedSeat===idx){x.mrvySelectedSeat=null;window.renderSeatingBoard();return;}
+          moveSeat(x.mrvySelectedSeat,idx);
+        }else if(s){x.mrvySelectedSeat=idx;window.renderSeatingBoard();}
+      });
+      cell.addEventListener('keydown',function(ev){if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();cell.click();}});
+    });
+    var banner=document.getElementById('seatingStatusBanner');
+    if(banner && !x.cleared){banner.textContent='Đã xếp '+cnt+'/'+x.students.length+' học sinh. Kéo tên tới ô trống hoặc tên khác để đổi chỗ. Trên điện thoại: chạm tên, rồi chạm ô đích.';banner.style.color=cnt<x.students.length?'#e11d48':'#047857';}
+  }
+  var oldRender=window.renderSeatingBoard;
+  if(typeof oldRender==='function')window.renderSeatingBoard=function(){oldRender.apply(this,arguments);decorateSeating();};
+  ['shuffleSeatingAction','undoSeatingAction'].forEach(function(name){
+    var fn=window[name];if(typeof fn==='function')window[name]=function(){
+      var x=st();if(x){x.mrvySeatMap=null;x.mrvySelectedSeat=null;}
+      return fn.apply(this,arguments);
+    };
+  });
+  var oldClear=window.clearSeatingAction;
+  if(typeof oldClear==='function')window.clearSeatingAction=function(){var x=st();if(x){x.mrvySeatMap=null;x.mrvySelectedSeat=null;}return oldClear.apply(this,arguments);};
+  // Khi mở lần tiếp theo, tránh lẫn sơ đồ lớp trước với sơ đồ kiểm tra.
+  var oldOpen=window.openSeatingArrangementModal;
+  if(typeof oldOpen==='function'){
+    var wrapped=function(){var x=st();if(x){x.mrvySeatMap=null;x.mrvySelectedSeat=null;x.mrvyClassMode=false;}return oldOpen.apply(this,arguments);};
+    window.openSeatingArrangementModal=window.openSeatingModalForDate=wrapped;
+  }
+  // Gắn thêm vị trí từng ô khi nhấn lưu, không đổi API hoặc cấu trúc bảng cũ.
+  var saveOld=window.mrvySaveSeating;
+  if(typeof saveOld==='function')window.mrvySaveSeating=function(){
+    var x=st();if(!x||!x.mrvyClassMode)return saveOld.apply(this,arguments);
+    // Áp dụng lại logic lưu bản gốc, chỉ tăng thêm trường seatSlots trong payload.
+    if(x.cleared){if(window.showToast)showToast('Sơ đồ đang trống, không lưu!',true);return;}
+    var btn=document.getElementById('mrvySaveSeatBtn');if(btn)btn.disabled=true;
+    var data={colsGroup:x.colsGroup,rowsCount:x.rowsCount,seatsPerRow:x.seatsPerRow,mode:x.mode,
+      studentIds:x.students.map(function(s){return String(s.id);}),
+      seatSlots:Array.isArray(x.mrvySeatMap)?x.mrvySeatMap.slice():null};
+    google.script.run.withSuccessHandler(function(response){
+      if(btn)btn.disabled=false;
+      if(response && response.success===false){if(window.showToast)showToast(response.message||'Lỗi lưu sơ đồ',true);return;}
+      if(!appData.scheduleNote)appData.scheduleNote={};
+      if(!appData.scheduleNote.seatingLayouts)appData.scheduleNote.seatingLayouts={};
+      appData.scheduleNote.seatingLayouts[x.className]=data;
+      if(window.showToast)showToast('Đã lưu vị trí từng ô lớp '+x.className+' lên Supabase!');
+    }).withFailureHandler(function(err){if(btn)btn.disabled=false;if(window.showToast)showToast('Lỗi lưu sơ đồ: '+err.message,true);})
+      .saveClassSeating(sessionStorage.getItem('sessionToken'),x.className,data);
+  };
+  var restoreOld=window.mrvyRestoreSeating;
+  if(typeof restoreOld==='function')window.mrvyRestoreSeating=function(){
+    var x=st(), data=((appData.scheduleNote||{}).seatingLayouts||{})[x.className];
+    restoreOld.apply(this,arguments);
+    if(data && Array.isArray(data.seatSlots) && data.seatSlots.length===x.colsGroup*x.rowsCount*x.seatsPerRow){
+      var ids=new Set((x.students||[]).map(function(s){return String(s.id);}));
+      x.mrvySeatMap=data.seatSlots.map(function(id){return id!=null && ids.has(String(id))?String(id):null;});
+      // Học sinh đăng ký thêm sẽ ngồi vào các vị trí còn trống.
+      var used=new Set(x.mrvySeatMap.filter(Boolean));
+      (x.students||[]).forEach(function(s){
+        if(used.has(String(s.id)))return;
+        var empty=x.mrvySeatMap.indexOf(null);
+        if(empty>=0){x.mrvySeatMap[empty]=String(s.id);used.add(String(s.id));}
+      });
+      window.renderSeatingBoard();
+    }
+  };
+})();
 </script>
 </body>
 </html>
