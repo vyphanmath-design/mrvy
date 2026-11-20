@@ -45,15 +45,15 @@
     <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Quản Lý Toán Mr Vy</title>
+  <!-- MR VY PWA: chỉ bổ sung thông tin cài đặt, không tác động logic ứng dụng -->
   <meta name="theme-color" content="#0b2447">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="TOÁN MR VY">
-  <meta name="format-detection" content="telephone=no">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -349,8 +349,8 @@
 
           <!-- Ảnh đại diện Thầy + Chấm xanh hoạt động -->
           <div class="relative">
-            <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-[5px] bg-gradient-to-br from-white via-[#f8fbff] to-blue-50 shadow-[0_14px_30px_rgba(37,99,235,0.22)] border-2 border-blue-100 flex items-center justify-center">
-              <img id="loginLogo" src="" alt="Toán Mr Vy" class="w-full h-full object-contain rounded-full bg-white">
+            <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full p-1 bg-white shadow-[0_8px_25px_rgba(37,99,235,0.22)] border-2 border-blue-100 flex items-center justify-center">
+              <img id="loginLogo" src="" alt="Toán Mr Vy" class="w-full h-full object-cover rounded-full">
             </div>
             <span class="absolute bottom-1.5 right-1.5 w-5 h-5 rounded-full bg-emerald-500 border-3 border-white shadow-sm"></span>
           </div>
@@ -433,7 +433,7 @@
   <header class="bg-[#0b2447] text-white h-12 md:h-14 px-2.5 md:px-4 flex items-center justify-between shadow-md z-30 flex-shrink-0 border-b border-slate-800">
     <div class="flex items-center space-x-1.5 flex-shrink-0">
       <div class="w-7 h-7 md:w-9 md:h-9 rounded-full bg-emerald-500 border border-emerald-300 overflow-hidden flex items-center justify-center flex-shrink-0 shadow">
-        <img id="headerAvatar" src="" alt="Toán Mr Vy" class="w-full h-full object-contain bg-white">
+        <img id="headerAvatar" src="" alt="Toán Mr Vy" class="w-full h-full object-cover">
       </div>
       <div>
         <h1 class="text-xs sm:text-sm md:text-lg font-black tracking-wide leading-none uppercase whitespace-nowrap">TOÁN MR VY</h1>
@@ -1811,7 +1811,7 @@
     // ===================================================================================
     
     var currentUser = null;
-    var DEFAULT_AVATAR = "/icons/logo-avatar.svg";
+    var DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2319376D'/><circle cx='50' cy='38' r='20' fill='%23ffffff'/><path d='M20 88 C 20 62, 80 62, 80 88 Z' fill='%23ffffff'/></svg>";
     
     var ALL_CLASSES = [
       '6A', '6B', '6C', '6 Đợi', '7A', '7B', '7C', '7 Đợi', '8A', '8B', '8C', '8 Đợi', 
@@ -4207,18 +4207,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
             '</thead>' +
             '<tbody>' + rowsHtml + '</tbody>' +
           '</table>' +
-        '
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/service-worker.js').catch(function (err) {
-          console.warn('PWA registration failed:', err);
-        });
-      });
-    }
-  </script>
-
-</body></html>';
+        '</body></html>';
 
       var blob = new Blob(["\uFEFF" + excelTemplate], { type: 'application/vnd.ms-excel;charset=utf-8' });
       var link = document.createElement("a");
@@ -13446,6 +13435,17 @@ document.addEventListener('DOMContentLoaded',mrvyInsertArchivedButton);
     }
   };
 })();
+</script>
+
+<script>
+  // PWA không cache trang đăng nhập, học phí hoặc dữ liệu học sinh.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/service-worker.js').catch(function (error) {
+        console.warn('Không thể đăng ký PWA:', error);
+      });
+    });
+  }
 </script>
 </body>
 </html>
