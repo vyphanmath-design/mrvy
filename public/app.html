@@ -500,11 +500,49 @@
           <span class="hidden md:inline">Lịch Dạy & TKB</span>
           <span class="mobile-nav-label">Lịch dạy</span>
         </button>
+        <!-- MRVY PORTAL: chỉ hiện sau xác thực ADMIN trên máy chủ -->
+        <button type="button" id="menu-tab-mrvy-portal" onclick="mrvyOpenPortal()" class="tab-btn hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition" aria-label="Trung tâm quản trị 4 dự án">
+          <i class="fa-solid fa-grip text-base text-indigo-600 w-5"></i>
+          <span class="hidden md:inline">Trung tâm quản trị</span>
+          <span class="mobile-nav-label">4 dự án</span>
+        </button>
       </nav>
     </aside>
 
     <!-- MAIN CONTENT -->
     <main class="flex-1 p-2 md:p-6 overflow-y-auto custom-scrollbar">
+    <!-- MRVY PORTAL: chỉ dành cho phiên ADMIN đã được xác thực. Không ảnh hưởng học sinh. -->
+    <section id="tab-mrvy-portal" class="tab-content hidden space-y-4" aria-label="Trung tâm quản trị">
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+        <div class="flex flex-wrap gap-3 justify-between items-start">
+          <div>
+            <p class="uppercase text-[11px] font-extrabold tracking-widest text-indigo-600">Toán Mr Vy</p>
+            <h2 class="text-xl sm:text-2xl font-black text-[#0b2447] mt-1">Trung tâm quản trị</h2>
+            <p class="text-xs sm:text-sm text-slate-600 mt-2">Một nơi để mở 4 ứng dụng. Mỗi ứng dụng vẫn chạy độc lập tại địa chỉ cũ.</p>
+          </div>
+          <button type="button" onclick="mrvyReturnToTutoring()" class="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-bold"><i class="fa-solid fa-arrow-left mr-1"></i> Về quản lý học thêm</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+          <a href="https://mrvy.vercel.app/" onclick="return mrvyReturnToTutoring(event)" class="rounded-2xl border-2 border-emerald-200 hover:border-emerald-500 bg-emerald-50 p-4 flex gap-3 items-start transition">
+            <div class="bg-white rounded-xl w-11 h-11 flex items-center justify-center text-emerald-700"><i class="fa-solid fa-house text-xl"></i></div>
+            <div><div class="text-sm font-black text-slate-900">1. Quản lý học thêm</div><div class="text-xs text-slate-600 mt-1">Học sinh, điểm danh, học phí</div><div class="text-xs font-bold text-emerald-700 mt-2">Mở ngay trong ứng dụng này</div></div>
+          </a>
+          <a href="https://web-tai-lieu-toan.vercel.app/" target="_blank" rel="noopener noreferrer" class="rounded-2xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 p-4 flex gap-3 items-start transition">
+            <div class="bg-indigo-50 rounded-xl w-11 h-11 flex items-center justify-center text-indigo-700"><i class="fa-solid fa-book-open text-xl"></i></div>
+            <div><div class="text-sm font-black text-slate-900">2. Vzota – Tài liệu toán</div><div class="text-xs text-slate-600 mt-1">Tài liệu, đề kiểm tra, bài tập</div><div class="text-xs font-bold text-indigo-700 mt-2">Mở web độc lập <i class="fa-solid fa-arrow-up-right-from-square"></i></div></div>
+          </a>
+          <a href="https://mrvy-class.vercel.app/" target="_blank" rel="noopener noreferrer" class="rounded-2xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 p-4 flex gap-3 items-start transition">
+            <div class="bg-indigo-50 rounded-xl w-11 h-11 flex items-center justify-center text-indigo-700"><i class="fa-solid fa-school text-xl"></i></div>
+            <div><div class="text-sm font-black text-slate-900">3. Quản lý lớp chủ nhiệm</div><div class="text-xs text-slate-600 mt-1">Lớp học, nề nếp, quỹ lớp</div><div class="text-xs font-bold text-indigo-700 mt-2">Mở web độc lập <i class="fa-solid fa-arrow-up-right-from-square"></i></div></div>
+          </a>
+          <a href="https://quan-ly-lop-hoc-navy.vercel.app/" target="_blank" rel="noopener noreferrer" class="rounded-2xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 p-4 flex gap-3 items-start transition">
+            <div class="bg-indigo-50 rounded-xl w-11 h-11 flex items-center justify-center text-indigo-700"><i class="fa-solid fa-chalkboard-user text-xl"></i></div>
+            <div><div class="text-sm font-black text-slate-900">4. Quản lý lớp học</div><div class="text-xs text-slate-600 mt-1">Phân hệ quản lý riêng</div><div class="text-xs font-bold text-indigo-700 mt-2">Mở web độc lập <i class="fa-solid fa-arrow-up-right-from-square"></i></div></div>
+          </a>
+        </div>
+        <div class="bg-amber-50 text-amber-900 border border-amber-200 p-3 rounded-xl text-xs mt-5 leading-relaxed"><i class="fa-solid fa-circle-info mr-1"></i><strong>Giai đoạn 1:</strong> Các nút mở đúng website nhưng chưa tự đăng nhập ở ba web còn lại. Để hoàn thành đăng nhập một lần (SSO) an toàn, cần tích hợp API xác thực trên mã nguồn của từng dự án con.</div>
+      </div>
+    </section>
     <!-- TAB 1: HỌC SINH -->
       <div id="tab-hocsinh" class="tab-content admin-only space-y-6">
         <!-- THANH CHỌN 2 TAB TRÁI - PHẢI GIỐNG ĐIỂM DANH -->
@@ -1801,6 +1839,30 @@
     // ===================================================================================
     
     var currentUser = null;
+    // Không dùng vai trò trong localStorage để cấp quyền hiển thị cổng quản trị.
+    var mrvyAdminServerVerified = false;
+    function mrvySetAdminVerified(user) {
+      mrvyAdminServerVerified = Boolean(user && String(user.role || '').toUpperCase() === 'ADMIN');
+      var menu = document.getElementById('menu-tab-mrvy-portal');
+      if (menu) menu.classList.toggle('hidden', !mrvyAdminServerVerified);
+      if (!mrvyAdminServerVerified) {
+        var portal = document.getElementById('tab-mrvy-portal');
+        if (portal && !portal.classList.contains('hidden')) switchTab('tab-diemdanh');
+      }
+    }
+    function mrvyOpenPortal() {
+      if (!mrvyAdminServerVerified || !currentUser || String(currentUser.role || '').toUpperCase() !== 'ADMIN') {
+        showToast('Chỉ Admin đã xác thực mới mở được Trung tâm quản trị.', true);
+        return;
+      }
+      switchTab('tab-mrvy-portal');
+    }
+    function mrvyReturnToTutoring(evt) {
+      if (evt) evt.preventDefault();
+      switchTab('tab-hocsinh');
+      return false;
+    }
+
     var DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%2319376D'/><circle cx='50' cy='38' r='20' fill='%23ffffff'/><path d='M20 88 C 20 62, 80 62, 80 88 Z' fill='%23ffffff'/></svg>";
     
     var ALL_CLASSES = [
@@ -2066,6 +2128,8 @@
 
     function applyRolePermissions() {
       if (!currentUser) return;
+      var mrvyPortalMenu = document.getElementById('menu-tab-mrvy-portal');
+      if (mrvyPortalMenu) mrvyPortalMenu.classList.toggle('hidden', !(mrvyAdminServerVerified && String(currentUser.role || '').toUpperCase() === 'ADMIN'));
       var role = String(currentUser.role || '').toUpperCase();
       var isStudent = role === 'STUDENT';
       var isGuest = role === 'GUEST';
@@ -3780,6 +3844,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           // CHỐT CHẶN BẢO MẬT UI: Lấy quyền thật từ Server đè lại quyền bị Hacker fake
           if (data.serverRole && currentUser) {
             currentUser.role = data.serverRole;
+            if (String(data.serverRole || '').toUpperCase() !== 'ADMIN') mrvySetAdminVerified(null);
             sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
             applyRolePermissions(); // Khóa menu lại ngay lập tức
           }
@@ -6623,6 +6688,7 @@ var editAttContext = { studentId: null, dateStr: null };
             // Quyền thật sẽ được server xác nhận lại bằng token.
             currentUser = res.user;
             sessionStorage.setItem('currentUser', JSON.stringify(res.user));
+            mrvySetAdminVerified(res.user);
 
             document.getElementById('loginScreen').classList.add('hidden');
 
@@ -6671,6 +6737,7 @@ var editAttContext = { studentId: null, dateStr: null };
     }
 
    function clearAllSavedAuthSession() {
+      mrvySetAdminVerified(null);
       // 1. Xóa sạch mọi khóa lưu trữ phiên đăng nhập trên thiết bị
       var keysToRemove = ['sessionToken', 'currentUser', 'lockedGuestStuId', 'guestTempToken'];
       keysToRemove.forEach(function(k) {
@@ -6786,6 +6853,7 @@ var editAttContext = { studentId: null, dateStr: null };
           }
 
           currentUser = res.user;
+          mrvySetAdminVerified(res.user);
           var userRole = String(currentUser.role || '').toUpperCase();
 
           if (userRole === 'GUEST' && !lockedStuId) {
@@ -7201,6 +7269,7 @@ function exportTuitionExcel() {
 
 
     function switchTab(id) {
+      if (id === 'tab-mrvy-portal' && !mrvyAdminServerVerified) return;
       document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
       
       var targetEl = document.getElementById(id);
