@@ -256,6 +256,16 @@
     }
 
     
+
+    /* MR VY: điểm danh Tổng Quan chỉ dùng dãy nút chọn lớp mới.
+       Giữ select cũ trong DOM cho JS đọc giá trị; ẩn mọi dropdown
+       Khối/Lớp trong thanh lọc, KHÔNG ẩn chọn tháng. */
+    #attSubTabOverviewPanel > div:first-child select:not(#overviewMonthFilter),
+    #attSubTabOverviewPanel #overviewGradeFilter,
+    #attSubTabOverviewPanel #overviewClassFilter {
+      display: none !important;
+      visibility: hidden !important;
+    }
   </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden select-none bg-[#0b2447]">
