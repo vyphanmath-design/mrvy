@@ -93,44 +93,30 @@ function hashPassword_(password) {
   return crypto.createHash('sha256').update(rawPass, 'utf8').digest('hex');
 }
 
-// --- TẠO & GIẢI MÃ TOKEN TỰ THÂN ---
-function createSelfToken_(userObj) {
-  const payload = {
+// PHIÊN ĐĂNG NHẬP BỀN VỮNG: token ngẫu nhiên lưu trên Supabase, không tự hết hạn.
+// Chạy file tao_bang_phien_dang_nhap.sql trong Supabase SQL Editor trước khi triển khai.
+async function createPersistentSession_(supabase, userObj) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const { error } = await supabase.from('mrvy_sessions').insert({
+    token_hash: crypto.createHash('sha256').update(token).digest('hex'),
     username: String(userObj.username || ''),
     name: String(userObj.name || ''),
-    role: String(userObj.role || 'STUDENT').toUpperCase().trim(),
-    exp: Date.now() + 12 * 60 * 60 * 1000 // 12 tiếng
-  };
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+    role: String(userObj.role || 'STUDENT').toUpperCase().trim()
+  });
+  if (error) throw new Error('Không tạo được phiên đăng nhập: ' + error.message);
+  return token;
 }
 
 async function verifySessionToken_(supabase, token) {
-  if (!token) return null;
-  const cleanToken = String(token).trim();
-
-  try {
-    const decoded = Buffer.from(cleanToken, 'base64').toString('utf8');
-    if (decoded.startsWith('{')) {
-      const obj = JSON.parse(decoded);
-      if (obj && obj.username && obj.role) {
-        if (obj.exp && Date.now() > Number(obj.exp)) return null;
-        return obj;
-      }
-    }
-  } catch (e) {}
-
-  try {
-    const { data: sess } = await supabase
-      .from('sessions')
-      .select('*')
-      .eq('token', cleanToken)
-      .single();
-    if (sess && (!sess.expires_at || Date.now() <= Number(sess.expires_at))) {
-      return { username: sess.username, name: sess.name, role: sess.role };
-    }
-  } catch (e) {}
-
-  return null;
+  if (!token || typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const { data, error } = await supabase
+    .from('mrvy_sessions')
+    .select('username,name,role')
+    .eq('token_hash', tokenHash)
+    .maybeSingle();
+  if (error) throw new Error('Không kiểm tra được phiên đăng nhập: ' + error.message);
+  return data ? { username: data.username, name: data.name, role: data.role } : null;
 }
 
 async function requireRole_(supabase, token, allowedRoles) {
@@ -191,7 +177,8 @@ async function getInitialData(supabase, token) {
     ngayChi: String(r.ngay_chi || '').trim(),
     ghiChu: String(r.ghi_chu || '').trim(),
     thang: String(r.thang || '').trim(),
-    maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || '').trim()
+    maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || '').trim(),
+    loaiChi: String(r.loai_chi || '').trim() || (/^\d{1,6}$/.test(String(r.ma_hs_duoc_gioi_thieu || '').trim()) ? 'GIOI_THIEU' : 'KHAC')
   }));
   
   let avatarUrl = '';
@@ -268,7 +255,8 @@ async function getInitialData(supabase, token) {
     pdfData: r.file_pdf_data || ''
   }));
 
-  const scheduleNote = { tkbData: {}, noteTruong: [], noteNha: [], customStats: [], seatingLayouts: {} };
+  const scheduleNote = { tkbData: {}, noteTruong: [], noteNha: [], customStats: [] };
+  let wheelPrizes = [];
   (ldData || []).forEach((r) => {
     const key = String(r.key_type || '').trim();
     const val = String(r.content_json || '');
@@ -278,7 +266,7 @@ async function getInitialData(supabase, token) {
         else if (key === 'NOTE_NHA') scheduleNote.noteNha = JSON.parse(val);
         else if (key === 'TKB_DATA') scheduleNote.tkbData = JSON.parse(val);
         else if (key === 'CUSTOM_STATS') scheduleNote.customStats = JSON.parse(val);
-         else if (key.startsWith('SEATING_CLASS_')) scheduleNote.seatingLayouts[key.slice('SEATING_CLASS_'.length)] = JSON.parse(val);
+        else if (key === 'WHEEL_PRIZES') { const parsed = JSON.parse(val); if (Array.isArray(parsed)) wheelPrizes = parsed.filter(p => typeof p === 'string'); }
       } catch (e) {}
     }
   });
@@ -305,7 +293,9 @@ async function getInitialData(supabase, token) {
     dismissedKeys,
     posts,
     scheduleNote,
-    examScores
+    examScores,
+    expenses,
+    wheelPrizes
   };
 }
 
@@ -315,13 +305,13 @@ export default async function handler(req, res) {
   const { action, args = [] } = req.body || {};
 
   try {
+    const supabase = getSupabase();
+
     if (action === 'createGuestSession') {
       const guestUser = { username: 'guest', name: 'Khách', role: 'GUEST' };
-      const token = createSelfToken_(guestUser);
+      const token = await createPersistentSession_(supabase, guestUser);
       return res.status(200).json({ result: { success: true, token, user: guestUser } });
     }
-
-    const supabase = getSupabase();
 
     switch (action) {
       case 'checkLogin': {
@@ -351,7 +341,7 @@ export default async function handler(req, res) {
 
             if (isValid) {
               const userObj = { username: sheetUser, name: sheetName, role: sheetRole || 'STUDENT' };
-              const token = createSelfToken_(userObj);
+              const token = await createPersistentSession_(supabase, userObj);
               return res.json({ result: { success: true, token, user: userObj } });
             } else {
               return res.json({ result: { success: false, message: 'Mật khẩu không chính xác!' } });
@@ -367,7 +357,7 @@ export default async function handler(req, res) {
             const defaultPass = formatStudentId(stuId);
             if (p === defaultPass || p === stuId) {
               const userObj2 = { username: defaultPass, name: stuName, role: 'STUDENT' };
-              const token2 = createSelfToken_(userObj2);
+              const token2 = await createPersistentSession_(supabase, userObj2);
               return res.json({ result: { success: true, token: token2, user: userObj2 } });
             } else {
               return res.json({ result: { success: false, message: 'Mật khẩu không chính xác!' } });
@@ -391,6 +381,13 @@ export default async function handler(req, res) {
       }
 
       case 'logoutSession': {
+        const [token] = args;
+        if (typeof token === 'string' && /^[a-f0-9]{64}$/.test(token)) {
+          const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+          const { error } = await supabase.from('mrvy_sessions')
+            .delete().eq('token_hash', tokenHash);
+          if (error) throw new Error('Không thu hồi được phiên đăng nhập: ' + error.message);
+        }
         return res.json({ result: { success: true } });
       }
 
@@ -518,9 +515,6 @@ export default async function handler(req, res) {
           truong: studentData.school || '',
           ghi_chu: studentData.note || ''
         };
-        if (Object.prototype.hasOwnProperty.call(studentData, 'nguoi_gioi_thieu')) {
-          updatePayload.nguoi_gioi_thieu = String(studentData.nguoi_gioi_thieu || '').trim();
-        }
 
         if (studentData.isRestore) updatePayload.trang_thai = '';
 
@@ -862,51 +856,105 @@ export default async function handler(req, res) {
       }
 
 
-        case 'saveExpense': {
-        const [token, expenseData] = args;
+      // Chỉ ĐỌC tiền chi/hoa hồng trực tiếp từ Supabase. Không cập nhật, xóa hay ghi dữ liệu.
+      case 'getExpensesSnapshot': {
+        const [token] = args;
         await requireRole_(supabase, token, ['ADMIN']);
-        await supabase.from('chi_phi').insert({
-          khoan_chi: expenseData.khoanChi || '',
-          noi_dung: expenseData.noiDung || '',
-          so_tien: Number(expenseData.soTien) || 0,
-          ngay_chi: expenseData.ngayChi || '',
-          ghi_chu: expenseData.ghiChu || '',
-          thang: expenseData.thang || '',
-          ma_hs_duoc_gioi_thieu: expenseData.maHsDuocGioiThieu || ''
-        });
-        const data = await getInitialData(supabase, token);
-        return res.json({ result: data });
+        const rows = [];
+        const pageSize = 1000;
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error } = await supabase.from('chi_phi')
+            .select('id,khoan_chi,noi_dung,so_tien,ngay_chi,ghi_chu,thang,ma_hs_duoc_gioi_thieu,loai_chi')
+            .order('id', { ascending: true }).range(offset, offset + pageSize - 1);
+          if (error) throw new Error('Không đọc được bảng chi_phi: ' + error.message);
+          if (!Array.isArray(data)) throw new Error('Supabase không trả về dữ liệu chi_phi hợp lệ');
+          rows.push(...data);
+          if (data.length < pageSize) break;
+        }
+        return res.json({ result: { success: true, expenses: rows.map(r => ({
+          id: r.id,
+          khoanChi: String(r.khoan_chi || '').trim(),
+          noiDung: String(r.noi_dung || '').trim(),
+          soTien: Number(r.so_tien) || 0,
+          ngayChi: String(r.ngay_chi || '').trim(),
+          ghiChu: String(r.ghi_chu || '').trim(),
+          thang: String(r.thang || '').trim(),
+          maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || '').trim(),
+          loaiChi: String(r.loai_chi || '').trim() || (/^\d{1,6}$/.test(String(r.ma_hs_duoc_gioi_thieu || '').trim()) ? 'GIOI_THIEU' : 'KHAC')
+        })) } });
       }
 
-      case 'saveClassSeating': {
-        const [token, className, layout] = args;
-        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
-        const cl = String(className || '').trim();
-        if (!/^[\p{L}\d _-]{1,35}$/u.test(cl)) throw new Error('Tên lớp không hợp lệ');
-        const cols = Number(layout && layout.colsGroup);
-        const rows = Number(layout && layout.rowsCount);
-        const seats = Number(layout && layout.seatsPerRow);
-        const ids = (layout && layout.studentIds) || [];
-        if (![cols,rows,seats].every(x=>Number.isInteger(x) && x>=1 && x<=40) || !Array.isArray(ids) || ids.length>500) throw new Error('Dữ liệu sơ đồ không hợp lệ');
-        const safe = { colsGroup:cols, rowsCount:rows, seatsPerRow:seats, mode:layout.mode==='full'?'full':'sole', studentIds:ids.map(formatStudentId) };
-        const {error}=await supabase.from('lich_day').upsert({key_type:'SEATING_CLASS_'+cl,content_json:JSON.stringify(safe)},{onConflict:'key_type'});
-        if(error)throw error;
-        return res.json({result:{success:true}});
+      // Lưu tập trung qua API máy chủ; không gửi Supabase key xuống trình duyệt.
+      case 'saveExpenses': {
+        const [token, expenseList] = args;
+        await requireRole_(supabase, token, ['ADMIN']);
+        if (!Array.isArray(expenseList)) throw new Error('Danh sách khoản chi không hợp lệ');
+        if (expenseList.length > 2000) throw new Error('Vượt quá giới hạn 2.000 khoản chi/lần lưu');
+
+        for (const exp of expenseList) {
+          if (!exp || typeof exp !== 'object') throw new Error('Dữ liệu khoản chi không hợp lệ');
+          const money = Number(exp.soTien);
+          if (!Number.isFinite(money) || money < 0) throw new Error('Số tiền chi không hợp lệ');
+          const row = {
+            khoan_chi: String(exp.khoanChi || '').trim(),
+            noi_dung: String(exp.noiDung || '').trim(),
+            so_tien: money,
+            ngay_chi: exp.ngayChi || null,
+            ghi_chu: String(exp.ghiChu || '').trim(),
+            thang: String(exp.thang || '').trim(),
+            ma_hs_duoc_gioi_thieu: String(exp.maHsDuocGioiThieu || '').trim(),
+            loai_chi: exp.loaiChi === 'GIOI_THIEU' ? 'GIOI_THIEU' : 'KHAC'
+          };
+          if (!row.thang) throw new Error('Thiếu tháng của khoản chi');
+          let query;
+          if (exp.id !== undefined && exp.id !== null && !String(exp.id).startsWith('CUST_')) {
+            query = supabase.from('chi_phi').update(row).eq('id', exp.id).select('id');
+          } else {
+            query = supabase.from('chi_phi').insert(row).select('id');
+          }
+          const { data, error } = await query;
+          if (error) throw new Error('Không thể lưu khoản chi: ' + error.message);
+          if (!data || data.length !== 1) throw new Error('Không xác nhận được bản ghi khoản chi đã lưu');
+        }
+        const saved = await fetchAllRows(supabase, 'chi_phi', 'id', true);
+        return res.json({ result: { success: true, expenses: saved.map(r => ({
+          id: r.id,
+          khoanChi: String(r.khoan_chi || ''),
+          noiDung: String(r.noi_dung || ''),
+          soTien: Number(r.so_tien) || 0,
+          ngayChi: String(r.ngay_chi || '').slice(0, 10),
+          ghiChu: String(r.ghi_chu || ''),
+          thang: String(r.thang || ''),
+          maHsDuocGioiThieu: String(r.ma_hs_duoc_gioi_thieu || ''),
+          loaiChi: String(r.loai_chi || 'KHAC')
+        })) } });
       }
 
-      case 'recordPostLeavePayment': {
-        const [token, studentId, amount, note] = args;
-        const sess=await requireRole_(supabase,token,['ADMIN']);
-        const id=formatStudentId(studentId);
-        const amt=Number(amount);
-        if(!id || !Number.isSafeInteger(amt) || amt<=0)throw new Error('Số tiền không hợp lệ');
-        const {data,error}=await supabase.rpc('mrvy_record_post_leave_payment',{
-          p_student_id:id,p_amount:amt,p_note:String(note||'').slice(0,500),p_actor:String(sess.username||'ADMIN')
-        });
-        if(error)throw error;
-        if(!data || data.success!==true)throw new Error((data&&data.message)||'Không thể ghi nhận khoản thu');
-        const updated=await getInitialData(supabase,token);
-        return res.json({result:updated});
+      case 'saveWheelPrizes': {
+        const [token, payload] = args;
+        await requireRole_(supabase, token, ['ADMIN']);
+        if (!Array.isArray(payload) || payload.length < 1 || payload.length > 40 ||
+            payload.some(p => typeof p !== 'string' || !p.trim() || p.trim().length > 80)) {
+          throw new Error('Danh sách phần thưởng phải có 1–40 dòng, mỗi dòng tối đa 80 ký tự');
+        }
+        const prizes = payload.map(p => p.trim());
+        const { error } = await supabase.from('lich_day').upsert({
+          key_type: 'WHEEL_PRIZES', content_json: JSON.stringify(prizes)
+        }, {onConflict: 'key_type'});
+        if (error) throw new Error('Không thể lưu phần thưởng: ' + error.message);
+        return res.json({result: {success: true, prizes}});
+      }
+
+      case 'deleteExpense': {
+        const [token, expenseId] = args;
+        await requireRole_(supabase, token, ['ADMIN']);
+        if (expenseId === undefined || expenseId === null || String(expenseId).startsWith('CUST_')) {
+          throw new Error('ID khoản chi không hợp lệ');
+        }
+        const { data, error } = await supabase.from('chi_phi').delete().eq('id', expenseId).select('id');
+        if (error) throw new Error('Không thể xóa khoản chi: ' + error.message);
+        if (!data || data.length !== 1) throw new Error('Không tìm thấy khoản chi để xóa');
+        return res.json({ result: { success: true } });
       }
 
       case 'deleteExamColumn': {
