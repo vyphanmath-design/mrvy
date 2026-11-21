@@ -266,7 +266,12 @@
       display: none !important;
       visibility: hidden !important;
     }
-  </style>
+  
+    /* MR VY: hiển thị tiền chi tức thời; chỉ cho nhập sau khi xác nhận Supabase. */
+    #expenseModal.mrvy-expense-readonly #expenseTableBody input,
+    #expenseModal.mrvy-expense-readonly #expenseTableBody select,
+    #expenseModal.mrvy-expense-readonly #expenseTableBody button {pointer-events:none;opacity:.65;}
+</style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden select-none bg-[#0b2447]">
 
@@ -636,7 +641,7 @@
               </button>
               
               <button type="button" id="btnBulkDelete" onclick="permanentlyDeleteSelectedStudents()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5 active:scale-95">
-                <i class="fa-solid fa-trash-xmark"></i> Xóa <span id="bulkDeleteCount">0</span> HS
+                <i class="fa-solid fa-box-archive"></i> Chuyển kho <span id="bulkDeleteCount">0</span> HS
               </button>
 
               <input type="text" id="searchStudent" oninput="renderStudentsTable()" placeholder="🔍 Tìm kiếm..." class="px-3 py-1.5 text-xs border rounded-lg w-40">
@@ -3743,9 +3748,10 @@ function getStudentDebtDetails(student, targetMonthStr) {
         if (isViewingDisabled) {
           if (leaveDebt.totalDebt > 0) {
             feeStatusHtml = '<span class="font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 whitespace-nowrap">Nợ: ' + formatMoney(leaveDebt.totalDebt) + ' đ</span>';
-            displayNoteHtml = '<td class="p-3 text-red-600 font-bold text-xs max-w-[240px] whitespace-normal leading-snug">' + leaveDebt.detailNote + '</td>';
+            displayNoteHtml = '<td class="p-3 text-red-600 font-bold text-xs max-w-[300px] whitespace-normal leading-snug">' + mrvyLeaveNoteDisplay(s.note, leaveDebt.detailNote) + '</td>';
           } else {
             feeStatusHtml = '<span class="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 whitespace-nowrap">Đã đủ (0 đ)</span>';
+            displayNoteHtml = '<td class="p-3 text-slate-600 font-medium text-xs max-w-[300px] whitespace-normal leading-snug">' + mrvyLeaveNoteDisplay(s.note, '-') + '</td>';
           }
         } else if (isWaiting) {
           feeStatusHtml = '<span class="font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">Chưa xếp lớp</span>';
@@ -3758,7 +3764,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var actionButtons = '';
         if (isViewingDisabled) {
           actionButtons = '<button onclick="restoreStudentModal(\'' + s.id + '\')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-rotate-left"></i> Vào lớp lại</button>' +
-                          (isAdmin ? '<button onclick="permanentlyDeleteStudent(\'' + s.id + '\', \'' + s.name + '\')" class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-trash-xmark"></i> Xóa vĩnh viễn</button>' : '');
+                          (isAdmin ? '<button onclick="permanentlyDeleteStudent(\'' + s.id + '\', \'' + s.name + '\')" class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg transition flex items-center gap-1"><i class="fa-solid fa-box-archive"></i> Nghỉ lâu dài</button>' : '');
         } else {
           actionButtons = '<button onclick="openMoveClassModal(\'' + s.id + '\')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-2.5 py-1.5 rounded-lg border transition flex items-center gap-1"><i class="fa-solid fa-right-left text-emerald-600"></i> Lớp</button>' +
                           '<button onclick="promoteSelectedOrAllStudents(\'' + s.id + '\')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1.5 rounded-lg border border-indigo-200 transition flex items-center gap-1" title="Thăng lên lớp đợi khối trên / Tốt nghiệp khối 12"><i class="fa-solid fa-angles-up"></i> Thăng lớp</button>' +
@@ -3938,47 +3944,94 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (statEl) statEl.innerText = formatMoney(allTotal * 1000) + ' đ';
     }
 
-    // BẢO VỆ DỮ LIỆU: chỉ cho phép sửa/lưu sau khi API đọc lại TOÀN BỘ chi_phi thành công.
+    // Trạng thái khoản chi: hiển thị bộ nhớ phiên ngay, xác nhận Supabase trong nền.
+    // Không tự ghi đè khi người dùng đang nhập khoản chi chưa lưu.
     var expenseSnapshotVerified = false;
+    var expenseHasDraft = false;
+    var expenseRefreshTimer = null;
+    var expenseRefreshRunning = false;
 
-    async function openExpenseModal() {
-      var modal = document.getElementById('expenseModal');
-      if (!modal) return;
-      modal.classList.remove('hidden');
-      expenseSnapshotVerified = false;
-      var tbody = document.getElementById('expenseTableBody');
-      if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-slate-500 font-bold">Đang tải các khoản chi trực tiếp từ Supabase...</td></tr>';
-      var saveBtn = document.getElementById('btnSaveExpenses');
-      if (saveBtn) saveBtn.disabled = true;
+    async function mrvyRefreshExpenseSnapshot(silent) {
+      if (expenseRefreshRunning || expenseHasDraft) return;
+      expenseRefreshRunning = true;
       try {
         var token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
         var response = await fetch('/api/rpc', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          body: JSON.stringify({ action: 'getExpensesSnapshot', args: [token] })
+          method: 'POST', headers: {'Content-Type':'application/json'}, cache:'no-store',
+          body: JSON.stringify({action:'getExpensesSnapshot',args:[token]})
         });
-        var payload = await response.json();
-        if (!response.ok || payload.error || !payload.result || payload.result.success !== true || !Array.isArray(payload.result.expenses)) {
-          throw new Error(payload.error || (payload.result && payload.result.message) || 'Máy chủ chưa trả về danh sách tiền chi');
-        }
-        // Chỉ thay mảng chi phí sau khi đã tải thành công; không đụng học phí/công nợ.
-        appData.expenses = payload.result.expenses;
-        expenseSnapshotVerified = true;
-        if (typeof syncReferralExpenses === 'function') syncReferralExpenses();
-        renderExpenseTable();
-      } catch (err) {
-        console.error('Không đọc được tiền chi từ Supabase:', err);
-        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-red-600 font-bold">Không tải được dữ liệu tiền chi. Đã KHÓA thao tác lưu/xóa để bảo vệ dữ liệu. Vui lòng kiểm tra API.</td></tr>';
-        if (typeof showToast === 'function') showToast('Lỗi tải tiền chi: ' + err.message, true);
-      } finally {
-        if (saveBtn) saveBtn.disabled = !expenseSnapshotVerified;
+        var payload=await response.json();
+        if(!response.ok || payload.error || !payload.result || payload.result.success!==true || !Array.isArray(payload.result.expenses))
+          throw new Error(payload.error || payload.result?.message || 'API chưa xác nhận tải khoản chi');
+        // Người dùng có thể bắt đầu nhập khi API đang chạy: không thay dữ liệu mới sửa.
+        if(expenseHasDraft) return;
+        var oldSignature=JSON.stringify(appData.expenses||[]);
+        appData.expenses=payload.result.expenses;
+        expenseSnapshotVerified=true;
+        document.getElementById('expenseModal')?.classList.remove('mrvy-expense-readonly');
+        if(typeof syncReferralExpenses==='function')syncReferralExpenses();
+        var btn=document.getElementById('btnSaveExpenses');if(btn)btn.disabled=false;
+        var modal=document.getElementById('expenseModal');
+        if(modal && !modal.classList.contains('hidden') && oldSignature!==JSON.stringify(appData.expenses||[]))renderExpenseTable();
+        var status=document.getElementById('mrvyExpenseSyncStatus');
+        if(status)status.textContent='Đã đồng bộ Supabase · '+new Date().toLocaleTimeString('vi-VN');
+      } catch(err) {
+        console.error('Lỗi đồng bộ tiền chi:',err);
+        if(!expenseSnapshotVerified){var btn=document.getElementById('btnSaveExpenses');if(btn)btn.disabled=true;}
+        var status=document.getElementById('mrvyExpenseSyncStatus');
+        if(status)status.textContent='Không đồng bộ được · dữ liệu đang xem có thể cũ';
+        if(!silent && typeof showToast==='function')showToast('Lỗi tải tiền chi: '+err.message,true);
+      } finally {expenseRefreshRunning=false;}
+    }
+    function mrvyExpenseWatch() {
+      if(expenseRefreshTimer)clearInterval(expenseRefreshTimer);
+      expenseRefreshTimer=setInterval(function(){
+        var modal=document.getElementById('expenseModal');
+        if(!modal || modal.classList.contains('hidden') || document.hidden || expenseHasDraft)return;
+        if(modal.contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))return;
+        mrvyRefreshExpenseSnapshot(true);
+      },10000);
+    }
+    function openExpenseModal() {
+      var modal=document.getElementById('expenseModal');if(!modal)return;
+      // Mỗi lần mở đều phải xác minh phiên bản mới của Supabase trước khi cho phép lưu/xóa.
+      expenseSnapshotVerified=false;
+      modal.classList.remove('hidden');
+      // Luôn hiển thị NGAY các khoản đã tải bởi getInitialData, không để màn hình trắng.
+      renderExpenseTable();
+      var status=document.getElementById('mrvyExpenseSyncStatus');
+      if(!status){
+        status=document.createElement('span');status.id='mrvyExpenseSyncStatus';
+        status.className='text-xs font-semibold text-slate-500';
+        var area=document.getElementById('expenseTableBody')?.closest('table')?.parentElement;
+        if(area)area.before(status);
+      }
+      if(status)status.textContent=expenseHasDraft?'Có khoản chi đang sửa – tạm dừng đồng bộ':'Đang kiểm tra cập nhật từ Supabase…';
+      var saveBtn=document.getElementById('btnSaveExpenses');
+      if(saveBtn)saveBtn.disabled=!expenseSnapshotVerified;
+      modal.classList.toggle('mrvy-expense-readonly',!expenseSnapshotVerified);
+      // Cần xác nhận dữ liệu để bật lưu/thêm/xóa, không đổi API ghi tiền hiện có.
+      mrvyRefreshExpenseSnapshot(false);
+      mrvyExpenseWatch();
+      if(!modal.dataset.mrvyDraftListener){
+        modal.addEventListener('input',function(ev){
+          if(ev.target.closest('#expenseTableBody')){
+            expenseHasDraft=true;
+            var st=document.getElementById('mrvyExpenseSyncStatus');
+            if(st)st.textContent='Có chỉnh sửa chưa lưu – tự đồng bộ tạm dừng';
+          }
+        });
+        modal.dataset.mrvyDraftListener='1';
       }
     }
 
     function closeExpenseModal() {
+      if (expenseHasDraft && !confirm('Có thay đổi tiền chi chưa lưu. Đóng cửa sổ sẽ bỏ các thay đổi này. Tiếp tục?')) return;
+      expenseHasDraft=false;
+      expenseSnapshotVerified=false;
       var modal = document.getElementById('expenseModal');
       if (modal) modal.classList.add('hidden');
+      if (expenseRefreshTimer) { clearInterval(expenseRefreshTimer); expenseRefreshTimer = null; }
     }
 
     function openAddExpenseRowModal() {
@@ -3988,6 +4041,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var loaiChi = selectedType && selectedType.value === 'GIOI_THIEU' ? 'GIOI_THIEU' : 'KHAC';
       var now = new Date();
       var vnDate = new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Ho_Chi_Minh'}).format(now);
+      expenseHasDraft = true;
       appData.expenses.push({
         id: 'CUST_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
         khoanChi: '', noiDung: '', soTien: 0, ngayChi: vnDate, ghiChu: '',
@@ -4064,6 +4118,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     function updateExpField(filteredIdx, field, value) {
+      expenseHasDraft = true;
       var targetExp = getVisibleExpenses()[filteredIdx];
       if (!targetExp) return;
       if (field === 'soTien') targetExp[field] = Number(value) || 0;
@@ -4127,6 +4182,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
           throw new Error(result.error || (result.result && result.result.message) || 'Máy chủ không xác nhận lưu thành công');
         }
         appData.expenses = result.result.expenses;
+        expenseHasDraft = false;
+        expenseSnapshotVerified = true;
         renderExpenseTable();
         if (typeof showToast === 'function') showToast('Đã lưu toàn bộ khoản chi lên Supabase!');
       } catch (err) {
@@ -5353,6 +5410,13 @@ var editAttContext = { studentId: null, dateStr: null };
       }
 
       var totalDebt = validDebtMonths.reduce(function(sum, m) { return sum + m.debtAmount; }, 0);
+      // Với học sinh NGHỈ, số nợ trên hồ sơ chỉ lấy từ ghi chú đã chốt.
+      // Phần tính học phí học sinh đang học giữ nguyên hoàn toàn.
+      if (/NGHỈ|NGHI/.test(String(s.statusNghi || '').toUpperCase())) {
+        var frozen = parseSavedLeaveDebt(s);
+        totalDebt = frozen.totalDebt || 0;
+        validDebtMonths = totalDebt > 0 ? [{month:'Nợ đã chốt khi nghỉ', debtAmount:totalDebt}] : [];
+      }
 
       var qrBlockHtml = '';
       if (totalDebt > 0) {
@@ -6378,6 +6442,16 @@ var editAttContext = { studentId: null, dateStr: null };
   }
 }
 
+    // Chỉ định dạng hiển thị: không sửa chuỗi ghi chú lưu trong Supabase.
+    function mrvyLeaveNoteDisplay(note, fallback) {
+      var text = String(note || '').trim();
+      // Giữ chi tiết nợ học phí, bỏ mã đóng gói kỹ thuật [NỢ HP: ... | ...].
+      text = text.replace(/\[NỢ HP:[^|\]]*\|\s*([^\]]*)\]/gi, function(_, detail){return String(detail || '').trim();});
+      text = text.replace(/\[NỢ HP:[^\]]*\]/gi, '').trim();
+      if (!text) text = String(fallback || '-').trim();
+      return mrvyEscape(text).replace(/\r?\n/g,'<br>');
+    }
+
    function parseSavedLeaveDebt(student) {
       if (!student) return { totalDebt: 0, detailNote: '' };
       var rawNote = String(student.note || '').trim();
@@ -6394,6 +6468,11 @@ var editAttContext = { studentId: null, dateStr: null };
         return { totalDebt: amt, detailNote: detail };
       }
 
+      // Học sinh đã nghỉ chỉ hiển thị khoản nợ được chốt trong ghi chú;
+      // sau khi Admin xóa ghi chú nợ, không tự tính lại nợ từ mức học phí hiện tại.
+      if (/NGHỈ|NGHI/.test(String(student.statusNghi || '').toUpperCase())) {
+        return { totalDebt: 0, detailNote: '' };
+      }
       var debtInfo = getStudentDebtDetails(student, getCurrentMonthStr());
       if (debtInfo && debtInfo.totalDebt > 0) {
         var detailList = (debtInfo.debtMonths || []).map(function(m) {
@@ -6405,85 +6484,27 @@ var editAttContext = { studentId: null, dateStr: null };
     }
 
     function handleDeleteStudent(id, name) {
-      var student = (appData.students || []).find(function(s) {
-        return String(s.id).trim() === String(id).trim();
-      });
-      var currentMonthStr = getCurrentMonthStr();
-      var debtInfo = student ? getStudentDebtDetails(student, currentMonthStr) : { totalDebt: 0, debtMonths: [] };
-
-      var confirmMsg = 'Xác nhận đưa học sinh "' + name + '" (Mã HS: ' + formatStudentId(id) + ') vào danh sách nghỉ học?';
-      var newDebtNote = '';
-
-      if (debtInfo && debtInfo.totalDebt > 0) {
-        var detailMonths = (debtInfo.debtMonths || []).map(function(m) {
-          return m.month + ': ' + formatMoney(m.debtAmount) + ' đ';
-        }).join('; ');
-        newDebtNote = '[NỢ HP: ' + formatMoney(debtInfo.totalDebt) + ' đ | Nợ ' + detailMonths + ']';
-        confirmMsg = confirmMsg + ' (Còn nợ ' + formatMoney(debtInfo.totalDebt) + ' đ - ' + detailMonths + ')';
+      var s=(appData.students||[]).find(function(x){return String(x.id).trim()===String(id).trim();});
+      if (!s) return showToast('Không tìm thấy hồ sơ học sinh',true);
+      var debtInfo=getStudentDebtDetails(s,getCurrentMonthStr());
+      var debtNote='';
+      if (debtInfo && debtInfo.totalDebt>0) {
+        var detail=(debtInfo.debtMonths||[]).map(function(m){return m.month+': '+formatMoney(m.debtAmount)+' đ';}).join('; ');
+        debtNote='[NỢ HP: '+formatMoney(debtInfo.totalDebt)+' đ | Nợ '+detail+']';
       }
-
-      if (!confirm(confirmMsg)) return;
-
-      var token = sessionStorage.getItem('sessionToken');
-
-      if (student) {
-        student.statusNghi = 'ĐÃ NGHỈ HỌC';
-        student.active = false;
-        if (newDebtNote) {
-          student.note = newDebtNote;
-        }
-      }
-
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
-        if (typeof showToast === 'function') showToast('Đang xử lý...');
-
-        var finishDeleteOnServer = function() {
-          google.script.run
-            .withSuccessHandler(function(data) {
-              if (data && data.success === false) {
-                if (typeof showToast === 'function') showToast('Lỗi: ' + data.message, true);
-                return;
-              }
-              if (data) appData = data.data || data;
-              if (newDebtNote && appData && appData.students) {
-                var sAfter = appData.students.find(function(x) {
-                  return String(x.id).trim() === String(id).trim();
-                });
-                if (sAfter && String(sAfter.note || '').indexOf('[NỢ HP:') === -1) {
-                  sAfter.note = newDebtNote;
-                }
-              }
-              renderStudentsTable();
-              if (typeof showToast === 'function') showToast('Đã đánh dấu nghỉ học học sinh ' + name + '!');
-            })
-            .withFailureHandler(function() {
-              if (typeof showToast === 'function') showToast('Lỗi: Bạn không có quyền (Chỉ Admin)!', true);
-            })
-            .deleteStudentFromSheet(token, id);
-        };
-
-        if (student && newDebtNote) {
-          var updatePayload = {
-            id: student.id,
-            name: student.name,
-            grade: student.grade || '',
-            className: student.className || '',
-            school: student.school || '',
-            phone: student.phone || '',
-            parentPhone: student.parentPhone || '',
-            note: newDebtNote
-          };
-          google.script.run
-            .withSuccessHandler(function() { finishDeleteOnServer(); })
-            .withFailureHandler(function() { finishDeleteOnServer(); })
-            .updateStudent(token, updatePayload);
-        } else {
-          finishDeleteOnServer();
-        }
-      } else {
+      var msg='Cho học sinh "'+name+'" (Mã '+formatStudentId(id)+') NGHỈ TẠM THỜI?\n'
+        +'Hồ sơ vẫn ở bảng hoc_sinh; phiếu thu và điểm danh cá nhân được xóa như cơ chế cũ.'
+        +(debtNote?'\nNợ chốt: '+formatMoney(debtInfo.totalDebt)+' đ':'');
+      if (!confirm(msg)) return;
+      var token=sessionStorage.getItem('sessionToken')||localStorage.getItem('sessionToken');
+      google.script.run.withSuccessHandler(function(data){
+        if(data && data.success===false) return showToast(data.message||'Không cập nhật được',true);
+        if(data) appData=data.data||data;
         renderStudentsTable();
-        if (typeof showToast === 'function') showToast('Đã đánh dấu nghỉ học (Bản local)!');
-      }
+        if(typeof renderAllViews==='function')renderAllViews();
+        showToast('Đã ghi nhận nghỉ tạm thời, chốt ghi chú và ngày nghỉ.');
+      }).withFailureHandler(function(err){showToast('Lỗi cập nhật nghỉ: '+err.message,true);})
+      .deleteStudentFromSheet(token,id,debtNote);
     }
 
     function handleSavePost(e) {
@@ -8556,59 +8577,26 @@ function exportTuitionExcel() {
     }
 
     function restoreStudentModal(id) {
-      var s = (appData.students || []).find(function(x) { return String(x.id).trim() === String(id).trim(); });
+      var s=(appData.students||[]).find(function(x){return String(x.id).trim()===String(id).trim();});
       if (!s) return;
-
-      var newClass = prompt('Nhập tên lớp muốn cho học sinh "' + s.name + '" quay lại học (Ví dụ: 10A, 11B):', s.className || '10A');
+      var newClass=prompt('Nhập lớp cho học sinh "'+s.name+'" quay lại (ví dụ 10A):',s.className||'10A');
       if (!newClass) return;
-
-      newClass = newClass.replace(/\s+/g, '').toUpperCase();
-
-      var m = newClass.match(/\d+/);
-      var newGrade = m ? ('Khối ' + m[0]) : s.grade;
-
-      // Xem như học sinh mới: Xóa toàn bộ ghi chú nợ cũ và mốc tháng bắt đầu học cũ
-      s.active = true;
-      s.grade = newGrade;
-      s.className = newClass;
-      s.statusNghi = '';
-      s.note = '';
-      s.startMonth = '';
-
-      var token = sessionStorage.getItem('sessionToken');
-
-      if (typeof google !== 'undefined' && google.script && google.script.run) {
-        var payload = {
-          id: s.id,
-          name: s.name,
-          grade: newGrade,
-          className: newClass,
-          school: s.school || '',
-          phone: s.phone || '',
-          parentPhone: s.parentPhone || '',
-          note: '', // Xóa sạch ghi chú nợ khi vào học lại
-          isRestore: true
-        };
-        google.script.run.withSuccessHandler(function(data) {
-          if (data && data.success === false) {
-            if (typeof showToast === 'function') showToast('Lỗi: ' + data.message, true);
-            return;
-          }
-          if (data) appData = data.data || data;
-          renderStudentsTable();
-          showToast('Đã khôi phục học sinh ' + s.name + ' vào lớp ' + newClass + ' (đã xóa ghi chú nợ cũ)!');
-        }).updateStudent(token, payload);
-      } else {
-        renderStudentsTable();
-        showToast('Đã khôi phục học sinh thành công!');
-      }
+      newClass=newClass.trim().toUpperCase();
+      if (!confirm('Khôi phục học sinh '+s.name+' vào '+newClass+'?\nTất cả ghi chú và mốc học cũ sẽ được xóa.')) return;
+      var token=sessionStorage.getItem('sessionToken')||localStorage.getItem('sessionToken');
+      google.script.run.withSuccessHandler(function(d){
+        if(d && d.success===false) return showToast(d.message||'Không khôi phục được',true);
+        if(d) appData=d.data||d;
+        renderAllViews();showToast('Đã cho '+s.name+' quay lại lớp '+newClass+' (đã xóa ghi chú cũ).');
+      }).withFailureHandler(function(e){showToast('Lỗi khôi phục: '+e.message,true);})
+      .restoreTemporaryStudent(token,id,newClass);
     }
 
     function permanentlyDeleteStudent(id, name) {
       var cleanId = String(id || '').trim();
       if (!cleanId) return showToast('Không tìm thấy Mã HS để xóa!', true);
 
-      if (confirm('⚠️ CẢNH BÁO: Xác nhận XÓA VĨNH VIỄN học sinh "' + name + '" (Mã HS: ' + cleanId + ')?\n\nDữ liệu sẽ được chuyển cắt hoàn toàn sang tab HocSinhNghi.')) {
+      if (confirm('Xác nhận CHUYỂN KHO NGHỈ LÂU DÀI học sinh "' + name + '" (Mã HS: ' + cleanId + ')?\n\nGiữ nguyên ghi chú, ngày nghỉ và nợ đã chốt. Phiếu thu/điểm danh cá nhân đã được xóa khi đánh dấu nghỉ.')) {
         
         // Móc chìa khóa bảo mật từ hệ thống
         var token = sessionStorage.getItem('sessionToken');
@@ -8618,7 +8606,7 @@ function exportTuitionExcel() {
             if (data) appData = data;
             renderAllViews();
             showToast('Đã chuyển học sinh ' + name + ' (Mã: ' + cleanId + ') sang tab HocSinhNghi!');
-          }).archiveStudent(token, cleanId); // Thêm token vào tham số đầu tiên cho khớp với Server
+          }).withFailureHandler(function(err){showToast('Không chuyển được kho nghỉ: '+err.message,true);}).archiveStudent(token, cleanId);
         }
       }
     }
@@ -9271,7 +9259,7 @@ function toggleAllStudents(source) {
       var ids = [];
       checkboxes.forEach(function(cb) { ids.push(cb.value); });
       
-      if (confirm('⚠️ CẢNH BÁO: Xác nhận XÓA VĨNH VIỄN ' + ids.length + ' học sinh đã chọn?\n\nDữ liệu sẽ được chuyển hoàn toàn sang tab HocSinhNghi.')) {
+      if (confirm('Chuyển kho NGHỈ LÂU DÀI ' + ids.length + ' học sinh đã chọn?\n\nChuyển ghi chú nợ và ngày nghỉ sang kho; phiếu thu/điểm danh đã được xử lý khi nghỉ.')) {
         var token = sessionStorage.getItem('sessionToken');
         
         var btnBulk = document.getElementById('btnBulkDelete');
@@ -9283,7 +9271,7 @@ function toggleAllStudents(source) {
           google.script.run.withSuccessHandler(function(data) {
             if (data) appData = data;
             renderAllViews();
-            showToast('✓ Đã xóa vĩnh viễn ' + ids.length + ' học sinh thành công!');
+            showToast('✓ Đã chuyển kho nghỉ lâu dài ' + ids.length + ' học sinh thành công!');
             btnBulk.innerHTML = origHtml;
             btnBulk.disabled = false;
           }).withFailureHandler(function(err){
@@ -10477,13 +10465,10 @@ function applyGuestStudentLock() {
           '</div>' +
           '<div class="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4">' +
             editFormHtml +
-            (isStaff && /NGHỈ|NGHI/.test(String(stu.statusNghi || '').toUpperCase()) ?
-              '<div class="bg-white rounded-2xl border border-amber-200 p-4 mb-4 space-y-2">' +
-                '<h4 class="font-black text-amber-900">Thu học phí bổ sung sau khi nghỉ</h4>' +
-                '<p class="text-xs text-slate-600">Nợ còn lại theo hồ sơ: <b>' + (parseSavedLeaveDebt(stu).totalDebt || 0).toLocaleString('vi-VN') + ' đ</b>. Khoản thu sẽ được ghi lịch sử, không xóa dữ liệu cũ.</p>' +
-                '<div class="flex flex-wrap gap-2"><input id="postLeavePayAmount" type="number" min="1" step="1000" placeholder="Số tiền đã đóng (đ)" class="min-w-[180px] flex-1 border rounded-lg px-3 py-2 text-sm">' +
-                '<input id="postLeavePayNote" type="text" placeholder="Ghi chú / hình thức thu" class="min-w-[180px] flex-1 border rounded-lg px-3 py-2 text-sm">' +
-                '<button type="button" onclick="savePostLeavePayment(\'' + stu.id + '\')" class="bg-amber-600 text-white rounded-lg px-4 py-2 font-bold text-xs">Ghi nhận thu bổ sung</button></div>' +
+            (isStaff && role === 'ADMIN' && /NGHỈ|NGHI/.test(String(stu.statusNghi || '').toUpperCase()) && /\[NỢ HP:/i.test(String(stu.note || '')) ?
+              '<div class="bg-white rounded-2xl border border-amber-200 p-4 mb-4 flex flex-wrap items-center justify-between gap-3">' +
+                '<p class="text-xs font-semibold text-amber-900">Hồ sơ nghỉ đang có ghi chú nợ đã chốt: ' + (parseSavedLeaveDebt(stu).totalDebt || 0).toLocaleString('vi-VN') + ' đ</p>' +
+                '<button type="button" onclick="mrvyClearLeaveDebt(\'' + mrvyEscape(stu.id) + '\', \'temporary\')" class="bg-amber-600 hover:bg-amber-700 text-white rounded-lg px-4 py-2 font-bold text-xs">Xóa ghi chú nợ</button>' +
               '</div>' : '') +
             profileHtml +
           '</div>' +
@@ -13276,6 +13261,31 @@ function mrvySaveSeating(){
   }).withFailureHandler(function(e){if(btn)btn.disabled=false;showToast('Lỗi lưu sơ đồ: '+e.message,true);})
     .saveClassSeating(sessionStorage.getItem('sessionToken'),st.className,data);
 }
+function mrvyClearLeaveDebt(id, location){
+  if (!confirm('Xóa TOÀN BỘ ghi chú nợ của học sinh '+id+'?\nChỉ giữ lại dòng Nghỉ từ ngày... (nếu có).\nThao tác này không tạo phiếu thu và không thể hoàn tác bằng nút này.')) return;
+  var token=sessionStorage.getItem('sessionToken')||localStorage.getItem('sessionToken');
+  if (!token) { showToast('Phiên Admin không hợp lệ, hãy đăng nhập lại.',true); return; }
+  var clicked=document.activeElement;
+  if (clicked && clicked.tagName==='BUTTON') clicked.disabled=true;
+  google.script.run.withSuccessHandler(function(data){
+    if (clicked && clicked.tagName==='BUTTON') clicked.disabled=false;
+    if (!data || data.success===false || !data.students) {
+      showToast((data&&data.message)||'Không nhận được dữ liệu cập nhật từ máy chủ',true);return;
+    }
+    appData=data;
+    if (typeof renderAllViews==='function') renderAllViews();
+    if (location==='archived') {
+      document.getElementById('mrvyArchivedEditor')?.remove();
+      if (typeof mrvyRenderArchivedRows==='function') mrvyRenderArchivedRows();
+    } else {
+      openFullStudentProfileStaff(id);
+    }
+    showToast('Đã xóa ghi chú nợ; giữ lại ngày nghỉ.');
+  }).withFailureHandler(function(err){
+    if (clicked && clicked.tagName==='BUTTON') clicked.disabled=false;
+    showToast('Không thể xóa ghi chú nợ: '+err.message,true);
+  }).clearLeaveDebtNote(token,id,location);
+}
 function savePostLeavePayment(id){
   var amount=Number((document.getElementById('postLeavePayAmount')||{}).value);
   var note=(document.getElementById('postLeavePayNote')||{}).value||'';
@@ -13307,22 +13317,22 @@ function mrvyRenderArchivedRows(){
  var all=(appData&&appData.archivedStudents)||[], q=(document.getElementById('mrvyArchivedSearch')?.value||'').toLowerCase().trim();
  var host=document.getElementById('mrvyArchivedRows');if(!host)return;
  host.innerHTML=all.filter(s=>(s.name+' '+s.id).toLowerCase().includes(q)).slice(0,150).map(s=>
- '<div class="flex flex-wrap justify-between gap-2 border rounded-xl p-3"><div><b>'+mrvyArchivedEscape(s.name)+'</b> ('+mrvyArchivedEscape(s.id)+') · '+mrvyArchivedEscape(s.className)+'<p class="text-xs text-red-700">'+mrvyArchivedEscape(s.note)+'</p></div>'+ 
- '<button class="bg-emerald-600 text-white rounded-lg px-3 py-1" onclick="mrvyEditArchived(\''+mrvyArchivedEscape(s.id)+'\')">Sửa hồ sơ / thu nợ</button></div>').join('') || '<p>Không có hồ sơ phù hợp.</p>';
+ '<div class="flex flex-wrap justify-between gap-2 border rounded-xl p-3"><div><b>'+mrvyArchivedEscape(s.name)+'</b> ('+mrvyArchivedEscape(s.id)+') · '+mrvyArchivedEscape(s.className)+'<p class="text-xs '+(/\[NỢ HP:/i.test(String(s.note||''))?'text-red-700':'text-slate-600')+' whitespace-pre-line">'+mrvyArchivedEscape(s.note)+'</p></div>'+ 
+ '<div class="flex gap-2 flex-wrap"><button class="bg-emerald-600 text-white rounded-lg px-3 py-1" onclick="mrvyEditArchived(\''+mrvyArchivedEscape(s.id)+'\')">Sửa hồ sơ / thu nợ</button>'+ 
+ '<button class="bg-blue-700 text-white rounded-lg px-3 py-1" onclick="mrvyRestoreArchived(\''+mrvyArchivedEscape(s.id)+'\')">Vào lớp lại</button></div></div>').join('') || '<p>Không có hồ sơ phù hợp.</p>';
 }
 function mrvyEditArchived(id){
  var s=(appData.archivedStudents||[]).find(x=>String(x.id)===String(id));if(!s)return;
  var prev=document.getElementById('mrvyArchivedEditor');if(prev)prev.remove();
  var box=document.createElement('div');box.id='mrvyArchivedEditor';box.className='fixed inset-0 z-[1001] bg-black/60 p-3 md:p-10 overflow-auto';
- var fields=[['Tên','name'],['Khối','grade'],['Lớp','className'],['Trường','school'],['SĐT học sinh','phone'],['SĐT phụ huynh','parentPhone'],['Mã người giới thiệu','nguoi_gioi_thieu']];
+ var fields=[['Tên','name'],['Khối','grade'],['Lớp','className'],['Trường','school'],['SĐT học sinh','phone'],['SĐT phụ huynh','parentPhone'],['Mã người giới thiệu','nguoi_gioi_thieu'],['Tên phụ huynh','parentName'],['Quan hệ (Ba/Mẹ)','parentRelation']];
  box.innerHTML='<div class="bg-white max-w-2xl mx-auto p-5 rounded-2xl space-y-3"><h3 class="font-black text-lg">Sửa hồ sơ đã nghỉ · '+mrvyArchivedEscape(id)+'</h3>'+
   '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+fields.map(([label,key])=>'<label class="text-xs font-semibold">'+label+'<input data-arc-field="'+key+'" class="border p-2 rounded-lg w-full mt-1" value="'+mrvyArchivedEscape(s[key])+'"></label>').join('')+'</div>'+
-  '<p class="text-xs text-red-700">Ghi chú nợ hiện tại (chỉ đọc): '+mrvyArchivedEscape(s.note)+'</p>'+
-  '<div class="border-t pt-3 space-y-2"><b>Thu học phí bổ sung sau nghỉ</b><input id="mrvyArchivePay" type="number" min="1" step="1000" placeholder="Số tiền (đ)" class="border p-2 rounded-lg w-full">'+
-  '<input id="mrvyArchivePayNote" placeholder="Ghi chú khoản thu" class="border p-2 rounded-lg w-full"></div>'+
+  '<p class="text-xs '+(/\[NỢ HP:/i.test(String(s.note||''))?'text-red-700':'text-slate-600')+' whitespace-pre-line">Ghi chú hiện tại (chỉ đọc): '+mrvyArchivedEscape(s.note)+'</p>'+
+  (/\[NỢ HP:/i.test(String(s.note||'')) ? '<div class="border-t pt-3"><button type="button" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-bold text-xs" onclick="mrvyClearLeaveDebt(\''+mrvyArchivedEscape(id)+'\', \'archived\')">Xóa ghi chú nợ</button></div>' : '')+
   '<div class="flex flex-wrap justify-end gap-2"><button class="border px-4 py-2 rounded-lg" onclick="document.getElementById(\'mrvyArchivedEditor\').remove()">Đóng</button>'+ 
   '<button id="mrvyArcSaveBtn" class="bg-emerald-600 text-white px-4 py-2 rounded-lg" onclick="mrvySaveArchived(\''+mrvyArchivedEscape(id)+'\')">Lưu thông tin</button>'+ 
-  '<button id="mrvyArcPayBtn" class="bg-amber-600 text-white px-4 py-2 rounded-lg" onclick="mrvyPayArchived(\''+mrvyArchivedEscape(id)+'\')">Ghi nhận thu nợ</button></div></div>';
+  '</div></div>';
  document.body.appendChild(box);
 }
 function mrvySaveArchived(id){
@@ -13338,6 +13348,23 @@ function mrvyPayArchived(id){
  var btn=document.getElementById('mrvyArcPayBtn');btn.disabled=true;
  google.script.run.withSuccessHandler(d=>{btn.disabled=false;if(d?.success===false){showToast(d.message||'Lỗi thu nợ',true);return;}appData=d;document.getElementById('mrvyArchivedEditor')?.remove();mrvyRenderArchivedRows();showToast('Đã cập nhật nợ và ghi lịch sử thu');})
  .withFailureHandler(e=>{btn.disabled=false;showToast(e.message,true);}).recordPostLeavePayment(sessionStorage.getItem('sessionToken'),id,amt,note);
+}
+function mrvyRestoreArchived(id){
+ var s=(appData.archivedStudents||[]).find(function(x){return String(x.id)===String(id);});
+ if(!s)return showToast('Không tìm thấy hồ sơ trong kho nghỉ',true);
+ var cl=prompt('Nhập lớp để khôi phục '+s.name+' (mã '+id+'):',s.className||'10A');
+ if(!cl)return;
+ cl=cl.trim().toUpperCase();
+ if(!confirm('Khôi phục '+s.name+' từ hoc_sinh_nghi về lớp '+cl+'?\nToàn bộ ghi chú sẽ xóa khi vào lớp lại.'))return;
+ var token=sessionStorage.getItem('sessionToken')||localStorage.getItem('sessionToken');
+ google.script.run.withSuccessHandler(function(d){
+   if(d && d.success===false)return showToast(d.message||'Lỗi khôi phục',true);
+   if(d)appData=d.data||d;
+   document.getElementById('mrvyArchivedEditor')?.remove();
+   document.getElementById('mrvyArchivedOverlay')?.remove();
+   renderAllViews();showToast('Đã khôi phục '+s.name+' về '+cl+'.');
+ }).withFailureHandler(function(e){showToast('Không khôi phục được: '+e.message,true);})
+ .restoreArchivedStudent(token,id,cl);
 }
 function mrvyInsertArchivedButton(){
  var h=document.getElementById('stuSubTabListPanel');if(!h||document.getElementById('mrvyArchivedBtn'))return;
