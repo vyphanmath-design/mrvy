@@ -141,6 +141,140 @@ async function clearStudentDataFromDB_(supabase, studentId) {
   ]);
 }
 
+// MRVY - Nghỉ học: chốt nợ vào ghi chú rồi giữ nguyên cơ chế xóa lịch sử học phí và điểm danh cũ.
+function leaveDateLabel_(dateISO) {
+  const m = String(dateISO).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `Nghỉ từ ngày ${m[3]}/${m[2]}/${m[1]}` : '';
+}
+function stripLeaveDate_(note) {
+  return String(note || '').replace(/\n?Nghỉ từ ngày \d{2}\/\d{2}\/\d{4}(?=\s|$)/gi, '').trim();
+}
+function withLeaveDate_(note) {
+  const clean = stripLeaveDate_(note);
+  const suffix = leaveDateLabel_(getTodayVN());
+  return clean ? clean + '\n' + suffix : suffix;
+}
+function withDebtSnapshot_(note, debtSnapshot) {
+  let s = String(note || '').trim();
+  const debt = String(debtSnapshot || '').trim();
+  if (!debt) return s;
+  if (!/^\[NỢ HP:\s*[\s\S]*\]$/.test(debt) || debt.length > 1500) throw new Error('Dữ liệu chốt nợ không hợp lệ');
+  return (s.replace(/\[NỢ HP:[^\]]*\]/g, '').trim() + '\n' + debt).trim();
+}
+function mapArchiveStudent_(r) {
+  return {
+    id: String(r.ma_hs || '').trim().replace(/'/g,''),
+    date: toStandardDateStr(r.thoi_gian), name: String(r.ho_va_ten || '').trim(),
+    grade: String(r.truong_khoi || '').trim(), className: String(r.lop || '').trim(),
+    school: String(r.truong || '').trim(), phone: formatPhone(r.sdt_hs),
+    parentPhone: formatPhone(r.sdt_phu_huynh),
+    parentName: String(r.ten_phu_huynh || '').trim(),
+    parentRelation: String(r.quan_he_phu_huynh || '').trim(),
+    note: String(r.ghi_chu || '').trim(), statusNghi: String(r.trang_thai || 'ĐÃ NGHỈ HỌC').trim(),
+    startMonth: String(r.thang_bat_dau || '').trim(),
+    nguoi_gioi_thieu: String(r.nguoi_gioi_thieu || '').trim()
+  };
+}
+async function readArchiveRows_(supabase) {
+  const results = [];
+  for (let offset = 0; ; offset += 1000) {
+    const {data,error} = await supabase.from('hoc_sinh_nghi').select('*')
+      .order('id', {ascending:true}).range(offset,offset+999);
+    if (error) throw new Error('Không đọc được kho hoc_sinh_nghi: ' + error.message);
+    if (!Array.isArray(data)) throw new Error('Dữ liệu kho nghỉ không hợp lệ');
+    results.push(...data);
+    if (data.length < 1000) break;
+  }
+  return results;
+}
+async function archiveOneStudent_(supabase, studentId) {
+  const targetId = formatStudentId(studentId);
+  if (!targetId) throw new Error('Mã học sinh không hợp lệ');
+  const {data:original,error:readErr} = await supabase.from('hoc_sinh')
+    .select('*').eq('ma_hs',targetId).maybeSingle();
+  if (readErr) throw new Error('Không đọc được hồ sơ: '+readErr.message);
+  if (!original) throw new Error('Không tìm thấy học sinh '+targetId+' trong bảng đang học');
+  if (!String(original.trang_thai || '').toUpperCase().includes('NGHỈ'))
+    throw new Error('Cần chuyển học sinh sang trạng thái nghỉ tạm thời và chốt ghi chú nợ trước khi lưu kho lâu dài');
+  const {data:already,error:duplicateErr} = await supabase.from('hoc_sinh_nghi')
+    .select('id').eq('ma_hs',targetId).limit(1);
+  if (duplicateErr) throw new Error('Không đối chiếu được kho nghỉ: '+duplicateErr.message);
+  if (already && already.length) throw new Error('Mã '+targetId+' đã có trong kho nghỉ. Không chuyển trùng hồ sơ.');
+  const {id,...copy} = original;
+  // Học sinh nghỉ từ trước khi bổ sung tính năng ngày nghỉ thì không tự gán sai ngày hôm nay.
+  // Ngày nghỉ chỉ được ghi lúc bấm 'Xóa' -> nghỉ tạm thời.
+  const newNote = String(copy.ghi_chu || '');
+  const {data:inserted,error:insertErr} = await supabase.from('hoc_sinh_nghi')
+    .insert({...copy, ghi_chu:newNote, trang_thai:'ĐÃ NGHỈ HỌC'}).select('ma_hs');
+  if (insertErr || !inserted || inserted.length!==1) throw new Error('Chưa sao lưu được hồ sơ '+targetId+': '+(insertErr?.message||'không có xác nhận'));
+  // Chỉ xóa HỒ SƠ khỏi hoc_sinh sau khi bản sao tại hoc_sinh_nghi đã được xác nhận.
+  const {data:deleted,error:delErr} = await supabase.from('hoc_sinh')
+    .delete().eq('ma_hs',targetId).select('ma_hs');
+  if (delErr || !deleted || deleted.length!==1) throw new Error('Đã sao lưu nhưng chưa chuyển xong hồ sơ '+targetId+'; kiểm tra bản trùng: '+(delErr?.message||''));
+  // Giữ cơ chế cũ: khi chuyển nghỉ lâu dài cũng không để lịch sử cá nhân trên các bảng đang học.
+  await clearStudentDataFromDB_(supabase, targetId);
+}
+async function restoreArchivedOne_(supabase, studentId, className) {
+  const targetId = formatStudentId(studentId);
+  const cl = String(className || '').trim();
+  if (!targetId || !cl || cl.length>80) throw new Error('Mã học sinh hoặc tên lớp không hợp lệ');
+  const {data:archived,error:readErr} = await supabase.from('hoc_sinh_nghi')
+    .select('*').eq('ma_hs',targetId).maybeSingle();
+  if (readErr || !archived) throw new Error('Không tìm thấy hồ sơ kho nghỉ: '+(readErr?.message||targetId));
+  const {data:found,error:checkErr} = await supabase.from('hoc_sinh')
+    .select('id').eq('ma_hs',targetId).limit(1);
+  if (checkErr) throw new Error(checkErr.message);
+  if (found && found.length) throw new Error('Mã '+targetId+' đã có trong danh sách học. Không tạo trùng.');
+  const {id,...rest}=archived;
+  const m=cl.match(/\d+/);
+  const row={...rest, lop:cl, truong_khoi: m ? 'Khối '+m[0] : rest.truong_khoi,
+    trang_thai:'', ghi_chu:'', thang_bat_dau:''};
+  const {data:created,error:addErr}=await supabase.from('hoc_sinh').insert(row).select('ma_hs');
+  if (addErr || !created || created.length!==1) throw new Error('Chưa khôi phục được hồ sơ '+targetId+': '+(addErr?.message||''));
+  const {data:deleted,error:delErr}=await supabase.from('hoc_sinh_nghi').delete()
+    .eq('ma_hs',targetId).select('ma_hs');
+  if (delErr || !deleted || deleted.length!==1) throw new Error('Đã chép vào lớp nhưng chưa xóa bản kho nghỉ. Cần kiểm tra trùng mã '+targetId);
+  // Học sinh vào lớp lại như bắt đầu mới: không giữ ghi chú, nợ đã chốt hoặc mốc tháng cũ.
+}
+function parseFrozenDebt_(note) {
+  const raw=String(note||'');
+  const match=raw.match(/\[NỢ HP:\s*([^|\]]+)(?:\|\s*([^\]]*))?\]/);
+  if (!match) return null;
+  return {match:match[0], amount:Number(String(match[1]).replace(/\D/g,''))||0,
+    detail:String(match[2]||'').trim()};
+}
+async function recordLeavePayment_(supabase, table, studentId, amount, user, paymentNote) {
+  const targetId=formatStudentId(studentId);
+  const money=Number(amount);
+  if (!Number.isSafeInteger(money)||money<=0) throw new Error('Số tiền thu phải là số nguyên dương');
+  const {data:stu,error:readErr}=await supabase.from(table).select('ghi_chu,trang_thai')
+    .eq('ma_hs',targetId).maybeSingle();
+  if (readErr) throw new Error(readErr.message);
+  if (!stu) return false;
+  if (table==='hoc_sinh' && !String(stu.trang_thai||'').toUpperCase().includes('NGHỈ'))
+    throw new Error('Học sinh chưa nghỉ, hãy dùng quy trình thu học phí bình thường');
+  const originalNote=String(stu.ghi_chu||'');
+  const debt=parseFrozenDebt_(originalNote);
+  if (!debt || debt.amount<=0) throw new Error('Học sinh không có khoản nợ chốt khi nghỉ');
+  if (money>debt.amount) throw new Error('Số tiền vượt quá số nợ còn lại');
+  const remaining=debt.amount-money;
+  const formatted=remaining.toLocaleString('vi-VN');
+  const updatedDebt='[NỢ HP: '+formatted+' đ | '+(debt.detail||'Nợ đã chốt khi nghỉ')+']';
+  const detail=String(paymentNote||'').replace(/[\r\n\[\]]/g,' ').trim().slice(0,200);
+  const ledger='[THU SAU NGHỈ: '+getNowDateTimeVN()+' | '+money.toLocaleString('vi-VN')+' đ | '+String(user.name||user.username||'Admin').slice(0,60)+(detail?' | '+detail:'')+']';
+  const base=originalNote.replace(debt.match,updatedDebt).trim();
+  const dateLine=base.match(/(?:^|\n)(Nghỉ từ ngày \d{2}\/\d{2}\/\d{4})\s*$/i);
+  const newNote=dateLine
+    ? base.slice(0, dateLine.index).trim()+'\n'+ledger+'\n'+dateLine[1]
+    : base+'\n'+ledger;
+  let query=supabase.from(table).update({ghi_chu:newNote}).eq('ma_hs',targetId);
+  query=stu.ghi_chu===null ? query.is('ghi_chu',null) : query.eq('ghi_chu',stu.ghi_chu);
+  const {data:updated,error:writeErr}=await query.select('ma_hs');
+  if (writeErr) throw new Error(writeErr.message);
+  if (!updated || updated.length!==1) throw new Error('Ghi chú đã được sửa ở phiên khác; chưa ghi nhận khoản thu. Hãy tải lại.');
+  return true;
+}
+
 async function getInitialData(supabase, token) {
   let serverRole = null;
   const sess = await verifySessionToken_(supabase, token);
@@ -168,6 +302,10 @@ async function getInitialData(supabase, token) {
     fetchAllRows(supabase, 'diem_kiem_tra', 'id', true),
     fetchAllRows(supabase, 'chi_phi', 'id', true)
   ]);
+  // Kho nghỉ dài hạn - chỉ trả về cho Admin; không nhầm với danh sách nghỉ tạm thời.
+  const archivedStudents = String(serverRole || '').toUpperCase() === 'ADMIN'
+    ? (await readArchiveRows_(supabase)).map(mapArchiveStudent_) : [];
+
 // Map dữ liệu chi phí trả về client
   const expenses = (cpData || []).map((r) => ({
     id: r.id,
@@ -297,6 +435,7 @@ async function getInitialData(supabase, token) {
     scheduleNote,
     examScores,
     expenses,
+    archivedStudents,
     wheelPrizes
   };
 }
@@ -527,7 +666,11 @@ export default async function handler(req, res) {
           updatePayload.quan_he_phu_huynh = String(studentData.parentRelation || '').trim();
         }
 
-        if (studentData.isRestore) updatePayload.trang_thai = '';
+        if (studentData.isRestore) {
+          updatePayload.trang_thai = '';
+          updatePayload.ghi_chu = '';
+          updatePayload.thang_bat_dau = '';
+        }
 
         await supabase.from('hoc_sinh').update(updatePayload).eq('ma_hs', targetId);
 
@@ -556,60 +699,124 @@ export default async function handler(req, res) {
       }
 
       case 'deleteStudentFromSheet': {
-        let token, studentId;
-        if (args.length === 1) {
-          studentId = args[0];
-          token = null;
-        } else {
-          [token, studentId] = args;
-          await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
-        }
-
+        // "Xóa" trên danh sách: nghỉ tạm thời. Ghi nợ vào ghi chú TRƯỚC, sau đó xóa phiếu thu + điểm danh như bản gốc.
+        const [token, studentId, debtSnapshot] = args;
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
         const targetId = formatStudentId(studentId);
-        await supabase
-          .from('hoc_sinh')
-          .update({ trang_thai: 'ĐÃ NGHỈ HỌC', thang_bat_dau: '' })
-          .eq('ma_hs', targetId);
-
+        const {data:stu,error:readErr}=await supabase.from('hoc_sinh')
+          .select('ma_hs,ghi_chu').eq('ma_hs',targetId).maybeSingle();
+        if (readErr || !stu) throw new Error('Không tìm thấy học sinh: '+(readErr?.message||targetId));
+        const note=withLeaveDate_(withDebtSnapshot_(stu.ghi_chu,debtSnapshot));
+        const {data:updated,error:writeErr}=await supabase.from('hoc_sinh')
+          .update({trang_thai:'ĐÃ NGHỈ HỌC', ghi_chu:note})
+          .eq('ma_hs',targetId).select('ma_hs');
+        if (writeErr || !updated || updated.length!==1) throw new Error('Không cập nhật được trạng thái nghỉ: '+(writeErr?.message||''));
+        // GIỮ NGUYÊN LOGIC GỐC: xóa điểm danh, phiếu thu cá nhân và cấu hình mức học phí cá nhân.
         await clearStudentDataFromDB_(supabase, targetId);
-        const data = await getInitialData(supabase, token);
-        return res.json({ result: data });
+        const data=await getInitialData(supabase,token);
+        return res.json({result:data});
+      }
+
+      case 'restoreTemporaryStudent': {
+        const [token, studentId, newClass] = args;
+        await requireRole_(supabase, token, ['ADMIN', 'ASSISTANT']);
+        const targetId=formatStudentId(studentId), cl=String(newClass||'').trim();
+        if (!targetId || !cl || cl.length>80) throw new Error('Mã học sinh hoặc tên lớp không hợp lệ');
+        const {data:stu,error:readErr}=await supabase.from('hoc_sinh')
+          .select('ghi_chu,trang_thai').eq('ma_hs',targetId).maybeSingle();
+        if (readErr || !stu) throw new Error('Không tìm thấy học sinh');
+        if (!String(stu.trang_thai||'').toUpperCase().includes('NGHỈ')) throw new Error('Học sinh chưa ở trạng thái nghỉ');
+        const match=cl.match(/\d+/);
+        const updated={trang_thai:'', lop:cl, ghi_chu:'', thang_bat_dau:''};
+        if (match) updated.truong_khoi='Khối '+match[0];
+        const {data:rows,error:writeErr}=await supabase.from('hoc_sinh').update(updated)
+          .eq('ma_hs',targetId).select('ma_hs');
+        if (writeErr || !rows || rows.length!==1) throw new Error('Không khôi phục được học sinh: '+(writeErr?.message||''));
+        return res.json({result:await getInitialData(supabase,token)});
       }
 
       case 'archiveStudent': {
-        const [token, studentId] = args;
-        await requireRole_(supabase, token, ['ADMIN']);
-        const targetId = formatStudentId(studentId);
-
-        const { data: stu } = await supabase.from('hoc_sinh').select('*').eq('ma_hs', targetId).single();
-        if (stu) {
-          const { id, ...rest } = stu;
-          await supabase.from('hoc_sinh_nghi').insert(rest);
-          await supabase.from('hoc_sinh').delete().eq('ma_hs', targetId);
-        }
-
-        await clearStudentDataFromDB_(supabase, targetId);
-        const data = await getInitialData(supabase, token);
-        return res.json({ result: data });
+        const [token,studentId]=args;
+        await requireRole_(supabase,token,['ADMIN']);
+        await archiveOneStudent_(supabase,studentId);
+        return res.json({result:await getInitialData(supabase,token)});
       }
 
       case 'archiveMultipleStudents': {
-        const [token, studentIds] = args;
+        const [token,studentIds]=args;
+        await requireRole_(supabase,token,['ADMIN']);
+        const uniqueIds=[...new Set((Array.isArray(studentIds)?studentIds:[]).map(formatStudentId))].filter(Boolean);
+        if (!uniqueIds.length || uniqueIds.length>100) throw new Error('Danh sách cần chuyển kho không hợp lệ');
+        for (const id of uniqueIds) await archiveOneStudent_(supabase,id);
+        return res.json({result:await getInitialData(supabase,token)});
+      }
+
+      case 'restoreArchivedStudent': {
+        const [token,studentId,className]=args;
+        await requireRole_(supabase,token,['ADMIN']);
+        await restoreArchivedOne_(supabase,studentId,className);
+        return res.json({result:await getInitialData(supabase,token)});
+      }
+
+      case 'updateArchivedStudent': {
+        const [token,payload]=args;
+        await requireRole_(supabase,token,['ADMIN']);
+        const id=formatStudentId(payload?.id);
+        if (!id) throw new Error('Mã học sinh không hợp lệ');
+        // Không cho API sửa tay nợ hay lịch sử thu: trường ghi_chu không nằm trong payload.
+        const updates={
+          ho_va_ten:String(payload.name||'').trim(),
+          truong_khoi:String(payload.grade||'').trim(),lop:String(payload.className||'').trim(),
+          truong:String(payload.school||'').trim(),
+          sdt_hs:formatPhone(payload.phone),sdt_phu_huynh:formatPhone(payload.parentPhone),
+          ten_phu_huynh:String(payload.parentName||'').trim(),
+          quan_he_phu_huynh:String(payload.parentRelation||'').trim(),
+          nguoi_gioi_thieu:String(payload.nguoi_gioi_thieu||'').trim()
+        };
+        if (!updates.ho_va_ten) throw new Error('Tên học sinh không được trống');
+        const {data:updated,error}=await supabase.from('hoc_sinh_nghi').update(updates)
+          .eq('ma_hs',id).select('ma_hs');
+        if (error || !updated || updated.length!==1) throw new Error('Không cập nhật được hồ sơ nghỉ: '+(error?.message||id));
+        return res.json({result:await getInitialData(supabase,token)});
+      }
+
+      // MRVY: Chỉ ADMIN được xác nhận xóa ghi chú nợ đã chốt của học sinh nghỉ.
+      // Không ghi hoc_phi, không đụng diem_danh, chi_phi hay hoa hồng.
+      case 'clearLeaveDebtNote': {
+        const [token, studentId, location] = args;
         await requireRole_(supabase, token, ['ADMIN']);
-        if (Array.isArray(studentIds) && studentIds.length > 0) {
-          const cleanIds = studentIds.map((id) => formatStudentId(id));
-          const { data: stus } = await supabase.from('hoc_sinh').select('*').in('ma_hs', cleanIds);
-          if (stus && stus.length > 0) {
-            const toInsert = stus.map(({ id, ...rest }) => rest);
-            await supabase.from('hoc_sinh_nghi').insert(toInsert);
-            await supabase.from('hoc_sinh').delete().in('ma_hs', cleanIds);
-          }
-          for (const id of cleanIds) {
-            await clearStudentDataFromDB_(supabase, id);
-          }
-        }
-        const data = await getInitialData(supabase, token);
-        return res.json({ result: data });
+        const targetId = formatStudentId(studentId);
+        const table = location === 'archived' ? 'hoc_sinh_nghi' :
+                      location === 'temporary' ? 'hoc_sinh' : null;
+        if (!targetId || !table) throw new Error('Mã học sinh hoặc nơi lưu hồ sơ không hợp lệ');
+        const { data: stu, error: readErr } = await supabase.from(table)
+          .select('ma_hs,ghi_chu,trang_thai').eq('ma_hs',targetId).maybeSingle();
+        if (readErr || !stu) throw new Error('Không tìm thấy hồ sơ nghỉ: ' + (readErr?.message || targetId));
+        if (table === 'hoc_sinh' && !/NGHỈ|NGHI/.test(String(stu.trang_thai || '').toUpperCase()))
+          throw new Error('Chỉ được xóa ghi chú nợ cho học sinh đã nghỉ');
+        const originalNote = String(stu.ghi_chu || '');
+        const debt = parseFrozenDebt_(originalNote);
+        if (!debt) throw new Error('Hồ sơ không có ghi chú nợ đã chốt để xóa');
+        // Yêu cầu: chỉ còn dòng ngày nghỉ sau khi xóa ghi chú nợ.
+        // Không tự tạo ngày mới vì có thể là hồ sơ nghỉ từ lâu.
+        const dateMatch = originalNote.match(/Nghỉ từ ngày\s+\d{2}\/\d{2}\/\d{4}/i);
+        const keepLeaveDate = dateMatch ? dateMatch[0].trim() : '';
+        const { data: rows, error: writeErr } = await supabase.from(table)
+          .update({ ghi_chu: keepLeaveDate })
+          .eq('ma_hs', targetId).eq('ghi_chu', originalNote).select('ma_hs');
+        if (writeErr) throw new Error('Không thể xóa ghi chú nợ: ' + writeErr.message);
+        if (!rows || rows.length !== 1) throw new Error('Ghi chú vừa thay đổi ở phiên khác. Hãy tải lại rồi thử lại.');
+        return res.json({ result: await getInitialData(supabase, token) });
+      }
+
+      case 'recordPostLeavePayment': {
+        const [token,studentId,amount,note]=args;
+        const user=await requireRole_(supabase,token,['ADMIN']);
+        // Ghi vào ghi_chu hồ sơ nghỉ, không ghi hoc_phi, không cần bảng hoc_phi_sau_nghi.
+        let recorded=await recordLeavePayment_(supabase,'hoc_sinh_nghi',studentId,amount,user,note);
+        if (!recorded) recorded=await recordLeavePayment_(supabase,'hoc_sinh',studentId,amount,user,note);
+        if (!recorded) throw new Error('Không tìm thấy học sinh nghỉ để ghi nhận thu nợ');
+        return res.json({result:await getInitialData(supabase,token)});
       }
 
       case 'saveAttendance': {
