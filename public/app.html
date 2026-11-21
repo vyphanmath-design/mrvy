@@ -3899,12 +3899,42 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (statEl) statEl.innerText = formatMoney(allTotal * 1000) + ' đ';
     }
 
-    function openExpenseModal() {
+    // BẢO VỆ DỮ LIỆU: chỉ cho phép sửa/lưu sau khi API đọc lại TOÀN BỘ chi_phi thành công.
+    var expenseSnapshotVerified = false;
+
+    async function openExpenseModal() {
+      var modal = document.getElementById('expenseModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      expenseSnapshotVerified = false;
+      var tbody = document.getElementById('expenseTableBody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-slate-500 font-bold">Đang tải các khoản chi trực tiếp từ Supabase...</td></tr>';
+      var saveBtn = document.getElementById('btnSaveExpenses');
+      if (saveBtn) saveBtn.disabled = true;
       try {
+        var token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
+        var response = await fetch('/api/rpc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ action: 'getExpensesSnapshot', args: [token] })
+        });
+        var payload = await response.json();
+        if (!response.ok || payload.error || !payload.result || payload.result.success !== true || !Array.isArray(payload.result.expenses)) {
+          throw new Error(payload.error || (payload.result && payload.result.message) || 'Máy chủ chưa trả về danh sách tiền chi');
+        }
+        // Chỉ thay mảng chi phí sau khi đã tải thành công; không đụng học phí/công nợ.
+        appData.expenses = payload.result.expenses;
+        expenseSnapshotVerified = true;
         if (typeof syncReferralExpenses === 'function') syncReferralExpenses();
-        var modal = document.getElementById('expenseModal');
-        if (modal) { modal.classList.remove('hidden'); renderExpenseTable(); }
-      } catch (err) { console.error('Lỗi mở bảng tiền chi:', err); }
+        renderExpenseTable();
+      } catch (err) {
+        console.error('Không đọc được tiền chi từ Supabase:', err);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="p-8 text-center text-red-600 font-bold">Không tải được dữ liệu tiền chi. Đã KHÓA thao tác lưu/xóa để bảo vệ dữ liệu. Vui lòng kiểm tra API.</td></tr>';
+        if (typeof showToast === 'function') showToast('Lỗi tải tiền chi: ' + err.message, true);
+      } finally {
+        if (saveBtn) saveBtn.disabled = !expenseSnapshotVerified;
+      }
     }
 
     function closeExpenseModal() {
@@ -3913,6 +3943,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     function openAddExpenseRowModal() {
+      if (!expenseSnapshotVerified) { showToast('Chưa xác nhận tải đủ tiền chi. Không thể thêm hoặc lưu.', true); return; }
       if (!appData.expenses) appData.expenses = [];
       var selectedType = document.getElementById('expenseTypeFilter');
       var loaiChi = selectedType && selectedType.value === 'GIOI_THIEU' ? 'GIOI_THIEU' : 'KHAC';
@@ -3932,6 +3963,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     async function removeExpenseRow(indexInFiltered) {
+      if (!expenseSnapshotVerified) { showToast('Chưa xác nhận tải đủ tiền chi. Không thể xóa.', true); return; }
       if (!confirm('Xác nhận xóa khoản chi này?')) return;
       var targetExp = getVisibleExpenses()[indexInFiltered];
       if (!targetExp) return;
@@ -4030,6 +4062,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
     }
 
     async function saveAllExpensesData() {
+      if (!expenseSnapshotVerified) { showToast('Chưa xác nhận tải đủ tiền chi từ Supabase. Đã chặn lưu để tránh ghi đè.', true); return; }
       var tbody = document.getElementById('expenseTableBody');
       if (!tbody) return;
       var filtered = getVisibleExpenses();
