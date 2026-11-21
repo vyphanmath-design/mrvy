@@ -207,6 +207,8 @@ async function getInitialData(supabase, token) {
       className: String(r.lop || '').trim(),
       phone: formatPhone(r.sdt_hs),
       parentPhone: formatPhone(r.sdt_phu_huynh),
+      parentName: String(r.ten_phu_huynh || '').trim(),
+      parentRelation: String(r.quan_he_phu_huynh || '').trim(),
       id: codeVal,
       school: String(r.truong || '').trim(),
       note: String(r.ghi_chu || '').trim(),
@@ -474,6 +476,8 @@ export default async function handler(req, res) {
               lop: item.className || '',
               sdt_hs: formatPhone(item.phone),
               sdt_phu_huynh: formatPhone(item.parentPhone),
+              ten_phu_huynh: String(item.parentName || '').trim(),
+              quan_he_phu_huynh: String(item.parentRelation || '').trim(),
               ma_hs: idStr,
               truong: item.school || '',
               ghi_chu: item.note || '',
@@ -515,6 +519,13 @@ export default async function handler(req, res) {
           truong: studentData.school || '',
           ghi_chu: studentData.note || ''
         };
+
+        if (Object.prototype.hasOwnProperty.call(studentData, 'parentName')) {
+          updatePayload.ten_phu_huynh = String(studentData.parentName || '').trim();
+        }
+        if (Object.prototype.hasOwnProperty.call(studentData, 'parentRelation')) {
+          updatePayload.quan_he_phu_huynh = String(studentData.parentRelation || '').trim();
+        }
 
         if (studentData.isRestore) updatePayload.trang_thai = '';
 
