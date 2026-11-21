@@ -565,6 +565,15 @@
                 <input type="tel" id="stuParentPhone" placeholder="098..." class="w-full px-3 py-2 text-sm border rounded-lg">
               </div>
               <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Phụ huynh (Ba/Mẹ – Họ tên)</label>
+                <div class="flex gap-1.5 min-w-0">
+                  <select id="stuParentRelation" aria-label="Quan hệ với học sinh" class="w-[95px] shrink-0 px-1.5 py-2 text-xs border rounded-lg bg-white">
+                    <option value="">Chọn</option><option value="Ba">Ba</option><option value="Mẹ">Mẹ</option><option value="Người giám hộ">Giám hộ</option>
+                  </select>
+                  <input type="text" id="stuParentName" aria-label="Họ tên phụ huynh" placeholder="Tên phụ huynh..." maxlength="120" class="min-w-0 flex-1 px-2 py-2 text-sm border rounded-lg">
+                </div>
+              </div>
+              <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">Học Sinh Giới Thiệu</label>
                 <input type="text" id="stuReferrerInput" list="listReferrerStudents" placeholder="Gõ tên hoặc Mã HS..." class="w-full px-3 py-2 text-sm border rounded-lg bg-white font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500">
                 <datalist id="listReferrerStudents"></datalist>
@@ -641,6 +650,7 @@
                   <th class="p-3 whitespace-nowrap">TRƯỜNG</th>
                   <th class="p-3 whitespace-nowrap">SĐT HS</th>
                   <th class="p-3 whitespace-nowrap">SĐT PHỤ HUYNH</th>
+                  <th class="p-3 whitespace-nowrap">PHỤ HUYNH</th>
                   <th class="p-3 whitespace-nowrap">GHI CHÚ</th>
                   <th class="p-3 text-right rounded-r-lg whitespace-nowrap">THAO TÁC</th>
                 </tr>
@@ -1612,6 +1622,13 @@
           </div>
         </div>
         <div>
+          <label class="block font-semibold text-slate-500 mb-1">Phụ huynh</label>
+          <div class="px-3 py-2 border rounded-lg bg-slate-50 flex gap-1.5 flex-wrap">
+            <span id="viewStuParentRelation" class="font-bold text-indigo-700"></span>
+            <span id="viewStuParentName"></span>
+          </div>
+        </div>
+        <div>
           <label class="block font-semibold text-slate-500 mb-1">Ghi Chú</label>
           <div id="viewStuNote" class="px-3 py-2 border rounded-lg bg-slate-50 text-slate-600 italic min-h-[40px]"></div>
         </div>
@@ -1658,6 +1675,13 @@
           <div>
             <label class="block font-semibold text-slate-600 mb-1">SĐT Phụ Huynh</label>
             <input type="tel" id="editStuParentPhone" class="w-full px-3 py-2 border rounded-lg">
+          </div>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-1">Phụ huynh (Ba/Mẹ – Họ tên)</label>
+          <div class="flex gap-2 min-w-0">
+            <select id="editStuParentRelation" aria-label="Quan hệ với học sinh" class="w-28 shrink-0 px-2 py-2 border rounded-lg bg-white"><option value="">Chọn</option><option value="Ba">Ba</option><option value="Mẹ">Mẹ</option><option value="Người giám hộ">Giám hộ</option></select>
+            <input id="editStuParentName" aria-label="Họ tên phụ huynh" type="text" maxlength="120" placeholder="Họ tên phụ huynh" class="min-w-0 flex-1 px-3 py-2 border rounded-lg">
           </div>
         </div>
         <div>
@@ -2481,6 +2505,8 @@
         }
       }
 
+      document.getElementById('viewStuParentName').textContent = student.parentName || '-';
+      document.getElementById('viewStuParentRelation').textContent = student.parentRelation || '-';
       document.getElementById('viewStudentModal').classList.remove('hidden');
     }
 
@@ -3589,7 +3615,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (btnBulk) btnBulk.classList.add('hidden');
 
       if (grade === 'NONE' && !search) {
-        tbody.innerHTML = '<tr><td colspan="10" class="p-10 text-center text-slate-400 font-medium bg-slate-50/50">... (Mã cũ) ...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="p-10 text-center text-slate-400 font-medium bg-slate-50/50">... (Mã cũ) ...</td></tr>';
         return;
       }
 
@@ -3617,6 +3643,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<th class="p-3 whitespace-nowrap">TRƯỜNG</th>' +
           '<th class="p-3 whitespace-nowrap">SĐT HS</th>' +
           '<th class="p-3 whitespace-nowrap">SĐT PHỤ HUYNH</th>' +
+          '<th class="p-3 whitespace-nowrap">PHỤ HUYNH</th>' +
           '<th class="p-3 whitespace-nowrap">GHI CHÚ</th>' +
           '<th class="p-3 text-right rounded-r-lg whitespace-nowrap">THAO TÁC</th>' +
         '</tr>';
@@ -3629,6 +3656,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<th class="p-3 whitespace-nowrap">TRƯỜNG</th>' +
           '<th class="p-3 whitespace-nowrap">SĐT HS</th>' +
           '<th class="p-3 whitespace-nowrap">SĐT PHỤ HUYNH</th>' +
+          '<th class="p-3 whitespace-nowrap">PHỤ HUYNH</th>' +
           '<th class="p-3 whitespace-nowrap">GHI CHÚ</th>' +
           '<th class="p-3 text-right rounded-r-lg whitespace-nowrap">THAO TÁC</th>' +
         '</tr>';
@@ -3647,7 +3675,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var pStu = formatPhoneDisplay(s.phone);
         var pPar = formatPhoneDisplay(s.parentPhone);
         var schoolStr = cleanName(s.school);
-        var matchSearch = !search || cleanName(s.name).includes(search) || pStu.includes(search) || pPar.includes(search) || String(s.id).includes(search) || schoolStr.includes(search);
+        var matchSearch = !search || cleanName(s.name).includes(search) || pStu.includes(search) || pPar.includes(search) || String(s.id).includes(search) || schoolStr.includes(search) || cleanName(s.parentName).includes(search);
         var matchGrade = (grade === 'ALL' || grade === 'NONE' || grade === 'DISABLED') || s.grade === grade;
         var matchClass = className === 'ALL' || s.className === className;
 
@@ -3672,7 +3700,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       if (countBadge) countBadge.innerText = filtered.length + ' Học Sinh';
 
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="p-8 text-center text-slate-400">Không tìm thấy học sinh nào</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="p-8 text-center text-slate-400">Không tìm thấy học sinh nào</td></tr>';
         return;
       }
 
@@ -3738,6 +3766,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<td class="p-3 text-slate-700 font-medium">' + (s.school || '-') + '</td>' +
           '<td class="p-3">' + phoneStuHtml + '</td>' +
           '<td class="p-3">' + phoneParHtml + '</td>' +
+          '<td class="p-3 text-slate-700 text-xs whitespace-nowrap">' + ((s.parentRelation || '') ? ('<span class="font-bold text-indigo-700">' + s.parentRelation + '</span> · ') : '') + String(s.parentName || '-').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td>' +
           displayNoteHtml +
           '<td class="p-3 text-right">' +
             '<div class="inline-flex items-center gap-1.5">' + actionButtons + '</div>' +
@@ -4169,7 +4198,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var pStu = formatPhoneDisplay(s.phone);
         var pPar = formatPhoneDisplay(s.parentPhone);
         var schoolStr = cleanName(s.school);
-        var matchSearch = !search || cleanName(s.name).includes(search) || pStu.includes(search) || pPar.includes(search) || String(s.id).includes(search) || schoolStr.includes(search);
+        var matchSearch = !search || cleanName(s.name).includes(search) || pStu.includes(search) || pPar.includes(search) || String(s.id).includes(search) || schoolStr.includes(search) || cleanName(s.parentName).includes(search);
         var matchGrade = (grade === 'ALL' || grade === 'NONE' || grade === 'DISABLED') || s.grade === grade;
         var matchClass = className === 'ALL' || s.className === className;
 
@@ -4326,6 +4355,8 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var school = document.getElementById('stuSchool') ? document.getElementById('stuSchool').value.trim() : '';
       var phone = document.getElementById('stuPhone') ? document.getElementById('stuPhone').value.trim() : '';
       var parentPhone = document.getElementById('stuParentPhone') ? document.getElementById('stuParentPhone').value.trim() : '';
+      var parentName = document.getElementById('stuParentName') ? document.getElementById('stuParentName').value.trim() : '';
+      var parentRelation = document.getElementById('stuParentRelation') ? document.getElementById('stuParentRelation').value : '';
       var note = document.getElementById('stuNote') ? document.getElementById('stuNote').value.trim() : '';
       var referrer = document.getElementById('stuReferrer') ? document.getElementById('stuReferrer').value : '';
 
@@ -4334,13 +4365,15 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
 
       studentQueue.push({
-        name: name, grade: grade, className: className, school: school, phone: phone, parentPhone: parentPhone, note: note, nguoi_gioi_thieu: referrer
+        name: name, grade: grade, className: className, school: school, phone: phone, parentPhone: parentPhone, parentName: parentName, parentRelation: parentRelation, note: note, nguoi_gioi_thieu: referrer
       });
 
       nameEl.value = '';
       document.getElementById('stuSchool').value = '';
       document.getElementById('stuPhone').value = '';
       document.getElementById('stuParentPhone').value = '';
+      document.getElementById('stuParentName').value = '';
+      document.getElementById('stuParentRelation').value = '';
       document.getElementById('stuNote').value = '';
       if (document.getElementById('stuReferrerInput')) document.getElementById('stuReferrerInput').value = '';
       if (document.getElementById('stuReferrer')) document.getElementById('stuReferrer').value = '';
@@ -4410,17 +4443,21 @@ function getStudentDebtDetails(student, targetMonthStr) {
         var school = document.getElementById('stuSchool').value.trim();
         var phone = document.getElementById('stuPhone').value.trim();
         var parentPhone = document.getElementById('stuParentPhone').value.trim();
+        var parentName = document.getElementById('stuParentName').value.trim();
+        var parentRelation = document.getElementById('stuParentRelation').value;
         var note = document.getElementById('stuNote').value.trim();
         var referrer = document.getElementById('stuReferrer') ? document.getElementById('stuReferrer').value : '';
 
         studentQueue.push({
-          name: nameCurrent, grade: grade, className: className, school: school, phone: phone, parentPhone: parentPhone, note: note, nguoi_gioi_thieu: referrer
+          name: nameCurrent, grade: grade, className: className, school: school, phone: phone, parentPhone: parentPhone, parentName: parentName, parentRelation: parentRelation, note: note, nguoi_gioi_thieu: referrer
         });
 
         document.getElementById('stuName').value = '';
         document.getElementById('stuSchool').value = '';
         document.getElementById('stuPhone').value = '';
         document.getElementById('stuParentPhone').value = '';
+      document.getElementById('stuParentName').value = '';
+      document.getElementById('stuParentRelation').value = '';
         document.getElementById('stuNote').value = '';
         if (document.getElementById('stuReferrerInput')) document.getElementById('stuReferrerInput').value = '';
         if (document.getElementById('stuReferrer')) document.getElementById('stuReferrer').value = '';
@@ -5579,6 +5616,7 @@ var editAttContext = { studentId: null, dateStr: null };
             '<div class="p-3 rounded-xl bg-blue-50/60 border border-blue-200">' +
               '<div class="text-blue-700 font-semibold mb-0.5">SĐT Phụ Huynh</div>' +
               '<div class="font-mono font-bold text-blue-900 text-sm">' + pPar + '</div>' +
+              '<div class="text-[11px] text-blue-800 mt-1 font-semibold">' + ([s.parentRelation, s.parentName].filter(Boolean).join(' · ') || '') + '</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -6218,6 +6256,8 @@ var editAttContext = { studentId: null, dateStr: null };
       document.getElementById('editStuSchool').value = s.school || '';
       document.getElementById('editStuPhone').value = s.phone || '';
       document.getElementById('editStuParentPhone').value = s.parentPhone || '';
+      document.getElementById('editStuParentName').value = s.parentName || '';
+      document.getElementById('editStuParentRelation').value = s.parentRelation || '';
       document.getElementById('editStuNote').value = s.note || '';
       document.getElementById('editStudentModal').classList.remove('hidden');
     }
@@ -6245,6 +6285,8 @@ var editAttContext = { studentId: null, dateStr: null };
     school: document.getElementById('editStuSchool').value.trim(),
     phone: document.getElementById('editStuPhone').value.trim(),
     parentPhone: document.getElementById('editStuParentPhone').value.trim(),
+    parentName: document.getElementById('editStuParentName').value.trim(),
+    parentRelation: document.getElementById('editStuParentRelation').value,
     note: document.getElementById('editStuNote').value.trim()
   };
 
@@ -10376,6 +10418,10 @@ function applyGuestStudentLock() {
                 '<label class="block font-bold text-slate-700 mb-1">SĐT Phụ Huynh</label>' +
                 '<input type="text" id="inlineEditParentPhone" value="' + cleanPhonePar + '" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-mono font-bold text-blue-800">' +
               '</div>' +
+              '<div class="sm:col-span-2"><label class="block font-bold text-slate-700 mb-1">Phụ huynh (Ba/Mẹ – Họ tên)</label>' +
+                '<div class="flex gap-2 min-w-0"><select id="inlineEditParentRelation" aria-label="Quan hệ với học sinh" class="w-[110px] shrink-0 px-2 py-2 border border-slate-300 rounded-xl bg-white">' +
+                ['', 'Ba', 'Mẹ', 'Người giám hộ'].map(function(x){return '<option value="'+x+'" '+(stu.parentRelation===x?'selected':'')+'>'+(x||'Chọn')+'</option>';}).join('') + '</select>' +
+                '<input id="inlineEditParentName" aria-label="Họ tên phụ huynh" maxlength="120" placeholder="Tên phụ huynh" value="' + String(stu.parentName || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" class="min-w-0 flex-1 px-3 py-2 border border-slate-300 rounded-xl bg-white"></div></div>' +
               '<div class="sm:col-span-2 md:col-span-3">' +
                 '<label class="block font-bold text-slate-700 mb-1">Học sinh giới thiệu (mã HS)</label>' +
                 '<select id="inlineEditReferrer" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-medium text-slate-800">' +
@@ -10463,6 +10509,8 @@ function applyGuestStudentLock() {
       var schoolVal = document.getElementById('inlineEditSchool') ? document.getElementById('inlineEditSchool').value.trim() : '';
       var phoneVal = document.getElementById('inlineEditPhone') ? document.getElementById('inlineEditPhone').value.trim() : '';
       var parentPhoneVal = document.getElementById('inlineEditParentPhone') ? document.getElementById('inlineEditParentPhone').value.trim() : '';
+      var parentNameVal = document.getElementById('inlineEditParentName') ? document.getElementById('inlineEditParentName').value.trim() : '';
+      var parentRelationVal = document.getElementById('inlineEditParentRelation') ? document.getElementById('inlineEditParentRelation').value : '';
       var noteVal = document.getElementById('inlineEditNote') ? document.getElementById('inlineEditNote').value.trim() : '';
       var referrerVal = document.getElementById('inlineEditReferrer') ? document.getElementById('inlineEditReferrer').value : '';
 
@@ -10482,6 +10530,8 @@ function applyGuestStudentLock() {
         school: schoolVal,
         phone: phoneVal,
         parentPhone: parentPhoneVal,
+        parentName: parentNameVal,
+        parentRelation: parentRelationVal,
         note: noteVal,
         nguoi_gioi_thieu: referrerVal
       };
