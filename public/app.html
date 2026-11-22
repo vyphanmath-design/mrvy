@@ -199,6 +199,9 @@
     }
 
 
+    /* Chỉ tô màu CHỮ ở ô TKB; không tô màu nền ô. */
+    #tblFullTKBBody .tkb-badge { background-color: transparent !important; }
+    #tblFullTKBBody td[data-tkb-td] { background-color: #fff !important; }
     #tab-lichday thead th { position: sticky !important; top: 0 !important; z-index: 30 !important; background-color: #19376D !important; }
     #tab-lichday tbody tr td:first-child, #tab-lichday thead th:first-child { position: sticky !important; left: 0 !important; z-index: 20 !important; }
     #tab-lichday tbody tr td:first-child { background-color: #f8fafc !important; }
@@ -1379,6 +1382,7 @@
               <i class="fa-solid fa-clock text-amber-500"></i> <span>Thời Khóa Biểu Tuần</span>
             </h3>
             <div class="flex gap-1.5 sm:gap-2 flex-shrink-0">
+              <button type="button" onclick="mrvyOpenTkbOcr()" id="btnImportTkbImage" class="bg-indigo-50 text-indigo-800 hover:bg-indigo-100 font-bold px-2 sm:px-3 py-1.5 rounded-xl text-xs border border-indigo-200 shadow-sm transition flex items-center gap-1.5" title="Nhập 5 ngày Thứ 2–Thứ 6 từ ảnh TKB (OCR trên thiết bị)"><i class="fa-solid fa-image"></i><span class="hidden sm:inline">Quét ảnh TKB</span></button>
               <button onclick="toggleSwapMode()" id="btnSwapMode" class="bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold px-2 sm:px-3 py-1.5 rounded-xl text-xs border border-blue-200 shadow-sm transition flex items-center gap-1.5" title="Đổi chỗ trong thời khóa biểu">
                 <i class="fa-solid fa-right-left"></i> <span class="hidden sm:inline">Đổi chỗ</span>
               </button>
@@ -13619,5 +13623,6 @@ window.addEventListener('keydown', function(evt) {
 });
 </script>
 
+<script defer src="/tkb-ocr.js"></script>
 </body>
 </html>
