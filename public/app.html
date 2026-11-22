@@ -13696,70 +13696,122 @@ window.addEventListener('keydown', function(evt) {
     // Ghi chú khác ngoài trải nghiệm KHÔNG tự suy đoán thành phân môn.
     return {text:cls?(cls+(note?'\ntn':'')):'', uncertain:ambiguous, raw:one};
   }
-  // Dò bảng theo các đường kẻ THỰC TẾ, không dùng vùng cắt hàng/cột cố định.
-  // Phần tiết sáng và chiều thường có hai nhóm đường ngang ngăn bởi hàng tiêu đề.
   function detectGrid(canvas, wordData) {
     var w=canvas.width,h=canvas.height,p=projections(canvas);
-    var xs=p.x.filter(function(x){return x>w*.018&&x<w*.996;});
-    if(xs.length<5) throw new Error('Không đủ đường dọc cho 5 ngày học. Hãy chụp trọn ảnh và đủ cột Thứ 6.');
+    var xs=p.x.filter(function(x){return x>w*.025&&x<w*.995;});
+    if(xs.length<5) throw new Error('Không dò được đủ cột bảng từ đường kẻ. Hãy dùng ảnh đầy đủ, rõ nét.');
+    // 5 ngày học yêu cầu 6 vách dọc. Chấp nhận duy nhất việc thiếu VIỀN PHẢI nếu
+    // 5 vách còn lại đều có khoảng cách đều; cột Thứ 6 được đánh dấu cảnh báo.
     var best=null;
-    for(var i=0;i<xs.length-1;i++)for(var j=i+1;j<xs.length;j++){
+    for(var i=0;i<xs.length;i++)for(var j=i+1;j<xs.length;j++) {
       var step=xs[j]-xs[i];
-      if(step<w*.095 || step>w*.255 || xs[i]>w*.36)continue;
+      if(step<w*.09 || step>w*.26 || xs[i]>w*.3)continue;
       var track=[xs[i]],err=0,missingRightEdge=false,valid=true;
-      for(var k=1;k<=5;k++){
+      for(var k=1;k<=5;k++) {
         var target=xs[i]+k*step;
-        var hit=xs.reduce(function(b,a){return Math.abs(a-target)<Math.abs(b-target)?a:b;},xs[0]);
-        if(Math.abs(hit-target)>Math.max(5,step*.075)){
-          // Chỉ cho phép phục hồi VIỀN NGOÀI bên phải, không đoán các cột ở giữa.
-          if(k===5 && w-1>target-step*.22 && w-1<target+step*.15){
-            hit=w-1;missingRightEdge=true;
-          }else{valid=false;break;}
+        var hit=xs.reduce(function(bestX,a){return Math.abs(a-target)<Math.abs(bestX-target)?a:bestX;},xs[0]);
+        if(Math.abs(hit-target)>Math.max(4,step*.065)) {
+          if(k===5 && (w-1)>track[4]+step*.70 && (w-1)<target+step*.15 && (w-1)>target-step*.25) {
+            hit=w-1; missingRightEdge=true;
+          } else {valid=false;break;}
         }
         if(hit<=track[track.length-1]){valid=false;break;}
         track.push(hit);err+=Math.abs(hit-target);
       }
-      if(!valid || (track[5]-track[0])/w<.63)continue;
-      // Năm cột thường chiếm từ 65%-95% bề rộng bảng; tránh chọn nhầm lưới bé.
-      var score=err/Math.max(1,step)+Math.abs((track[5]-track[0])/w-.92)*.5 + (missingRightEdge?.12:0);
+      if(!valid)continue;
+      // Ưu tiên bộ cột phủ phần lớn bảng, tránh dò nhầm các nét chữ/đường phụ.
+      var cover=(track[5]-track[0])/w;
+      if(cover<.58)continue;
+      var score=err/Math.max(1,step)+Math.abs(track[0]/w-.05)*3+(missingRightEdge?.25:0);
       if(!best||score<best.score)best={xs:track,score:score,missingRightEdge:missingRightEdge};
     }
-    if(!best)throw new Error('Không khớp được 5 cột Thứ 2–Thứ 6 theo đường kẻ thực tế; TKB cũ được giữ nguyên.');
-    var ys=p.y.filter(function(y){return y>h*.012&&y<h*.998;});
-    if(ys.length<9)throw new Error('Không đủ đường ngang để tách tiết sáng/chiều.');
+    if(!best) throw new Error('Không xác định chắc chắn ranh giới 5 cột Thứ 2–Thứ 6. Hãy chụp rõ toàn bảng.');
+    var ys=p.y.filter(function(y){return y>h*.015&&y<h*.995;});
     var gaps=[];
     for(var a=1;a<ys.length;a++){
       var dy=ys[a]-ys[a-1];
-      if(dy>Math.max(11,h*.035)&&dy<h*.19)gaps.push(dy);
+      if(dy>h*.035&&dy<h*.19)gaps.push(dy);
     }
-    if(gaps.length<6)throw new Error('Các hàng tiết chưa rõ: vui lòng dùng ảnh sắc nét hơn.');
+    if(gaps.length<6)throw new Error('Không đủ đường ngang để xác định 5 tiết sáng và các tiết chiều.');
     gaps.sort(function(a,b){return a-b;});
-    var mid=gaps[Math.floor(gaps.length/2)];
-    var groups=[],last=null;
+    var stepY=gaps[Math.floor(gaps.length/2)];
+    var candidates=[];
     for(var z=1;z<ys.length;z++){
-      var delta=ys[z]-ys[z-1];
-      if(delta<mid*.70||delta>mid*1.32)continue;
-      var row={a:ys[z-1],b:ys[z],d:delta};
-      if(last && row.a-last.b<=Math.max(2,mid*.13))groups[groups.length-1].push(row);
-      else groups.push([row]);
-      last=row;
+      var d=ys[z]-ys[z-1];
+      if(d>=stepY*.68 && d<=stepY*1.38) candidates.push({a:ys[z-1],b:ys[z],d:d});
     }
-    // Nhóm sáng phải đủ chính xác 5 tiết; chiều chấp nhận 1–4 tiết.
-    var mi=groups.findIndex(function(g){return g.length>=5;});
-    if(mi<0)throw new Error('Không xác định được đủ 5 tiết buổi sáng trong ảnh.');
-    // Nếu nhóm có 6 hàng trở lên, hàng đầu thường là tiêu đề ngày/thứ.
-    // Chọn NĂM hàng cuối của nhóm liên tiếp để loại header, tránh lệch một tiết.
-    var morning=groups[mi].slice(-5),afternoon=[];
-    for(var gi=mi+1;gi<groups.length;gi++){
-      if(groups[gi][0].a>morning[4].b+2 && groups[gi].length>=1){afternoon=groups[gi].slice(0,4);break;}
+    // Gom dải tiết liền nhau, không lấy dải header thứ hoặc tiêu đề buổi.
+    var groups=[];
+    candidates.forEach(function(row){
+      var g=groups[groups.length-1];
+      if(!g||row.a-g[g.length-1].b>Math.max(2,stepY*.12))groups.push([row]);
+      else g.push(row);
+    });
+    var morningIdx=groups.findIndex(function(g){return g.length>=5;});
+    if(morningIdx<0)throw new Error('Không xác định được đủ 5 hàng tiết sáng.');
+    // A day-header row can have nearly the same height as a lesson row.
+    // The five LAST consecutive rows before the afternoon divider are lessons;
+    // do not count the blue "Thứ 2 ... Thứ 6" header as morning lesson 1.
+    var morning=groups[morningIdx].slice(-5);
+    var afternoon=[];
+    for(var gi=morningIdx+1;gi<groups.length;gi++){
+      if(groups[gi][0].a>morning[4].b+2&&groups[gi].length>=1){afternoon=groups[gi].slice(0,4);break;}
     }
-    if(!afternoon.length)throw new Error('Không nhận ra các tiết buổi chiều.');
-    // Không xử lý thêm hàng ngoài ảnh; lưu lại đúng số hàng đã nhận diện.
-    return {xs:best.xs,rows:morning.concat(afternoon),afternoonCount:afternoon.length,
-      missingRightEdge:best.missingRightEdge,detectedRows:5+afternoon.length};
+    if(!afternoon.length)throw new Error('Không nhận diện được vùng tiết chiều.');
+    // If the screenshot ends exactly at the last lesson's bottom (no outer border),
+    // recover ONE final row only when its height agrees with all previous lessons.
+    if(afternoon.length<4 && afternoon.length>=2){
+      var end=afternoon[afternoon.length-1].b,tail=h-end;
+      if(tail>stepY*.84 && tail<stepY*1.23){
+        afternoon.push({a:end,b:h-1,d:h-1-end});
+      }
+    }
+    // Yêu cầu tối thiểu 1 tiết chiều; tuyệt đối không thêm tiết không tồn tại.
+    var rows=morning.concat(afternoon);
+    return {xs:best.xs,rows:rows,afternoonCount:afternoon.length,
+            missingRightEdge:best.missingRightEdge,detectedRows:rows.length};
   }
   function pickText(allWords, left,right,top,bottom){
     return allWords.filter(function(word){var b=word.bbox,x=(b.x0+b.x1)/2,y=(b.y0+b.y1)/2;return x>left+3&&x<right-3&&y>top+2&&y<bottom-2;});
+  }
+  // Detect ink INSIDE a cell, excluding grid borders. An OCR miss is not an empty cell.
+  function cellHasInk(canvas, x0, x1, y0, y1) {
+    var paddingX=Math.max(6,Math.round((x1-x0)*.035));
+    var paddingY=Math.max(4,Math.round((y1-y0)*.15));
+    var xx=Math.max(0,Math.round(x0+paddingX)), yy=Math.max(0,Math.round(y0+paddingY));
+    var ww=Math.min(canvas.width-xx,Math.round(x1-x0-2*paddingX));
+    var hh=Math.min(canvas.height-yy,Math.round(y1-y0-2*paddingY));
+    if(ww<10||hh<7)return false;
+    var data=canvas.getContext('2d',{willReadFrequently:true}).getImageData(xx,yy,ww,hh).data;
+    var ink=0,total=ww*hh;
+    for(var i=0;i<data.length;i+=4){
+      var r=data[i],g=data[i+1],b=data[i+2];
+      if(Math.max(r,g,b)<185 && Math.max(r,g,b)-Math.min(r,g,b)<65)ink++;
+    }
+    return ink>=Math.max(12,Math.round(total*.0035));
+  }
+  function enlargedCell(canvas,x0,x1,y0,y1) {
+    var padX=Math.max(5,Math.round((x1-x0)*.025));
+    var padY=Math.max(3,Math.round((y1-y0)*.07));
+    var left=Math.max(0,Math.round(x0+padX)),top=Math.max(0,Math.round(y0+padY));
+    var width=Math.min(canvas.width-left,Math.round(x1-x0-2*padX));
+    var height=Math.min(canvas.height-top,Math.round(y1-y0-2*padY));
+    var scale=Math.min(5,Math.max(2.5,420/Math.max(1,width)));
+    var output=document.createElement('canvas');
+    output.width=Math.max(1,Math.round(width*scale));output.height=Math.max(1,Math.round(height*scale));
+    var ctx=output.getContext('2d',{willReadFrequently:true});
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,output.width,output.height);
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+    ctx.drawImage(canvas,left,top,width,height,0,0,output.width,output.height);
+    return output;
+  }
+  // Avoid treating a non-empty image cell as blank when page-level OCR skips tiny fonts.
+  async function recognizeCell(worker, canvas, bounds, row, column) {
+    var sample=enlargedCell(canvas,bounds[column],bounds[column+1],row.a,row.b);
+    var res=await worker.recognize(sample);
+    var text=String(res && res.data && res.data.text || '').replace(/\r/g,'').trim();
+    var confidence=Number(res && res.data && res.data.confidence || 0);
+    return {text:text, confidence:confidence};
   }
   function drawPreview() {
     var html='<table class="w-full border-collapse text-center text-xs"><thead><tr class="bg-slate-900 text-white"><th class="p-1 border">Tiết</th>';
@@ -13806,18 +13858,45 @@ window.addEventListener('keydown', function(evt) {
       }
       words=words.filter(function(w){return w.text && w.bbox && Number(w.confidence == null ? 70 : w.confidence)>10;});
       status('Đang ghép tọa độ chữ với đường kẻ bảng…');progress(85);
-      if(words.length<8)throw new Error('OCR không trả đủ vị trí chữ (bounding boxes). Không tự điền lịch vì có thể sai ô.');
+      // Page-level OCR is only the first pass. It routinely skips small text.
+      // Detect actual ink inside each image cell and re-run OCR on enlarged crops.
       state.grid=detectGrid(state.canvas,words);
+      var tasks=[];
       for(var r=0;r<state.grid.rows.length;r++)for(var c=0;c<5;c++){
         var row=state.grid.rows[r],bounds=state.grid.xs;
+        var hasText=cellHasInk(state.canvas,bounds[c],bounds[c+1],row.a,row.b);
         var ws=pickText(words,bounds[c],bounds[c+1],row.a,row.b);
         var raw=linesFromWords(ws).join('\n');var obj=normalizeClass(raw);
-        obj.uncertain=obj.uncertain || ws.some(function(w){return w.confidence != null && w.confidence<65;});
+        obj.hasInk=hasText;obj.uncertain=obj.uncertain || ws.some(function(w){return w.confidence != null && w.confidence<65;});
+        if(hasText)tasks.push({r:r,c:c,index:state.cells.length});
         state.cells.push(obj);
       }
+      status('Đang đọc lại '+tasks.length+' ô có chữ bằng OCR phóng to…');
+      // Per-cell OCR is the authoritative source when page OCR omitted tiny class labels.
+      // Sequential recognition limits memory usage on mobile and supports cancellation.
+      await state.worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'});
+      for(var ti=0;ti<tasks.length;ti++){
+        if(job!==state.job)return;
+        var task=tasks[ti], cell=state.cells[task.index];
+        var re=await recognizeCell(state.worker,state.canvas,state.grid.xs,state.grid.rows[task.r],task.c);
+        if(job!==state.job)return;
+        var parsed=normalizeClass(re.text);
+        if(parsed.text){
+          // Prefer per-cell text when recognized, especially if global OCR missed it.
+          if(!cell.text || parsed.text!==cell.text)cell.text=parsed.text;
+          cell.raw=re.text;
+          cell.uncertain=parsed.uncertain || re.confidence<55;
+        } else if(!cell.text){
+          // Nonblank with no recognized class cannot silently become an empty cell.
+          cell.raw=re.text || '[Chữ nhỏ chưa đọc được]';
+          cell.uncertain=true;
+        } else {
+          cell.uncertain=true;
+        }
+        progress(85+Math.round(14*(ti+1)/Math.max(1,tasks.length)));
+      }
       var detected=state.cells.filter(function(x){return x.text;}).length;
-      if(detected<2)throw new Error('OCR không nhận ra đủ tên lớp hợp lệ. Vui lòng chụp rõ hơn; TKB cũ được giữ nguyên.');
-      if(state.grid.missingRightEdge){for(var u=0;u<state.cells.length;u++){if(u%5===4)state.cells[u].uncertain=true;}}
+      if(detected<2)throw new Error('OCR vẫn không nhận ra đủ lớp; TKB cũ được giữ nguyên. Thử ảnh lớn hơn hoặc sửa thủ công ở bảng xem trước.');
       var ambiguous=state.cells.filter(function(x){return x.uncertain;}).length;
       drawPreview();
       var issues=[];
@@ -13825,7 +13904,7 @@ window.addEventListener('keydown', function(evt) {
       if(state.grid.afternoonCount<4)issues.push('Ảnh chỉ có '+state.grid.afternoonCount+' tiết chiều; các tiết chiều không xuất hiện sẽ GIỮ NGUYÊN.');
       if(ambiguous)issues.push('Có '+ambiguous+' ô OCR chưa chắc chắn. Thầy kiểm tra và sửa ô vàng trước khi áp dụng.');
       warn(issues.join(' '));
-      progress(100);status('Đã quét '+state.grid.rows.length+' hàng ('+state.grid.afternoonCount+' tiết chiều). Chưa thay đổi lịch; thầy kiểm tra các ô trước khi áp dụng.');
+      progress(100);status('Đã quét '+state.grid.rows.length+' hàng ('+state.grid.afternoonCount+' tiết chiều). Kiểm tra kỹ mọi ô trước khi áp dụng.');
     }catch(e){if(job===state.job){status('Không áp dụng: '+(e.message||e),true);warn('Dữ liệu TKB hiện tại chưa bị thay đổi.');state.grid=null;}}
     finally{if(job===state.job){dis(false);if(state.worker){try{await state.worker.terminate();}catch(e){}state.worker=null;}}}
   }
@@ -13838,14 +13917,12 @@ window.addEventListener('keydown', function(evt) {
       changes.push({r:r,c:c,value:val});
     });
     if(changes.length!==state.grid.rows.length*5){status('Thiếu ô xem trước. Dừng áp dụng.',true);return;}
+    // Never wipe an image cell that contains ink but whose class was not recognized.
     var unresolved=changes.filter(function(ch){
-      var cell=state.cells[ch.r*5+ch.c];
-      return cell && cell.uncertain && cell.raw && !ch.value;
+      var original=state.cells[ch.r*5+ch.c];
+      return original && original.hasInk && !normalizeClass(ch.value).text;
     });
-    if(unresolved.length){
-      status('Còn '+unresolved.length+' ô có chữ nhưng OCR chưa nhận ra lớp. Hãy sửa các ô được đánh dấu trước khi áp dụng.',true);
-      return;
-    }
+    if(unresolved.length){status('Còn '+unresolved.length+' ô có chữ chưa đọc ra lớp. Hãy nhập lớp đúng vào các ô vàng trước khi áp dụng.',true);return;}
     if(!E('tkbOcrChecked').checked){status('Hãy xác nhận đã rà lại bảng nhận diện và các ô trống.',true);return;}
     if(!confirm('Áp dụng '+changes.length+' ô trong ảnh (5 sáng + '+state.grid.afternoonCount+' chiều) vào lịch Thứ 2–Thứ 6? Các ô trống trong ảnh sẽ được cập nhật; tiết KHÔNG có trong ảnh, Thứ 7/CN và ca trung tâm được giữ nguyên.'))return;
     // Không gọi API và không sửa dữ liệu nguồn trước khi người dùng xác nhận.
