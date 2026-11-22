@@ -13899,6 +13899,7 @@ window.addEventListener('keydown', function(evt) {
       if(detected<2)throw new Error('OCR vẫn không nhận ra đủ lớp; TKB cũ được giữ nguyên. Thử ảnh lớn hơn hoặc sửa thủ công ở bảng xem trước.');
       var ambiguous=state.cells.filter(function(x){return x.uncertain;}).length;
       drawPreview();
+      showExcludedAfternoonNotice();
       var issues=[];
       if(state.grid.missingRightEdge)issues.push('Không có viền ngoài phía phải: kiểm tra kỹ cột Thứ 6 trước khi áp dụng.');
       if(state.grid.afternoonCount<4)issues.push('Ảnh chỉ có '+state.grid.afternoonCount+' tiết chiều; các tiết chiều không xuất hiện sẽ GIỮ NGUYÊN.');
@@ -13908,38 +13909,91 @@ window.addEventListener('keydown', function(evt) {
     }catch(e){if(job===state.job){status('Không áp dụng: '+(e.message||e),true);warn('Dữ liệu TKB hiện tại chưa bị thay đổi.');state.grid=null;}}
     finally{if(job===state.job){dis(false);if(state.worker){try{await state.worker.terminate();}catch(e){}state.worker=null;}}}
   }
+  // IMPORTANT: Rows of the actual TKB are 0..4 (morning), 5..8 (afternoon),
+  // 9..11 (extra classes). Columns 0..4 are Monday..Friday.
+  // The image may have fewer than four afternoon periods. Do not silently
+  // leave conflicting old periods without showing the discrepancy to the user.
+  function excludedAfternoonCells(){
+    var result=[];
+    if(!state.grid || state.grid.afternoonCount>=4)return result;
+    for(var r=5+state.grid.afternoonCount;r<9;r++)for(var c=0;c<5;c++){
+      var el=document.querySelector('#tblFullTKBBody div[data-r="'+r+'"][data-c="'+c+'"]');
+      if(!el)continue;
+      var value=String(el.getAttribute('data-val')||el.innerText||'').trim();
+      if(value)result.push({r:r,c:c,value:value});
+    }
+    return result;
+  }
+  function showExcludedAfternoonNotice(){
+    var notice=E('tkbOcrOldPeriods');if(!notice)return;
+    var old=excludedAfternoonCells();
+    notice.innerHTML='';
+    if(!state.grid||state.grid.afternoonCount>=4){notice.hidden=true;return;}
+    var summary=document.createElement('div');
+    summary.textContent='Ảnh có '+state.grid.afternoonCount+' tiết chiều. Tiết chiều còn lại không có trong ảnh.'+
+      (old.length?' TKB đang có '+old.length+' ô cũ: '+old.map(function(x){return 'C'+(x.r-4)+' Thứ '+(x.c+2)+' ('+x.value.replace(/\n/g,' / ')+')';}).join('; ')+'.':'');
+    notice.appendChild(summary);
+    var label=document.createElement('label');label.className='flex items-center gap-2 mt-2 font-semibold';
+    var cb=document.createElement('input');cb.type='checkbox';cb.id='tkbOcrClearMissing';
+    label.appendChild(cb);label.appendChild(document.createTextNode('Xóa những ô tiết chiều KHÔNG có trong ảnh (chỉ Thứ 2–Thứ 6)'));
+    notice.appendChild(label);
+    var help=document.createElement('div');help.className='text-xs mt-1';
+    help.textContent='Mặc định KHÔNG xóa. Nếu muốn TKB trùng hoàn toàn ảnh mới, hãy tích chọn sau khi kiểm tra lịch cũ.';
+    notice.appendChild(help);notice.hidden=false;
+  }
   function apply(andSave){
-    if(!state.grid||state.cells.length!==state.grid.rows.length*5){status('Chưa có kết quả quét hợp lệ.',true);return;}
-    var edits=E('tkbOcrTable').querySelectorAll('textarea[data-ocr-r]');
-    var changes=[];
-    edits.forEach(function(el){var r=Number(el.dataset.ocrR),c=Number(el.dataset.ocrC),val=el.value.replace(/\r/g,'').trim();
-      var line=val.split(/\n/);if(line.length>2)throw new Error('Mỗi ô tối đa hai dòng: lớp và phân môn.');
-      changes.push({r:r,c:c,value:val});
-    });
-    if(changes.length!==state.grid.rows.length*5){status('Thiếu ô xem trước. Dừng áp dụng.',true);return;}
-    // Never wipe an image cell that contains ink but whose class was not recognized.
-    var unresolved=changes.filter(function(ch){
-      var original=state.cells[ch.r*5+ch.c];
-      return original && original.hasInk && !normalizeClass(ch.value).text;
-    });
-    if(unresolved.length){status('Còn '+unresolved.length+' ô có chữ chưa đọc ra lớp. Hãy nhập lớp đúng vào các ô vàng trước khi áp dụng.',true);return;}
-    if(!E('tkbOcrChecked').checked){status('Hãy xác nhận đã rà lại bảng nhận diện và các ô trống.',true);return;}
-    if(!confirm('Áp dụng '+changes.length+' ô trong ảnh (5 sáng + '+state.grid.afternoonCount+' chiều) vào lịch Thứ 2–Thứ 6? Các ô trống trong ảnh sẽ được cập nhật; tiết KHÔNG có trong ảnh, Thứ 7/CN và ca trung tâm được giữ nguyên.'))return;
-    // Không gọi API và không sửa dữ liệu nguồn trước khi người dùng xác nhận.
-    var editsExisting=document.querySelectorAll('#tblFullTKBBody div[data-r][data-c]');
-    if(!editsExisting.length){status('Bảng TKB trên trang chưa được khởi tạo. Mở lại tab Lịch dạy.',true);return;}
-    var missing=changes.some(function(ch){return !document.querySelector('#tblFullTKBBody div[data-r=\"'+ch.r+'\"][data-c=\"'+ch.c+'\"]');});
-    if(missing){status('Thiếu ô đích trong lịch hiện tại; không thay đổi dữ liệu.',true);return;}
-    changes.forEach(function(ch){
-      var el=document.querySelector('#tblFullTKBBody div[data-r="'+ch.r+'"][data-c="'+ch.c+'"]');
-      if(!el)return;
-      el.setAttribute('data-val',ch.value);
-      el.innerHTML=typeof renderTkbCellHtml==='function'?renderTkbCellHtml(esc(ch.value)):esc(ch.value).replace(/\n/g,'<br>');
-      var parent=el.parentElement;
-      if(parent && typeof getClassStyle==='function')parent.className='tkb-badge pointer-events-none '+(ch.value?getClassStyle(ch.value,false):'');
-    });
-    state.applied=true;hide();if(typeof showToast==='function')showToast('Đã áp dụng các ô có trong ảnh vào TKB. Bấm Lưu để ghi vào Supabase.');
-    if(andSave && typeof saveAllScheduleAndNotes==='function')saveAllScheduleAndNotes();
+    try {
+      if(!state.grid||state.cells.length!==state.grid.rows.length*5){status('Chưa có kết quả quét hợp lệ.',true);return;}
+      var edits=E('tkbOcrTable').querySelectorAll('textarea[data-ocr-r]');
+      var changes=[];
+      edits.forEach(function(el){
+        var r=Number(el.dataset.ocrR),c=Number(el.dataset.ocrC),val=el.value.replace(/\r/g,'').trim();
+        if(!Number.isInteger(r)||!Number.isInteger(c)||r<0||r>=state.grid.rows.length||c<0||c>=5)throw new Error('Tọa độ ô xem trước không hợp lệ.');
+        if(val.split(/\n/).length>2)throw new Error('Mỗi ô tối đa hai dòng: lớp và phân môn.');
+        changes.push({r:r,c:c,value:val});
+      });
+      if(changes.length!==state.grid.rows.length*5 || new Set(changes.map(function(ch){return ch.r+'_'+ch.c;})).size!==changes.length){status('Bảng xem trước thiếu ô hoặc trùng tọa độ. Dừng áp dụng.',true);return;}
+      var unresolved=changes.filter(function(ch){
+        var original=state.cells[ch.r*5+ch.c];
+        return original && original.hasInk && !normalizeClass(ch.value).text;
+      });
+      if(unresolved.length){status('Còn '+unresolved.length+' ô có chữ chưa đọc ra lớp. Hãy kiểm tra trước khi áp dụng.',true);return;}
+      if(!E('tkbOcrChecked').checked){status('Hãy xác nhận đã rà lại bảng nhận diện và các ô trống.',true);return;}
+      var clearMissing=!!(E('tkbOcrClearMissing')&&E('tkbOcrClearMissing').checked);
+      var old=excludedAfternoonCells();
+      if(clearMissing){old.forEach(function(cell){changes.push({r:cell.r,c:cell.c,value:'',isOldPeriod:true});});}
+      // All destination slots must be present before making any change.
+      var destination=new Map();
+      changes.forEach(function(ch){
+        var el=document.querySelector('#tblFullTKBBody div[data-r="'+ch.r+'"][data-c="'+ch.c+'"]');
+        if(!el)throw new Error('Không tìm thấy ô C'+(ch.r-4)+' / Thứ '+(ch.c+2)+' trên TKB chính. Chưa áp dụng gì.');
+        destination.set(ch.r+'_'+ch.c,el);
+      });
+      var msg='Áp dụng '+(state.grid.rows.length*5)+' ô từ ảnh vào Thứ 2–Thứ 6?';
+      if(old.length)msg+='\n'+old.length+' ô tiết chiều cũ không xuất hiện trong ảnh: '+(clearMissing?'SẼ XÓA THEO LỰA CHỌN CỦA THẦY.':'SẼ GIỮ NGUYÊN (nên sẽ khác ảnh mới).');
+      msg+='\nThứ 7, CN và toàn bộ ca trung tâm không bị thay đổi.';
+      if(!confirm(msg))return;
+      // Apply only to school rows; update live DOM and in-memory schedule together.
+      // The original save function reads data-val from DOM; do not change it.
+      changes.forEach(function(ch){
+        var el=destination.get(ch.r+'_'+ch.c);
+        el.setAttribute('data-val',ch.value);
+        el.innerHTML=typeof renderTkbCellHtml==='function'?renderTkbCellHtml(esc(ch.value)):esc(ch.value).replace(/\n/g,'<br>');
+        var parent=el.parentElement;
+        if(parent && typeof getClassStyle==='function')parent.className='tkb-badge pointer-events-none '+(ch.value?getClassStyle(ch.value,false):'');
+        // The original rendering function reads appData.scheduleNote.tkbData.
+        // Keep it synchronized so any re-render before saving cannot undo OCR.
+        if(typeof appData!=='undefined' && appData && appData.scheduleNote){
+          if(!appData.scheduleNote.tkbData)appData.scheduleNote.tkbData={};
+          var key=ch.r+'_'+ch.c;
+          if(ch.value)appData.scheduleNote.tkbData[key]=ch.value;
+          else delete appData.scheduleNote.tkbData[key];
+        }
+      });
+      state.applied=true;hide();
+      if(typeof showToast==='function')showToast('Đã áp dụng các ô được chọn. '+(old.length&&!clearMissing?'Các tiết chiều cũ không có trong ảnh đã được giữ nguyên. ':'')+'Bấm Lưu để ghi lên Supabase.');
+      if(andSave && typeof saveAllScheduleAndNotes==='function')saveAllScheduleAndNotes();
+    }catch(e){status('Không thể áp dụng: '+(e.message||e),true);}
   }
   function buildModal(){
     var node=document.createElement('div');node.id='tkbOcrModal';node.className='hidden fixed inset-0 z-[100] bg-slate-950/70 p-2 sm:p-5';node.style.display='none';
@@ -13949,6 +14003,7 @@ window.addEventListener('keydown', function(evt) {
       '<button id="tkbOcrScan" type="button" class="px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold">Quét / Quét lại</button><button id="tkbOcrCancel" type="button" class="px-3 py-2 bg-slate-200 rounded-lg text-xs font-bold">Hủy</button>'+
       '<button id="tkbOcrApply" type="button" class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold">Xác nhận & Áp dụng</button><button id="tkbOcrSave" type="button" class="px-3 py-2 bg-blue-800 text-white rounded-lg text-xs font-bold">Áp dụng & Lưu TKB</button></div>'+
       '<div class="px-3 py-2"><progress id="tkbOcrProgress" max="100" value="0" class="w-full h-2"></progress><p id="tkbOcrStatus" class="text-xs">Chưa chọn ảnh. Không gửi dữ liệu lên AI API.</p><p id="tkbOcrWarnings" hidden class="text-amber-800 bg-amber-50 p-2 text-xs rounded-lg"></p></div>'+
+      '<div id="tkbOcrOldPeriods" hidden class="mx-3 mb-2 p-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs"></div>'+
       '<div class="grid md:grid-cols-2 flex-1 overflow-hidden"><div class="overflow-auto p-3 border-r"><p class="font-semibold text-sm mb-2">Ảnh gốc (bấm ô bảng bên phải để đối chiếu)</p><canvas id="tkbOcrImage" class="w-full h-auto border"></canvas></div><div class="overflow-auto p-3"><p class="font-semibold text-sm mb-2">Xem trước · Lớp ở trên, phân môn ở dưới (TN cho trải nghiệm)</p><div id="tkbOcrTable" class="min-w-[510px]"></div></div></div>'+ 
       '<label class="px-3 py-1 flex gap-2 items-center text-xs font-semibold"><input type="checkbox" id="tkbOcrChecked" /> Tôi đã đối chiếu các ô có trong ảnh với bảng xem trước, kể cả ô trống và cột Thứ 6.</label>'+ 
       '<div class="p-2 bg-amber-50 text-xs text-amber-900">Chỉ nhập các tiết có trong ảnh: tối đa 5 sáng + 4 chiều. Không nhận Thứ 7, Chủ nhật; không xóa các ca trung tâm hoặc tiết không hiện trong ảnh. Kiểm tra kỹ ô trống trước khi áp dụng.</div></div>';
@@ -13958,7 +14013,7 @@ window.addEventListener('keydown', function(evt) {
     E('tkbOcrScan').onclick=scan;
     E('tkbOcrApply').onclick=function(){try{apply(false);}catch(e){status(e.message,true);}};
     E('tkbOcrSave').onclick=function(){try{apply(true);}catch(e){status(e.message,true);}};
-    E('tkbOcrFile').onchange=function(){stop();E('tkbOcrChecked').checked=false;state.grid=null;state.cells=[];state.canvas=null;E('tkbOcrTable').innerHTML='';progress(0);status('Ảnh đã chọn. Bấm Quét để nhận diện.');};
+    E('tkbOcrFile').onchange=function(){stop();E('tkbOcrChecked').checked=false;state.grid=null;state.cells=[];state.canvas=null;E('tkbOcrTable').innerHTML='';E('tkbOcrOldPeriods').hidden=true;progress(0);status('Ảnh đã chọn. Bấm Quét để nhận diện.');};
     E('tkbOcrTable').addEventListener('focusin',function(ev){var el=ev.target;if(el.matches('textarea[data-ocr-r]'))highlight(Number(el.dataset.ocrR),Number(el.dataset.ocrC));});
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',buildModal);else buildModal();
