@@ -199,8 +199,8 @@
     }
 
 
-    /* CHỈ ô tiết chính khóa ở TRƯỜNG không tô nền. Các ca TRUNG TÂM
-       (data-full="true") tiếp tục giữ nguyên màu nền theo classColorMap. */
+    /* Chỉ sáng/chiều TRƯỜNG, Thứ 2–Thứ 6: nền trắng, màu CHỮ theo lớp.
+       Cuối tuần và tất cả ca TRUNG TÂM giữ màu nền theo cơ chế gốc. */
     #tblFullTKBBody td[data-tkb-td="1"]:has([data-full="false"]) > .tkb-badge {
       background-color: transparent !important;
     }
@@ -7911,7 +7911,10 @@ function exportTuitionExcel() {
         var cells = '';
         for (var cIdx = 0; cIdx < 7; cIdx++) {
           var val = tkb[rIdx + '_' + cIdx] ? String(tkb[rIdx + '_' + cIdx]) : '';
-          var styleClass = val.trim() ? getClassStyle(val, r.isFullBg) : '';
+          // Thứ 7/CN dùng màu nền KỂ CẢ buổi sáng/chiều trường.
+          // Chỉ Thứ 2–Thứ 6 ở trường dùng màu chữ.
+          var cellFullBg = r.isFullBg || cIdx >= 5;
+          var styleClass = val.trim() ? getClassStyle(val, cellFullBg) : '';
 
           // NẾU LÀ CỘT CỦA NGÀY HÔM NAY -> ĐỔI MÀU VIỀN THÀNH XANH NGỌC ĐẬM VÀ THÊM NỀN NHẠT
           var isTodayCol = (cIdx === currentDayIndex);
@@ -7937,11 +7940,11 @@ function exportTuitionExcel() {
                 '<div contenteditable="' + editAttr + '" style="pointer-events: auto;" ' +
                   'data-r="' + rIdx + '" ' +
                   'data-c="' + cIdx + '" ' +
-                  'data-full="' + r.isFullBg + '" ' +
+                  'data-full="' + cellFullBg + '" ' +
                   'data-val="' + val.replace(/"/g, '&quot;') + '" ' +
                   'onfocus="onTkbCellFocus(this)" ' +
-                  'onblur="onTkbCellBlur(this, ' + rIdx + ', ' + cIdx + ', ' + r.isFullBg + ')" ' +
-                  'oninput="onTkbCellInput(this, ' + rIdx + ', ' + cIdx + ', ' + r.isFullBg + ')" ' +
+                  'onblur="onTkbCellBlur(this, ' + rIdx + ', ' + cIdx + ', ' + cellFullBg + ')" ' +
+                  'oninput="onTkbCellInput(this, ' + rIdx + ', ' + cIdx + ', ' + cellFullBg + ')" ' +
                   'class="tkb-input tkb-cell-editable w-full text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded font-bold ' + divPointerClass + '">' +
                   renderTkbCellHtml(val) +
                 '</div>' +
@@ -13909,37 +13912,14 @@ window.addEventListener('keydown', function(evt) {
     }catch(e){if(job===state.job){status('Không áp dụng: '+(e.message||e),true);warn('Dữ liệu TKB hiện tại chưa bị thay đổi.');state.grid=null;}}
     finally{if(job===state.job){dis(false);if(state.worker){try{await state.worker.terminate();}catch(e){}state.worker=null;}}}
   }
-  // IMPORTANT: Rows of the actual TKB are 0..4 (morning), 5..8 (afternoon),
-  // 9..11 (extra classes). Columns 0..4 are Monday..Friday.
-  // The image may have fewer than four afternoon periods. Do not silently
-  // leave conflicting old periods without showing the discrepancy to the user.
-  function excludedAfternoonCells(){
-    var result=[];
-    if(!state.grid || state.grid.afternoonCount>=4)return result;
-    for(var r=5+state.grid.afternoonCount;r<9;r++)for(var c=0;c<5;c++){
-      var el=document.querySelector('#tblFullTKBBody div[data-r="'+r+'"][data-c="'+c+'"]');
-      if(!el)continue;
-      var value=String(el.getAttribute('data-val')||el.innerText||'').trim();
-      if(value)result.push({r:r,c:c,value:value});
-    }
-    return result;
-  }
+  // 5 tiết sáng + 4 tiết chiều, chỉ Thứ 2–Thứ 6.
+  // Ảnh thiếu tiết chiều 4 => tiết chiều 4 phải thành TRỐNG, không giữ lịch cũ.
+  // Thứ 7, Chủ nhật và ca trung tâm (r>=9) KHÔNG thuộc phạm vi OCR.
   function showExcludedAfternoonNotice(){
     var notice=E('tkbOcrOldPeriods');if(!notice)return;
-    var old=excludedAfternoonCells();
-    notice.innerHTML='';
-    if(!state.grid||state.grid.afternoonCount>=4){notice.hidden=true;return;}
-    var summary=document.createElement('div');
-    summary.textContent='Ảnh có '+state.grid.afternoonCount+' tiết chiều. Tiết chiều còn lại không có trong ảnh.'+
-      (old.length?' TKB đang có '+old.length+' ô cũ: '+old.map(function(x){return 'C'+(x.r-4)+' Thứ '+(x.c+2)+' ('+x.value.replace(/\n/g,' / ')+')';}).join('; ')+'.':'');
-    notice.appendChild(summary);
-    var label=document.createElement('label');label.className='flex items-center gap-2 mt-2 font-semibold';
-    var cb=document.createElement('input');cb.type='checkbox';cb.id='tkbOcrClearMissing';
-    label.appendChild(cb);label.appendChild(document.createTextNode('Xóa những ô tiết chiều KHÔNG có trong ảnh (chỉ Thứ 2–Thứ 6)'));
-    notice.appendChild(label);
-    var help=document.createElement('div');help.className='text-xs mt-1';
-    help.textContent='Mặc định KHÔNG xóa. Nếu muốn TKB trùng hoàn toàn ảnh mới, hãy tích chọn sau khi kiểm tra lịch cũ.';
-    notice.appendChild(help);notice.hidden=false;
+    if(!state.grid || state.grid.afternoonCount>=4){notice.hidden=true;return;}
+    notice.textContent='Ảnh có '+state.grid.afternoonCount+' tiết chiều. Các tiết chiều không xuất hiện trong ảnh (Thứ 2–Thứ 6) sẽ được làm trống khi thầy xác nhận. Thứ 7, CN và các ca trung tâm không thay đổi.';
+    notice.hidden=false;
   }
   function apply(andSave){
     try {
@@ -13959,9 +13939,16 @@ window.addEventListener('keydown', function(evt) {
       });
       if(unresolved.length){status('Còn '+unresolved.length+' ô có chữ chưa đọc ra lớp. Hãy kiểm tra trước khi áp dụng.',true);return;}
       if(!E('tkbOcrChecked').checked){status('Hãy xác nhận đã rà lại bảng nhận diện và các ô trống.',true);return;}
-      var clearMissing=!!(E('tkbOcrClearMissing')&&E('tkbOcrClearMissing').checked);
-      var old=excludedAfternoonCells();
-      if(clearMissing){old.forEach(function(cell){changes.push({r:cell.r,c:cell.c,value:'',isOldPeriod:true});});}
+      // Ảnh là nguồn dữ liệu đầy đủ trong phạm vi chính khóa Thứ 2–Thứ 6.
+      // Các ô xem trước trống cũng phải xóa nội dung cũ.
+      // Nếu ảnh chỉ có 3 tiết chiều, làm trống toàn bộ 5 ô tiết chiều thứ 4.
+      var addedMissing=0;
+      for(var missingRow=state.grid.rows.length;missingRow<9;missingRow++){
+        for(var missingCol=0;missingCol<5;missingCol++){
+          changes.push({r:missingRow,c:missingCol,value:''});
+          addedMissing++;
+        }
+      }
       // All destination slots must be present before making any change.
       var destination=new Map();
       changes.forEach(function(ch){
@@ -13969,8 +13956,9 @@ window.addEventListener('keydown', function(evt) {
         if(!el)throw new Error('Không tìm thấy ô C'+(ch.r-4)+' / Thứ '+(ch.c+2)+' trên TKB chính. Chưa áp dụng gì.');
         destination.set(ch.r+'_'+ch.c,el);
       });
-      var msg='Áp dụng '+(state.grid.rows.length*5)+' ô từ ảnh vào Thứ 2–Thứ 6?';
-      if(old.length)msg+='\n'+old.length+' ô tiết chiều cũ không xuất hiện trong ảnh: '+(clearMissing?'SẼ XÓA THEO LỰA CHỌN CỦA THẦY.':'SẼ GIỮ NGUYÊN (nên sẽ khác ảnh mới).');
+      var msg='THAY THẾ đủ 45 ô chính khóa Thứ 2–Thứ 6 theo ảnh?';
+      msg+='\nÔ trống trong ảnh sẽ XÓA lịch cũ ở đúng ô đó.';
+      if(addedMissing)msg+='\n'+addedMissing+' ô thuộc tiết chiều không có trong ảnh cũng sẽ được XÓA.';
       msg+='\nThứ 7, CN và toàn bộ ca trung tâm không bị thay đổi.';
       if(!confirm(msg))return;
       // Apply only to school rows; update live DOM and in-memory schedule together.
@@ -13991,7 +13979,7 @@ window.addEventListener('keydown', function(evt) {
         }
       });
       state.applied=true;hide();
-      if(typeof showToast==='function')showToast('Đã áp dụng các ô được chọn. '+(old.length&&!clearMissing?'Các tiết chiều cũ không có trong ảnh đã được giữ nguyên. ':'')+'Bấm Lưu để ghi lên Supabase.');
+      if(typeof showToast==='function')showToast('Đã thay thế đủ 45 ô chính khóa Thứ 2–Thứ 6. Bấm Lưu để ghi lên Supabase.');
       if(andSave && typeof saveAllScheduleAndNotes==='function')saveAllScheduleAndNotes();
     }catch(e){status('Không thể áp dụng: '+(e.message||e),true);}
   }
