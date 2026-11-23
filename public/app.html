@@ -516,7 +516,7 @@
         <button id="menu-tab-diemdanh" onclick="switchTab('tab-diemdanh')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
           <i class="fa-solid fa-clipboard-check text-base text-blue-600 w-5"></i>
           <span class="hidden md:inline" id="navTabDiemDanhLabel">Điểm danh</span>
-          <span class="mobile-nav-label">Điểm danh</span>
+          <span class="mobile-nav-label" id="navTabDiemDanhMobileLabel">Điểm danh</span>
         </button>
         <button id="menu-tab-hocphi" onclick="switchTab('tab-hocphi')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
           <i class="fa-solid fa-wallet text-base text-amber-600 w-5"></i>
@@ -526,7 +526,13 @@
         <button id="menu-tab-hoso" onclick="switchTab('tab-hoso')" class="tab-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
           <i class="fa-solid fa-bullhorn text-base text-purple-600 w-5"></i>
           <span class="hidden md:inline" id="navTabHosoLabel">Hồ sơ & Tin tức</span>
-          <span class="mobile-nav-label">Tin tức</span>
+          <span class="mobile-nav-label" id="navTabHosoMobileLabel">Tin tức</span>
+        </button>
+        <!-- MRVY STUDENT UI: chỉ tài khoản STUDENT đã đăng nhập thấy tab Vzota, chưa liên kết ứng dụng. -->
+        <button id="menu-tab-vzota" onclick="switchTab('tab-vzota')" class="tab-btn hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-book-open text-base text-indigo-600 w-5"></i>
+          <span class="hidden md:inline">Vzota</span>
+          <span class="mobile-nav-label">Vzota</span>
         </button>
         <button id="menu-tab-lichday" onclick="switchTab('tab-lichday')" class="tab-btn profile-admin-only hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition">
           <i class="fa-solid fa-calendar-days text-base text-teal-600 w-5"></i>
@@ -986,6 +992,23 @@
                 <tbody id="tuitionHistoryTableBody" class="divide-y divide-slate-100"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MRVY STUDENT UI: Vzota chưa kết nối; không trao đổi thông tin đăng nhập hay dữ liệu. -->
+      <div id="tab-vzota" class="tab-content hidden space-y-5">
+        <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-10">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-12 h-12 bg-indigo-50 text-indigo-700 rounded-2xl flex items-center justify-center text-xl"><i class="fa-solid fa-book-open"></i></div>
+            <div>
+              <h2 class="text-xl font-black text-[#0b2447]">Vzota – Bài tập và kết quả thi</h2>
+              <p class="text-xs font-semibold text-slate-500 mt-1">Dành riêng cho học sinh đã đăng nhập MR VY</p>
+            </div>
+          </div>
+          <div class="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5">
+            <div class="font-black text-indigo-800 mb-2"><i class="fa-solid fa-link-slash mr-2"></i>Chưa liên kết Vzota</div>
+            <p class="text-sm text-slate-700 leading-6">Khi hệ thống được liên kết, bài tập và kết quả thi Vzota sẽ hiển thị tại đây. Hiện tại, học sinh vẫn xem học phí, điểm kiểm tra và điểm danh trong mục <b>Thông tin chung</b> như trước.</p>
           </div>
         </div>
       </div>
@@ -2146,7 +2169,9 @@
       var tabDiemDanh = document.getElementById('menu-tab-diemdanh');
       var tabHocPhi = document.getElementById('menu-tab-hocphi');
       var tabHoSo = document.getElementById('menu-tab-hoso');
+      var tabVzota = document.getElementById('menu-tab-vzota');
 
+      if (tabVzota) tabVzota.classList.toggle('hidden', !isStudent);
       if (tabHocSinh) tabHocSinh.classList.toggle('hidden', !isStaff); // Trợ giảng & Admin thấy tab Học sinh
       if (tabLichDay) tabLichDay.classList.toggle('hidden', !isAdmin);  // Chỉ Admin thấy Lịch dạy
       if (tabDiemDanh) tabDiemDanh.classList.remove('hidden');          // Mọi người thấy Điểm danh
@@ -2177,7 +2202,11 @@
       if (label) label.innerText = "Điểm và bài tập";
 
       var ddLabel = document.getElementById('navTabDiemDanhLabel');
-      if (ddLabel) ddLabel.innerText = isGuest ? "Thông tin chung" : (isStudent ? "Chuyên cần" : "Điểm danh");
+      if (ddLabel) ddLabel.innerText = (isGuest || isStudent) ? "Thông tin chung" : "Điểm danh";
+      var ddMobileLabel = document.getElementById('navTabDiemDanhMobileLabel');
+      if (ddMobileLabel) ddMobileLabel.innerText = (isGuest || isStudent) ? "Thông tin" : "Điểm danh";
+      var hosoMobileLabel = document.getElementById('navTabHosoMobileLabel');
+      if (hosoMobileLabel) hosoMobileLabel.innerText = (isGuest || isStudent) ? "Điểm/Bài tập" : "Tin tức";
 
       // 5. Cấu hình Tab mặc định khi đăng nhập
       if (isGuest || isStudent) {
@@ -5423,6 +5452,9 @@ var editAttContext = { studentId: null, dateStr: null };
     }
     
     function renderGuestFullStudentProfile(s, selectedMonth) {
+      // STUDENT/GUEST: không hiển thị ghi chú tự do trong hồ sơ; dữ liệu gốc giữ nguyên cho Admin.
+      var profileViewerRole = currentUser ? String(currentUser.role || '').toUpperCase() : '';
+      var hideViewerNotes = (profileViewerRole === 'STUDENT' || profileViewerRole === 'GUEST');
       var cleanStuId = formatStudentId(s.id);
       var cleanStuName = cleanName(s.name);
       var pStu = formatPhoneDisplay(s.phone);
@@ -5569,7 +5601,7 @@ var editAttContext = { studentId: null, dateStr: null };
             return '<div ' + dayClickAttr + ' class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold flex items-center gap-2 shadow-2xs ' + dayCursor + '" title="' + (isStaff ? 'Bấm để sửa điểm danh buổi này' : a.status) + '">' +
               '<span class="w-2.5 h-2.5 rounded-full ' + dotBg + ' flex-shrink-0"></span>' +
               '<span class="text-slate-800">' + dayDisplay + '</span>' +
-              (a.note ? '<span class="text-[10px] text-slate-500 italic">(' + a.note + ')</span>' : '') +
+              (!hideViewerNotes && a.note ? '<span class="text-[10px] text-slate-500 italic">(' + a.note + ')</span>' : '') +
             '</div>';
           }).join('');
 
@@ -5683,7 +5715,7 @@ var editAttContext = { studentId: null, dateStr: null };
             '<td class="p-2.5 font-bold text-blue-800 whitespace-nowrap">' + (t.month || '-') + '</td>' +
             '<td class="p-2.5 font-mono font-black text-emerald-700 whitespace-nowrap">' + formatMoney(t.amount) + ' đ</td>' +
             '<td class="p-2.5"><span class="px-2 py-0.5 rounded text-[11px] ' + methodStyle + '">' + (t.method || '-') + '</span>' +
-              (t.note ? '<div class="text-[11px] text-slate-500 italic mt-0.5">' + t.note + '</div>' : '') +
+              (!hideViewerNotes && t.note ? '<div class="text-[11px] text-slate-500 italic mt-0.5">' + t.note + '</div>' : '') +
             '</td>' +
           '</tr>';
         }).join('');
@@ -5771,7 +5803,7 @@ var editAttContext = { studentId: null, dateStr: null };
                   '<th class="p-2.5">Ngày Đóng</th>' +
                   '<th class="p-2.5">Đóng Cho Tháng</th>' +
                   '<th class="p-2.5">Số Tiền</th>' +
-                  '<th class="p-2.5">Hình Thức / Ghi Chú</th>' +
+                  '<th class="p-2.5">' + (hideViewerNotes ? 'Hình Thức' : 'Hình Thức / Ghi Chú') + '</th>' +
                 '</tr>' +
               '</thead>' +
               '<tbody>' + tuitionRowsHtml + '</tbody>' +
@@ -5811,6 +5843,18 @@ var editAttContext = { studentId: null, dateStr: null };
       var isStudent = role === 'STUDENT';
       var isGuest = role === 'GUEST';
       var studentIdLimit = isStudent ? currentUser.username : null;
+
+      if (isStudent) {
+        // Chỉ tìm đúng mã HS đã được máy chủ xác thực trong session; không dùng dữ liệu tìm kiếm hay guest lock.
+        var authorizedStudentId = formatStudentId(currentUser.username);
+        var myStudent = (getActiveStudents() || []).find(function(stu) {
+          return formatStudentId(stu.id) === authorizedStudentId;
+        });
+        container.innerHTML = myStudent
+          ? renderGuestFullStudentProfile(myStudent, selectedMonth)
+          : '<div class="bg-white p-8 rounded-2xl border text-center font-semibold text-slate-500">Chưa tải được hồ sơ của học sinh. Vui lòng bấm đồng bộ để thử lại.</div>';
+        return;
+      }
 
       if (isGuest) {
         if (typeof applyGuestStudentLock === 'function') applyGuestStudentLock();
@@ -7360,6 +7404,7 @@ function exportTuitionExcel() {
 
 
     function switchTab(id) {
+      if (id === 'tab-vzota' && (!currentUser || String(currentUser.role || '').toUpperCase() !== 'STUDENT')) return;
       document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
       
       var targetEl = document.getElementById(id);
@@ -8201,7 +8246,8 @@ function exportTuitionExcel() {
 
     var originalRenderOverview = renderAttendanceOverviewClass;
     renderAttendanceOverviewClass = function() {
-      if (currentOverviewMode === 'date') {
+      var viewerRole = currentUser ? String(currentUser.role || '').toUpperCase() : '';
+      if (currentOverviewMode === 'date' && viewerRole !== 'STUDENT' && viewerRole !== 'GUEST') {
         renderAttendanceByDateOutput();
       } else {
         if (typeof originalRenderOverview === 'function') originalRenderOverview();
@@ -10164,6 +10210,8 @@ function toggleAllStudents(source) {
 function applyGuestStudentLock() {
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
       var isGuest = (role === 'GUEST');
+      var isStudent = (role === 'STUDENT');
+      var isViewer = isGuest || isStudent;
       var searchInp = document.getElementById('overviewSearch');
       // Chỉ lấy đúng thẻ card trắng nhỏ chứa thanh lọc (nằm ngay trên #classOverviewContainer), tuyệt đối không lấy nhầm khung cha
       var overviewContainer = document.getElementById('classOverviewContainer');
@@ -10181,7 +10229,7 @@ function applyGuestStudentLock() {
       var guideBanner = document.getElementById('parentSearchGuideText');
   
       // 1. NẾU LÀ ADMIN / TRỢ GIẢNG -> HIỆN ĐẦY ĐỦ BÌNH THƯỜNG
-      if (!isGuest) {
+      if (!isViewer) {
         if (navSidebar) navSidebar.style.display = '';
         if (navBtnDiemDanh) navBtnDiemDanh.style.display = '';
         if (navBtnHoSo) navBtnHoSo.style.display = '';
@@ -10208,10 +10256,23 @@ function applyGuestStudentLock() {
 
       // Kiểm tra xem Phụ huynh đã chọn học sinh hợp lệ chưa
       var stu = null;
-      if (selectedGuestStudentId) {
+      if (isStudent) {
+        // STUDENT: không bao giờ nhận mã HS từ guest lock (có thể còn từ phiên cũ).
+        var authenticatedId = formatStudentId(currentUser.username);
+        stu = (getActiveStudents() || []).find(function(s) {
+          return formatStudentId(s.id) === authenticatedId;
+        });
+      } else if (selectedGuestStudentId) {
         stu = (getActiveStudents() || []).find(function(s) {
           return formatStudentId(s.id) === formatStudentId(selectedGuestStudentId);
         });
+      }
+      if (isStudent && !stu) {
+        // Dữ liệu chưa đồng bộ: không hiển thị tìm kiếm hồ sơ của học sinh khác.
+        if (filterTopBar) filterTopBar.style.display = 'none';
+        if (guideBanner) guideBanner.style.display = 'none';
+        if (navSidebar) navSidebar.style.display = '';
+        return;
       }
   
       // 2. NẾU LÀ PHỤ HUYNH NHƯNG CHƯA CHỌN HỌC SINH -> HIỆN Ô TÌM KIẾM TO RÕ + HƯỚNG DẪN
@@ -10322,7 +10383,7 @@ function applyGuestStudentLock() {
     var _origInitScoreClassDropdown = window.initScoreClassDropdown;
     window.initScoreClassDropdown = function() {
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
-      if (role === 'GUEST' && selectedGuestStudentId) {
+      if ((role === 'GUEST' && selectedGuestStudentId) || role === 'STUDENT') {
         applyGuestStudentLock();
         return;
       }
@@ -10339,7 +10400,7 @@ function applyGuestStudentLock() {
       applyGuestStudentLock();
       if (typeof _origSwitchTab === 'function') _origSwitchTab(id);
       applyGuestStudentLock();
-      if (role === 'GUEST' && selectedGuestStudentId && id === 'tab-hoso') {
+      if (((role === 'GUEST' && selectedGuestStudentId) || role === 'STUDENT') && id === 'tab-hoso') {
         renderClassScoreboard();
         renderPostsList();
       }
@@ -10351,7 +10412,7 @@ function applyGuestStudentLock() {
       if (typeof _origSwitchHosoSubTab === 'function') _origSwitchHosoSubTab(tab);
       applyGuestStudentLock();
       var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
-      if (role === 'GUEST' && selectedGuestStudentId) {
+      if ((role === 'GUEST' && selectedGuestStudentId) || role === 'STUDENT') {
         if (tab === 'scores') renderClassScoreboard();
         if (tab === 'news') renderPostsList();
       }
@@ -11917,6 +11978,9 @@ function applyGuestStudentLock() {
 
   // 2. Tạo HTML cho Mục 3: Kết quả điểm kiểm tra cá nhân (Chỉ hiển thị xem, không click chuyển tab)
   function createSection3ScoreCardHtml(stuId, stuName, stuClass) {
+    // Không lộ ghi chú tự do của bài kiểm tra trên giao diện STUDENT/GUEST.
+    var viewerRole = (typeof currentUser !== 'undefined' && currentUser) ? String(currentUser.role || '').toUpperCase() : '';
+    var hideViewerNotes = (viewerRole === 'STUDENT' || viewerRole === 'GUEST');
     var cId = padId3(stuId);
     var scores = collectStudentExamScores(cId);
 
@@ -11976,7 +12040,7 @@ function applyGuestStudentLock() {
               '<div style="font-weight:900;color:#0f172a;font-size:13px;text-transform:uppercase;">' + sc.testName + '</div>' +
               '<div style="font-size:11px;color:#64748b;margin-top:2px;">' +
                 (sc.term ? (sc.term + (sc.date ? ' · ' : '')) : '') + (sc.date || '') +
-                (sc.note ? (' · <i style="color:#475569;">' + sc.note + '</i>') : '') +
+                (!hideViewerNotes && sc.note ? (' · <i style="color:#475569;">' + sc.note + '</i>') : '') +
               '</div>' +
             '</div>' +
             '<div style="padding:4px 12px;border-radius:10px;font-weight:900;font-size:14px;' + pillStyle + '">' +
