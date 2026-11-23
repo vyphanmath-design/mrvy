@@ -1,13 +1,14 @@
 // MRVY: Nút Vzota chỉ hiện với học sinh STUDENT đã đăng nhập.
-// Thêm <script src="/vzota-launch.js" defer></script> trước </body> của HTML MRVY.
+// MRVY giao diện thực tế: public/app.html (KHÔNG có app/page.jsx).
+// Thêm <script src="/vzota-launch.js" defer></script> trước </body> của public/app.html.
 (function(){
   'use strict';
   const VZOTA_URL='https://web-tai-lieu-toan.vercel.app/';
   let requesting=false;
   async function goVzota(){
     if(requesting)return;
-    const token=localStorage.getItem('authToken')||sessionStorage.getItem('authToken')||'';
-    let user=null;try{user=JSON.parse(localStorage.getItem('savedUser')||'null');}catch{}
+    const token=sessionStorage.getItem('sessionToken')||localStorage.getItem('sessionToken')||'';
+    let user=null;try{user=JSON.parse(sessionStorage.getItem('currentUser')||localStorage.getItem('currentUser')||'null');}catch{}
     if(!token||String(user?.role||'').toUpperCase()!=='STUDENT'){
       alert('Hãy đăng nhập tài khoản học sinh MRVY trước.');return;
     }
@@ -28,8 +29,8 @@
   function update(){
     if(!document.body)return;
     let b=document.getElementById('mrvy-vzota-link');
-    let user=null;try{user=JSON.parse(localStorage.getItem('savedUser')||'null');}catch{}
-    const visible=String(user?.role||'').toUpperCase()==='STUDENT' && !!(localStorage.getItem('authToken')||sessionStorage.getItem('authToken'));
+    let user=null;try{user=JSON.parse(sessionStorage.getItem('currentUser')||localStorage.getItem('currentUser')||'null');}catch{}
+    const visible=String(user?.role||'').toUpperCase()==='STUDENT' && !!(sessionStorage.getItem('sessionToken')||localStorage.getItem('sessionToken'));
     if(!b){
       b=document.createElement('button');b.type='button';b.id='mrvy-vzota-link';
       b.style.cssText='display:none;margin:7px auto;background:#2563eb;color:white;border:0;border-radius:12px;padding:11px 16px;font-weight:800;width:92%;text-align:center;';
