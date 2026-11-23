@@ -56,6 +56,48 @@ function formatPhone(val) {
   return s.startsWith('0') ? s : '0' + s;
 }
 
+// ĐĂNG NHẬP HS: ID = SĐT; mã HS vẫn là khóa nội bộ cho điểm danh/học phí.
+// Mật khẩu mặc định "123" chỉ hợp lệ trước khi HS đổi mật khẩu.
+function studentPasswordDigest_(password, salt) {
+  return crypto.scryptSync(String(password), salt, 64).toString('hex');
+}
+function studentPasswordHash_(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return 'scrypt$' + salt + '$' + studentPasswordDigest_(password, salt);
+}
+function verifyStudentPassword_(password, stored) {
+  const value = String(stored || '').trim();
+  if (!value) return String(password) === '123';
+  const m = /^scrypt\$([a-f0-9]{32})\$([a-f0-9]{128})$/i.exec(value);
+  if (!m) return false;
+  const actual = Buffer.from(studentPasswordDigest_(password,m[1]), 'hex');
+  const expected = Buffer.from(m[2], 'hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+function studentPhone_(value) {
+  const p = formatPhone(value);
+  return /^0\d{9}$/.test(p) ? p : '';
+}
+
+// Nghỉ học: kiểm tra RIÊNG trạng thái và ghi chú. Hồ sơ nghỉ tạm vẫn có trong hoc_sinh.
+// Không dùng ghi chú thông thường để xác định nghỉ học (chỉ nhãn nghỉ rõ ràng).
+function studentInactive_(row) {
+  const plain = value => String(value || '').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toUpperCase();
+  const status = plain(row?.trang_thai);
+  const note = plain(row?.ghi_chu);
+  return /NGHI/.test(status) || /\bDA\s+NGHI\s+HOC\b|\bNGHI\s+TU\s+NGAY\b/.test(note);
+}
+
+// Thu hồi token khi học sinh nghỉ; mã HS giữ nguyên, không ảnh hưởng hồ sơ/học phí.
+async function revokeStudentSessions_(supabase, studentId) {
+  const id = formatStudentId(studentId);
+  if (!id) return;
+  const { error } = await supabase.from('mrvy_sessions').delete()
+    .eq('username', id).eq('role', 'STUDENT');
+  if (error) throw new Error('Không thu hồi được phiên học sinh đã nghỉ: ' + error.message);
+}
+
 function cleanName(s) {
   return String(s || '').toLowerCase().trim().replace(/\s+/g, ' ');
 }
@@ -116,7 +158,16 @@ async function verifySessionToken_(supabase, token) {
     .eq('token_hash', tokenHash)
     .maybeSingle();
   if (error) throw new Error('Không kiểm tra được phiên đăng nhập: ' + error.message);
-  return data ? { username: data.username, name: data.name, role: data.role } : null;
+  if (!data) return null;
+  // Mỗi lần kiểm tra phiên HS đều xác minh trạng thái hiện tại: token cũ cũng bị khóa.
+  if (String(data.role || '').toUpperCase().trim() === 'STUDENT') {
+    const id = formatStudentId(data.username);
+    const { data: student, error: stuError } = await supabase.from('hoc_sinh')
+      .select('ma_hs,trang_thai,ghi_chu').eq('ma_hs', id).maybeSingle();
+    if (stuError) throw new Error('Không xác minh được trạng thái học sinh: ' + stuError.message);
+    if (!student || studentInactive_(student)) return null;
+  }
+  return { username: data.username, name: data.name, role: data.role };
 }
 
 async function requireRole_(supabase, token, allowedRoles) {
@@ -211,6 +262,7 @@ async function archiveOneStudent_(supabase, studentId) {
   const {data:deleted,error:delErr} = await supabase.from('hoc_sinh')
     .delete().eq('ma_hs',targetId).select('ma_hs');
   if (delErr || !deleted || deleted.length!==1) throw new Error('Đã sao lưu nhưng chưa chuyển xong hồ sơ '+targetId+'; kiểm tra bản trùng: '+(delErr?.message||''));
+  await revokeStudentSessions_(supabase,targetId);
   // Giữ cơ chế cũ: khi chuyển nghỉ lâu dài cũng không để lịch sử cá nhân trên các bảng đang học.
   await clearStudentDataFromDB_(supabase, targetId);
 }
@@ -344,6 +396,7 @@ async function getInitialData(supabase, token) {
       grade: String(r.truong_khoi || 'Khối 6').trim(),
       className: String(r.lop || '').trim(),
       phone: formatPhone(r.sdt_hs),
+      passwordChanged: String(serverRole || '').toUpperCase() === 'ADMIN' ? Boolean(r.mat_khau_hash) : undefined,
       parentPhone: formatPhone(r.sdt_phu_huynh),
       parentName: String(r.ten_phu_huynh || '').trim(),
       parentRelation: String(r.quan_he_phu_huynh || '').trim(),
@@ -458,55 +511,59 @@ export default async function handler(req, res) {
       case 'checkLogin': {
         const [username, password] = args;
         const u = String(username || '').trim();
-        const p = String(password || '').trim();
+        const p = String(password || '');
         const hashedInputPass = hashPassword_(p);
 
+        // Giáo viên / Trợ giảng: giữ nguyên cách đăng nhập đang dùng.
         const accList = await fetchAllRows(supabase, 'tai_khoan', 'id', true);
         for (const acc of accList || []) {
-          const sheetUser = String(acc.tai_khoan).trim();
-          const sheetPass = String(acc.mat_khau).trim();
+          const sheetUser = String(acc.tai_khoan || '').trim();
+          const sheetPass = String(acc.mat_khau || '').trim();
           const sheetName = acc.ho_ten;
           const sheetRole = String(acc.phan_quyen || 'STUDENT').toUpperCase().trim();
-
-          if (formatStudentId(sheetUser) === formatStudentId(u) || sheetUser.toLowerCase() === u.toLowerCase()) {
-            const defaultPass = formatStudentId(sheetUser);
-            let isValid = false;
-            if (sheetRole === 'ADMIN' || sheetRole === 'ASSISTANT') {
-              isValid =
-                hashedInputPass === sheetPass ||
-                (sheetPass.length >= 16 && hashedInputPass.startsWith(sheetPass)) ||
-                p === sheetPass;
-            } else {
-              isValid = p === defaultPass || p === sheetPass || p === sheetUser;
-            }
-
-            if (isValid) {
-              const userObj = { username: sheetUser, name: sheetName, role: sheetRole || 'STUDENT' };
-              const token = await createPersistentSession_(supabase, userObj);
-              return res.json({ result: { success: true, token, user: userObj } });
-            } else {
-              return res.json({ result: { success: false, message: 'Mật khẩu không chính xác!' } });
-            }
+          if (sheetRole !== 'ADMIN' && sheetRole !== 'ASSISTANT') continue;
+          // SĐT 10 số của HS không được đối chiếu 3 số cuối với ID Admin/Trợ giảng.
+          const exactAdminUser = sheetUser.toLowerCase() === u.toLowerCase();
+          const legacyShortId = !/^0\d{9}$/.test(u.replace(/\s/g,'')) &&
+            formatStudentId(sheetUser) === formatStudentId(u);
+          if (exactAdminUser || legacyShortId) {
+            const isValid = hashedInputPass === sheetPass ||
+              (sheetPass.length >= 16 && hashedInputPass.startsWith(sheetPass)) || p === sheetPass;
+            if (!isValid) return res.json({ result: { success:false, message:'Mật khẩu không chính xác!' } });
+            const userObj = {username:sheetUser, name:sheetName, role:sheetRole};
+            const token = await createPersistentSession_(supabase,userObj);
+            return res.json({result:{success:true,token,user:userObj}});
           }
         }
 
-        const stuList = await fetchAllRows(supabase, 'hoc_sinh', 'id', true);
-        for (const stu of stuList || []) {
-          const stuId = String(stu.ma_hs || '').trim();
-          const stuName = String(stu.ho_va_ten || '').trim();
-          if (stuId !== '' && formatStudentId(stuId) === formatStudentId(u)) {
-            const defaultPass = formatStudentId(stuId);
-            if (p === defaultPass || p === stuId) {
-              const userObj2 = { username: defaultPass, name: stuName, role: 'STUDENT' };
-              const token2 = await createPersistentSession_(supabase, userObj2);
-              return res.json({ result: { success: true, token: token2, user: userObj2 } });
-            } else {
-              return res.json({ result: { success: false, message: 'Mật khẩu không chính xác!' } });
-            }
-          }
+        // Học sinh: chỉ dùng SĐT chính chủ làm ID, không cho đăng nhập vòng bằng mã HS.
+        const loginPhone = studentPhone_(u);
+        if (!loginPhone || !/^0\d{9}$/.test(u.replace(/\s/g,''))) {
+          return res.json({result:{success:false,message:'Học sinh đăng nhập bằng số điện thoại 10 số; tra cứu tên vẫn dùng như cũ.'}});
         }
-
-        return res.json({ result: { success: false, message: 'Tài khoản hoặc mã học sinh không tồn tại!' } });
+        // Dữ liệu cũ có thể có SĐT thiếu số 0/định dạng không đồng nhất.
+        // Chỉ đọc trên máy chủ, chuẩn hóa trước khi xác định đúng một tài khoản.
+        const students = [];
+        for (let offset=0;;offset+=1000) {
+          const {data,error} = await supabase.from('hoc_sinh')
+            .select('ma_hs,ho_va_ten,sdt_hs,mat_khau_hash,trang_thai,ghi_chu')
+            .order('id',{ascending:true}).range(offset,offset+999);
+          if (error) throw new Error('Không đọc được danh sách xác thực học sinh: '+error.message);
+          students.push(...(data || []));
+          if (!data || data.length<1000) break;
+        }
+        // LỌC HS NGHỈ TRƯỚC khi kiểm tra SĐT trùng (kể cả nghỉ ghi trong ghi_chu).
+        const matching = students.filter(s => !studentInactive_(s) && studentPhone_(s.sdt_hs) === loginPhone);
+        if (matching.length !== 1) {
+          return res.json({result:{success:false,message: matching.length === 0 ? 'SĐT này không thuộc học sinh đang học. Hãy kiểm tra lại hoặc liên hệ giáo viên.' : 'SĐT bị trùng giữa các học sinh đang học, cần giáo viên kiểm tra trước khi đăng nhập.'}});
+        }
+        const stu = matching[0];
+        if (!verifyStudentPassword_(p,stu.mat_khau_hash)) {
+          return res.json({result:{success:false,message:'Mật khẩu không chính xác!'}});
+        }
+        const userObj = {username: formatStudentId(stu.ma_hs), name: String(stu.ho_va_ten || '').trim(), role:'STUDENT'};
+        const token = await createPersistentSession_(supabase,userObj);
+        return res.json({result:{success:true,token,user:userObj}});
       }
 
       case 'validateSession': {
@@ -539,6 +596,31 @@ export default async function handler(req, res) {
         const oldP = String(oldPassword || '').trim();
         const newP = String(newPassword || '').trim();
         const hashedOld = hashPassword_(oldP);
+        const session = await verifySessionToken_(supabase, token);
+        if (session && String(session.role).toUpperCase() === 'STUDENT') {
+          // Không tin username gửi từ client; ràng buộc theo mã HS nằm trong token.
+          const studentId = formatStudentId(session.username);
+          if (!newP || newP.length < 6 || newP.length > 128) {
+            return res.json({result:{success:false,message:'Mật khẩu mới phải dài 6–128 ký tự.'}});
+          }
+          const {data:student,error:readErr}=await supabase.from('hoc_sinh')
+            .select('ma_hs,mat_khau_hash,trang_thai,ghi_chu').eq('ma_hs',studentId).maybeSingle();
+          if (readErr) throw new Error('Không đọc được mật khẩu học sinh: '+readErr.message);
+          if (!student || studentInactive_(student))
+            return res.json({result:{success:false,message:'Tài khoản học sinh đã nghỉ học không được đăng nhập.'}});
+          if (!verifyStudentPassword_(oldP, student.mat_khau_hash))
+            return res.json({result:{success:false,message:'Mật khẩu cũ không đúng!'}});
+          const newHash = studentPasswordHash_(newP);
+          const {data:saved,error:saveErr}=await supabase.from('hoc_sinh')
+            .update({mat_khau_hash:newHash}).eq('ma_hs',studentId).select('ma_hs');
+          if (saveErr || !saved || saved.length !== 1) throw new Error('Không lưu được mật khẩu học sinh: '+(saveErr?.message || 'Không xác nhận được bản ghi'));
+          // Thu hồi các phiên cũ, giữ phiên đang đổi mật khẩu.
+          const activeHash=crypto.createHash('sha256').update(String(token)).digest('hex');
+          const {error:revokeErr}=await supabase.from('mrvy_sessions').delete()
+            .eq('username',studentId).eq('role','STUDENT').neq('token_hash',activeHash);
+          if (revokeErr) throw new Error('Đã đổi mật khẩu nhưng không thu hồi được phiên cũ: '+revokeErr.message);
+          return res.json({result:{success:true,message:'Đã đổi mật khẩu học sinh thành công!'}});
+        }
 
         const accList = await fetchAllRows(supabase, 'tai_khoan', 'id', true);
         for (const acc of accList || []) {
@@ -572,6 +654,22 @@ export default async function handler(req, res) {
           phan_quyen: 'STUDENT'
         });
         return res.json({ result: { success: true, message: 'Đã tạo và đổi mật khẩu mới thành công!' } });
+      }
+
+      case 'resetStudentPassword': {
+        const [token, studentId] = args;
+        await requireRole_(supabase,token,['ADMIN']);
+        const id=formatStudentId(studentId);
+        const {data:student,error:lookupErr}=await supabase.from('hoc_sinh')
+          .select('ma_hs,trang_thai,ghi_chu').eq('ma_hs',id).maybeSingle();
+        if (lookupErr) throw new Error('Không kiểm tra được học sinh: '+lookupErr.message);
+        if (!student) throw new Error('Không tìm thấy học sinh trong danh sách đang học.');
+        if (studentInactive_(student)) throw new Error('Học sinh đã nghỉ học, không có tài khoản đăng nhập để đặt lại mật khẩu.');
+        const {data,error}=await supabase.from('hoc_sinh')
+          .update({mat_khau_hash:null}).eq('ma_hs',id).select('ma_hs');
+        if (error || !data || data.length !== 1) throw new Error('Không đặt lại được mật khẩu học sinh: '+(error?.message || 'Không tìm thấy học sinh'));
+        await revokeStudentSessions_(supabase,id);
+        return res.json({result:{success:true,message:'Đã đặt lại mật khẩu mặc định 123.'}});
       }
 
       case 'getInitialData': {
@@ -673,6 +771,9 @@ export default async function handler(req, res) {
         }
 
         await supabase.from('hoc_sinh').update(updatePayload).eq('ma_hs', targetId);
+        if (!studentData.isRestore && studentInactive_({trang_thai:updatePayload.trang_thai,ghi_chu:updatePayload.ghi_chu})) {
+          await revokeStudentSessions_(supabase,targetId);
+        }
 
         const isWaiting =
           String(studentData.className || '').toUpperCase().includes('ĐỢI') ||
@@ -711,6 +812,7 @@ export default async function handler(req, res) {
           .update({trang_thai:'ĐÃ NGHỈ HỌC', ghi_chu:note})
           .eq('ma_hs',targetId).select('ma_hs');
         if (writeErr || !updated || updated.length!==1) throw new Error('Không cập nhật được trạng thái nghỉ: '+(writeErr?.message||''));
+        await revokeStudentSessions_(supabase,targetId);
         // GIỮ NGUYÊN LOGIC GỐC: xóa điểm danh, phiếu thu cá nhân và cấu hình mức học phí cá nhân.
         await clearStudentDataFromDB_(supabase, targetId);
         const data=await getInitialData(supabase,token);
