@@ -408,7 +408,7 @@
               <div id="loginStudentSuggestions" class="hidden mt-3 text-left"></div>
             </div>
 
-            <!-- Ô mật khẩu (chỉ bật ra khi Giáo viên / Trợ giảng đăng nhập) -->
+            <!-- Ô mật khẩu cho Admin, Trợ giảng và học sinh nhập SĐT -->
             <div id="loginPasswordWrap" class="hidden">
               <div class="relative flex items-center">
                 <i class="fa-solid fa-lock text-slate-400 absolute left-4 text-sm pointer-events-none"></i>
@@ -2244,11 +2244,8 @@
           }
         }).changeUserPassword(sessionStorage.getItem('sessionToken'), currentUser ? currentUser.username : '', oldP, newP);
       } else {
-        setTimeout(function() {
-          if (btn) btn.innerText = 'Lưu Mật Khẩu';
-          closeChangePasswordModal();
-          showToast('Đã lưu mật khẩu mới thành công!');
-        }, 300);
+        if (btn) btn.innerText = 'Lưu Mật Khẩu';
+        if (errEl) { errEl.innerText='Không thể kết nối máy chủ, mật khẩu chưa được lưu.'; errEl.classList.remove('hidden'); }
       }
     }
 
@@ -3623,6 +3620,33 @@ function getStudentDebtDetails(student, targetMonthStr) {
       renderTuitionHistoryTable();
     }
 
+    // Dùng cùng tiêu chí nghỉ học như API đăng nhập: kiểm tra CẢ trạng thái và ghi chú.
+    function mrvyStudentInactiveForLogin_(s) {
+      if (!s) return false;
+      var plain = function(v){ return String(v || '').normalize('NFD')
+        .replace(/[\u0300-\u036f]/g,'').replace(/đ/gi,'d').toUpperCase(); };
+      var status = plain(s.statusNghi);
+      var note = plain(s.note);
+      return s.active === false || /NGHI/.test(status) || /\bDA\s+NGHI\s+HOC\b|\bNGHI\s+TU\s+NGAY\b/.test(note);
+    }
+
+    // Đặt lại mật khẩu học sinh về 123; chỉ Admin, có xác nhận.
+    function resetStudentLoginPassword(studentId) {
+      if (!currentUser || String(currentUser.role).toUpperCase() !== 'ADMIN') return;
+      var stu=(appData.students || []).find(function(s){return String(s.id)===String(studentId);});
+      if (stu && mrvyStudentInactiveForLogin_(stu)) { showToast('Học sinh đã nghỉ học: tài khoản bị khóa đăng nhập.',true); return; }
+      if (!stu || !stu.phone) { showToast('Học sinh chưa có SĐT để đăng nhập.',true); return; }
+      if (!confirm('Đặt lại mật khẩu của '+stu.name+' về 123? Học sinh phải dùng mật khẩu mới sau khi đổi lại.')) return;
+      google.script.run.withSuccessHandler(function(res){
+        if (res && res.success) {
+          stu.passwordChanged=false;
+          renderStudentsTable();
+          showToast(res.message || 'Đã đặt lại mật khẩu 123.');
+        } else showToast((res && res.message) || 'Đặt lại thất bại.',true);
+      }).withFailureHandler(function(e){showToast('Lỗi đặt lại mật khẩu: '+(e.message||e),true);})
+        .resetStudentPassword(sessionStorage.getItem('sessionToken'),studentId);
+    }
+
     function renderStudentsTable() {
       var tbody = document.getElementById('studentTableBody');
       if (!tbody) return;
@@ -3666,6 +3690,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<th class="p-3 whitespace-nowrap">LỚP</th>' +
           '<th class="p-3 whitespace-nowrap">TRƯỜNG</th>' +
           '<th class="p-3 whitespace-nowrap">SĐT HS</th>' +
+          (isAdmin ? '<th class="p-3 whitespace-nowrap">PASS</th>' : '') +
           '<th class="p-3 whitespace-nowrap">SĐT PHỤ HUYNH</th>' +
           '<th class="p-3 whitespace-nowrap">PHỤ HUYNH</th>' +
           '<th class="p-3 whitespace-nowrap">GHI CHÚ</th>' +
@@ -3679,6 +3704,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<th class="p-3 whitespace-nowrap">LỚP</th>' +
           '<th class="p-3 whitespace-nowrap">TRƯỜNG</th>' +
           '<th class="p-3 whitespace-nowrap">SĐT HS</th>' +
+          (isAdmin ? '<th class="p-3 whitespace-nowrap">PASS</th>' : '') +
           '<th class="p-3 whitespace-nowrap">SĐT PHỤ HUYNH</th>' +
           '<th class="p-3 whitespace-nowrap">PHỤ HUYNH</th>' +
           '<th class="p-3 whitespace-nowrap">GHI CHÚ</th>' +
@@ -3687,8 +3713,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       }
 
       var filtered = (appData.students || []).filter(function(s) {
-        var statusNghi = String(s.statusNghi || s.note || '').toUpperCase();
-        var isInactive = statusNghi.includes('ĐÃ NGHỈ HỌC') || s.active === false;
+        var isInactive = mrvyStudentInactiveForLogin_(s);
 
         if (isViewingDisabled) {
           if (!isInactive) return false;
@@ -3790,6 +3815,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
           '<td class="p-3 font-bold text-emerald-700">' + (s.className || 'Chưa xếp') + '</td>' +
           '<td class="p-3 text-slate-700 font-medium">' + (s.school || '-') + '</td>' +
           '<td class="p-3">' + phoneStuHtml + '</td>' +
+          (isAdmin ? '<td class="p-3 text-xs whitespace-nowrap"><span class="font-semibold ' + (mrvyStudentInactiveForLogin_(s) ? 'text-red-600' : (s.passwordChanged ? 'text-slate-500' : 'text-emerald-700')) + '">' + (mrvyStudentInactiveForLogin_(s) ? 'Đã nghỉ · Khóa' : (s.passwordChanged ? 'Đã đổi' : (pStu === '-' ? 'Thiếu SĐT' : '123 mặc định'))) + '</span>' + (!mrvyStudentInactiveForLogin_(s) && pStu !== '-' ? ' <button type="button" onclick="resetStudentLoginPassword(\''+s.id+'\')" class="ml-1 text-amber-700 underline" title="Chỉ Admin đặt lại mật khẩu">Đặt lại</button>' : '') + '</td>' : '') +
           '<td class="p-3">' + phoneParHtml + '</td>' +
           '<td class="p-3 text-slate-700 text-xs whitespace-nowrap">' + ((s.parentRelation || '') ? ('<span class="font-bold text-indigo-700">' + s.parentRelation + '</span> · ') : '') + String(s.parentName || '-').replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</td>' +
           displayNoteHtml +
@@ -4262,8 +4288,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
       var isAdmin = currentUser && String(currentUser.role || '').toUpperCase() === 'ADMIN';
       var isViewingDisabled = isAdmin && (grade === 'DISABLED');
       var filteredStudents = (appData.students || []).filter(function(s) {
-        var statusNghi = String(s.statusNghi || s.note || '').toUpperCase();
-        var isInactive = statusNghi.includes('ĐÃ NGHỈ HỌC') || s.active === false;
+        var isInactive = mrvyStudentInactiveForLogin_(s);
 
         if (isViewingDisabled) {
           if (!isInactive) return false;
@@ -5191,7 +5216,8 @@ var editAttContext = { studentId: null, dateStr: null };
       var qNoTone = removeVietnameseTones(q).toLowerCase().trim();
 
       var isStaffAccount = (q === 'mrvy' || q === 'admin' || q.startsWith('trogiang') || q.startsWith('tg') || q.startsWith('gv'));
-      if (isStaffAccount) {
+      var isStudentPhoneLogin = /^0\d{9}$/.test(String(rawVal || '').replace(/\s/g, ''));
+      if (isStaffAccount || isStudentPhoneLogin) {
         if (passWrap) passWrap.classList.remove('hidden');
         if (box) box.classList.add('hidden');
         return;
@@ -5225,8 +5251,8 @@ var editAttContext = { studentId: null, dateStr: null };
       var queryWords = qNoTone.split(/\s+/).filter(Boolean);
 
       var matches = sourceList.filter(function(s) {
-        var statusNghi = String(s.statusNghi || s.note || '').toUpperCase();
-        if (statusNghi.includes('ĐÃ NGHỈ HỌC') || s.active === false) return false;
+        // HS nghỉ không được gợi ý trong chế độ đăng nhập/tra cứu học sinh đang học.
+        if (mrvyStudentInactiveForLogin_(s)) return false;
 
         var cId = formatStudentId(s.id).toLowerCase();
         var pStu = formatPhoneDisplay(s.phone).replace(/\D/g, '');
