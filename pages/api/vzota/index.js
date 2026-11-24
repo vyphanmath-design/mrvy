@@ -7,6 +7,7 @@ const sha = v => crypto.createHash('sha256').update(v).digest('hex');
 const digits = v => String(v || '').replace(/\D/g, '');
 const norm = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const inactive = s => /(?:da\s*nghi\s*hoc|nghi\s*hoc|thoi\s*hoc)/.test(norm(`${s.trang_thai||''} ${s.ghi_chu||''}`));
+const normalizeClass = v => String(v||'').trim().replace(/^lớp\s+/i,'').replace(/\s+/g,' ').replace(/^(10|11|12)\s+([a-zA-Z])/, '$1$2').toUpperCase();
 function db() {
   const url=process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -42,10 +43,12 @@ async function getStudentByLogin(supabase,username){
   return getStudentById(supabase,ids[0]);
 }
 function publicProfile(s){
-  const match=String(s.truong_khoi||'').match(/(?:^|\D)(10|11|12)(?:\D|$)/);
+  const className=normalizeClass(s.lop);
+  const match=String(s.truong_khoi||'').match(/(?:^|\D)(10|11|12)(?:\D|$)/)
+       || className.match(/^(10|11|12)(?:\D|$)/);
   return {studentId:String(s.ma_hs),name:String(s.ho_va_ten||'').trim(),
     grade:match?Number(match[1]):0,sourceGrade:String(s.truong_khoi||''),
-    className:String(s.lop||'').trim(),category:'home'};
+    className,category:'home'};
 }
 async function allActiveClasses(supabase){
   let from=0, result=[];
