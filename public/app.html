@@ -58,7 +58,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script>
     tailwind.config = {
@@ -3894,41 +3893,62 @@ function getStudentDebtDetails(student, targetMonthStr) {
       return 'Tháng ' + curMonth + '/' + curYear;
     }
 
-    function syncData() {
+    var _syncDataSequence = 0;
+    function syncData(prefetchedDataPromise) {
   var icon = document.getElementById('syncIcon');
   if (icon) icon.classList.add('fa-spin');
+  var requestSequence = ++_syncDataSequence;
+  var requestToken = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
+  function isCurrentRequest() {
+    return requestSequence === _syncDataSequence && requestToken === (sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken'));
+  }
 
   if (typeof google !== 'undefined' && google.script && google.script.run) {
-    google.script.run
-      .withSuccessHandler(function(data) {
-        if (icon) icon.classList.remove('fa-spin');
-        
-        if (data) {
-          // CHỐT CHẶN BẢO MẬT UI: Lấy quyền thật từ Server đè lại quyền bị Hacker fake
-          if (data.serverRole && currentUser) {
-            currentUser.role = data.serverRole;
-            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
-            applyRolePermissions(); // Khóa menu lại ngay lập tức
-          }
-
-          appData = data;
-          if (data.avatarUrl && data.avatarUrl.length > 20) localStorage.setItem('teacherAvatar', data.avatarUrl);
-          setAllAvatars(data.avatarUrl);
-          initAttendanceState(getActiveStudents());
-          renderAllViews();
-          showToast('Đã đồng bộ dữ liệu mới nhất!');
-        } else {
-          // Không tự đăng xuất khi đồng bộ nhận dữ liệu rỗng.
-          showToast('Không nhận được dữ liệu từ máy chủ. Vui lòng đồng bộ lại.', true);
+    function handleSuccess(data) {
+      if (!isCurrentRequest()) return;
+      if (icon) icon.classList.remove('fa-spin');
+      if (data) {
+        if (data.serverRole && currentUser) {
+          currentUser.role = data.serverRole;
+          sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+          applyRolePermissions();
         }
-      })
-      .withFailureHandler(function(err) {
-        if (icon) icon.classList.remove('fa-spin');
-        showToast('Lỗi đồng bộ Sheet: ' + err.message, true);
-      })
-      .getInitialData(sessionStorage.getItem('sessionToken')); // Truyền Token bảo mật lên
+        appData = data;
+        if (data.avatarUrl && data.avatarUrl.length > 20) localStorage.setItem('teacherAvatar', data.avatarUrl);
+        setAllAvatars(data.avatarUrl);
+        initAttendanceState(getActiveStudents());
+        renderAllViews();
+        showToast('Đã đồng bộ dữ liệu mới nhất!');
+      } else {
+        showToast('Không nhận được dữ liệu từ máy chủ. Vui lòng đồng bộ lại.', true);
+      }
+    }
+    function handleFailure(err) {
+      if (!isCurrentRequest()) return;
+      if (icon) icon.classList.remove('fa-spin');
+      showToast('Lỗi đồng bộ Sheet: ' + (err && err.message ? err.message : err), true);
+    }
+    function fetchLatestData() {
+      if (!isCurrentRequest()) return;
+      google.script.run
+        .withSuccessHandler(handleSuccess)
+        .withFailureHandler(handleFailure)
+        .getInitialData(requestToken);
+    }
+    if (prefetchedDataPromise && typeof prefetchedDataPromise.then === 'function') {
+      prefetchedDataPromise.then(function(data) {
+        if (!isCurrentRequest()) return;
+        if (data && Array.isArray(data.students)) handleSuccess(data);
+        else fetchLatestData();
+      }, function() {
+        fetchLatestData();
+      });
+    } else {
+      fetchLatestData();
+    }
   } else {
     setTimeout(function() {
+      if (!isCurrentRequest()) return;
       if (icon) icon.classList.remove('fa-spin');
       initAttendanceState(getActiveStudents());
       renderAllViews();
@@ -4272,19 +4292,7 @@ function getStudentDebtDetails(student, targetMonthStr) {
 
     function renderAllViews() {
       initAllDropdowns();
-      renderStudentsTable();
-      
-      var role = currentUser ? String(currentUser.role || '').toUpperCase() : '';
-      var isAdmin = role === 'ADMIN';
-
-      // Chỉ Admin mới render bảng điểm danh hàng ngày
-      if (isAdmin) {
-        renderAttendanceTable();
-      }
-      
-      renderAttendanceOverviewClass();
       populateFeeStudentSelect();
-      renderTuitionAll();
       renderPostsList();
       renderFullTKBTable();
     }
@@ -5172,6 +5180,21 @@ var editAttContext = { studentId: null, dateStr: null };
 
   var selectedGuestStudentId = sessionStorage.getItem('lockedGuestStuId') || null;
     var _guestPreloadPromise = null;
+    var _startupDataRequest = null;
+
+    function prefetchSessionDataForStartup() {
+      var token = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken');
+      if (!token || typeof google === 'undefined' || !google.script || !google.script.run) return;
+      if (_startupDataRequest && _startupDataRequest.token === token) return;
+      var promise = new Promise(function(resolve, reject) {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .getInitialData(token);
+      });
+      promise.catch(function() {});
+      _startupDataRequest = { token: token, promise: promise };
+    }
 
    var cachedAllStudents = [];
     var isStudentsPreloaded = false;
@@ -5179,6 +5202,7 @@ var editAttContext = { studentId: null, dateStr: null };
     // 1. Tải sẵn toàn bộ danh sách học sinh 1 lần duy nhất ngay khi mở trang để tra cứu siêu tốc
     function preloadAllStudentsForInstantSearch() {
       if (isStudentsPreloaded && cachedAllStudents.length > 0) return Promise.resolve(cachedAllStudents);
+      if (_guestPreloadPromise) return _guestPreloadPromise;
 
       if (appData && appData.students && appData.students.length > 0) {
         cachedAllStudents = appData.students;
@@ -5190,13 +5214,17 @@ var editAttContext = { studentId: null, dateStr: null };
         return Promise.resolve([]);
       }
 
-      var existingToken = sessionStorage.getItem('sessionToken') || sessionStorage.getItem('guestTempToken');
-      
-      return new Promise(function(resolve) {
+      var existingToken = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken') || sessionStorage.getItem('guestTempToken') || '';
+      _guestPreloadPromise = new Promise(function(resolve) {
         google.script.run
           .withSuccessHandler(function(data) {
+            var currentToken = sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken') || sessionStorage.getItem('guestTempToken') || '';
+            if (currentToken !== existingToken) {
+              resolve([]);
+              return;
+            }
             var list = [];
-            if (data && data.students) {
+            if (data && Array.isArray(data.students)) {
               list = data.students;
               appData = data;
             } else if (Array.isArray(data)) {
@@ -5207,13 +5235,18 @@ var editAttContext = { studentId: null, dateStr: null };
             resolve(list);
           })
           .withFailureHandler(function() { resolve([]); })
-          .getInitialData(existingToken || '');
+          .getInitialData(existingToken);
       });
+      return _guestPreloadPromise.finally(function() { _guestPreloadPromise = null; });
     }
 
     // Kích hoạt nạp sẵn ngầm ngay khi tải xong trang (0 độ trễ khi người dùng gõ)
     window.addEventListener('DOMContentLoaded', function() {
-      preloadAllStudentsForInstantSearch();
+      if (sessionStorage.getItem('sessionToken') || localStorage.getItem('sessionToken')) {
+        prefetchSessionDataForStartup();
+      } else {
+        preloadAllStudentsForInstantSearch();
+      }
     });
 
     function hideLoginSuggestions() {
@@ -7021,7 +7054,9 @@ var editAttContext = { studentId: null, dateStr: null };
           }
 
           applyRolePermissions();
-          syncData();
+          var prefetched = _startupDataRequest && _startupDataRequest.token === token ? _startupDataRequest.promise : null;
+          _startupDataRequest = null;
+          syncData(prefetched);
         })
         .withFailureHandler(function() {
           if (!currentUser) {
@@ -8217,7 +8252,7 @@ function exportTuitionExcel() {
       if (el) el.innerText = str;
     }
 
-    window.onload = function() {
+    window.addEventListener('DOMContentLoaded', function() {
       updateHeaderDateDisplay();
       var dateInput = document.getElementById('attendanceDate');
       if (dateInput) {
@@ -8225,7 +8260,7 @@ function exportTuitionExcel() {
       }
       checkSessionOnLoad();
       initAllDropdowns();
-    };
+    });
 
     var currentOverviewMode = 'student';
 
