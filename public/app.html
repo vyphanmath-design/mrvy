@@ -14099,6 +14099,317 @@ window.addEventListener('keydown', function(evt) {
 </script>
 
   <script src="/vzota-launch.js" defer></script>
+
+<script>
+(function () {
+  if (window.__mrvyGridSeatsV2) return;
+  if (!window.__seatingState || typeof window.openSeatingArrangementModal !== 'function' || typeof window.renderSeatingBoard !== 'function') return;
+  window.__mrvyGridSeatsV2 = true;
+
+  function state() { return window.__seatingState; }
+  function number(value, fallback, max) {
+    var n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? Math.max(1, Math.min(max, n)) : fallback;
+  }
+  function idOf(student) { return String(student && student.id != null ? student.id : ''); }
+  function studentCode(student) {
+    var raw = idOf(student);
+    var digits = raw.replace(/\D/g, '');
+    return digits ? digits.slice(-3).padStart(3, '0') : raw.slice(-3);
+  }
+  function make(tag, text, css) {
+    var el = document.createElement(tag);
+    if (text != null) el.textContent = String(text);
+    if (css) el.style.cssText = css;
+    return el;
+  }
+  function remember() {
+    var x = state();
+    if (!Array.isArray(x.mrvyGridHistory)) x.mrvyGridHistory = [];
+    if (Array.isArray(x.mrvySeatMap)) {
+      x.mrvyGridHistory.push({ rows: x.rowsCount, cols: x.colsGroup, map: x.mrvySeatMap.slice() });
+      if (x.mrvyGridHistory.length > 40) x.mrvyGridHistory.shift();
+    }
+  }
+  function normalize() {
+    var x = state();
+    if (!x) return;
+    if (Number(x.seatsPerRow) > 1 && !x.mrvyGridReady) {
+      x.colsGroup = 5;
+      x.rowsCount = 6;
+      x.mrvySeatMap = null;
+    }
+    x.colsGroup = number(x.colsGroup, 5, 40);
+    x.rowsCount = number(x.rowsCount, 6, 50);
+    x.seatsPerRow = 1;
+    x.mode = 'full';
+    var rows = x.rowsCount, cols = x.colsGroup;
+    var oldRows = x.mrvyGridRows, oldCols = x.mrvyGridCols;
+    var old = x.mrvySeatMap;
+    if (!Array.isArray(old)) {
+      x.mrvySeatMap = Array(rows * cols).fill(null);
+      if (!x.cleared) (x.students || []).slice(0, rows * cols).forEach(function (s, i) { x.mrvySeatMap[i] = idOf(s); });
+    } else if (old.length !== rows * cols || oldRows !== rows || oldCols !== cols) {
+      var next = Array(rows * cols).fill(null);
+      if (oldRows && oldCols && old.length === oldRows * oldCols) {
+        for (var c = 0; c < Math.min(cols, oldCols); c++) {
+          for (var r = 0; r < Math.min(rows, oldRows); r++) next[c * rows + r] = old[c * oldRows + r];
+        }
+      } else {
+        old.slice(0, next.length).forEach(function (id, i) { next[i] = id; });
+      }
+      x.mrvySeatMap = next;
+    }
+    var known = new Set((x.students || []).map(idOf));
+    var placed = new Set();
+    x.mrvySeatMap = x.mrvySeatMap.map(function (id) {
+      var key = id == null ? '' : String(id);
+      if (!key || !known.has(key) || placed.has(key)) return null;
+      placed.add(key);
+      return key;
+    });
+    x.mrvyGridRows = rows;
+    x.mrvyGridCols = cols;
+    x.mrvyGridReady = true;
+    x.cleared = false;
+  }
+  function useSource(source, dest) {
+    var x = state();
+    normalize();
+    var map = x.mrvySeatMap;
+    if (!source || !Number.isInteger(dest) || dest < 0 || dest >= map.length) return;
+    if (source.type === 'seat') {
+      if (!Number.isInteger(source.index) || !map[source.index] || source.index === dest) return;
+      remember();
+      var tmp = map[dest]; map[dest] = map[source.index]; map[source.index] = tmp;
+    } else if (source.type === 'student') {
+      var key = String(source.id);
+      if (!(x.students || []).some(function (s) { return idOf(s) === key; })) return;
+      if (map.includes(key)) return;
+      remember();
+      map[dest] = key;
+    } else return;
+    x.mrvyGridPicked = null;
+    window.renderSeatingBoard();
+  }
+  function removeSource(source) {
+    var x = state(); normalize();
+    if (!source || source.type !== 'seat' || !x.mrvySeatMap[source.index]) return;
+    remember();
+    x.mrvySeatMap[source.index] = null;
+    x.mrvyGridPicked = null;
+    window.renderSeatingBoard();
+  }
+  function patchInputs() {
+    var cols = document.getElementById('seatColsInput');
+    var rows = document.getElementById('seatRowsInput');
+    var per = document.getElementById('seatPerRowInput');
+    var mode = document.getElementById('seatModeSelect');
+    if (cols) {
+      cols.max = '40';
+      cols.value = String(state().colsGroup);
+      var label = cols.parentElement.querySelector('label');
+      if (label) label.textContent = 'Số cột';
+    }
+    if (rows) {
+      rows.max = '50';
+      rows.value = String(state().rowsCount);
+      var label2 = rows.parentElement.querySelector('label');
+      if (label2) label2.textContent = 'Số hàng';
+    }
+    if (per) { per.value = '1'; per.parentElement.style.display = 'none'; }
+    if (mode) { mode.value = 'full'; mode.parentElement.style.display = 'none'; }
+  }
+
+  window.renderSeatingBoard = function () {
+    var x = state(), board = document.getElementById('seatingBoardContent');
+    if (!x || !board) return;
+    normalize();
+    board.replaceChildren();
+    var titleEl = document.getElementById('seatExamTitleInput');
+    var defaultTitle = x.mrvyClassMode ? 'SƠ ĐỒ LỚP' : 'SƠ ĐỒ CHỖ NGỒI KIỂM TRA';
+    var title = titleEl && titleEl.value.trim() ? titleEl.value.trim() : defaultTitle;
+    board.append(make('h2', title + ' – ' + (x.className || ''), 'font-size:21px;font-weight:900;color:#142645;text-align:center;margin:2px 0 12px;'));
+    board.append(make('div', 'BẢNG / BỤC GIẢNG', 'background:#10233f;color:white;text-align:center;border-radius:10px;padding:10px;font-size:17px;font-weight:900;margin-bottom:8px;'));
+    board.append(make('div', x.rowsCount + ' hàng · ' + x.colsGroup + ' cột · ' + x.students.length + ' học sinh', 'text-align:center;color:#52627a;font-size:12px;margin-bottom:12px;'));
+    var scroll = make('div', null, 'overflow-x:auto;padding:2px 1px 10px;');
+    var grid = make('div', null, 'display:grid;grid-template-columns:58px repeat(' + x.colsGroup + ',minmax(138px,1fr));gap:7px;min-width:' + (65 + 145 * x.colsGroup) + 'px;');
+    grid.append(make('div', '', 'min-height:35px;'));
+    for (var c = 0; c < x.colsGroup; c++) grid.append(make('div', 'Cột ' + (c + 1), 'text-align:center;background:#e3f6ef;color:#006c54;font-weight:800;border-radius:9px;padding:8px 2px;'));
+    var studentsById = new Map((x.students || []).map(function (s) { return [idOf(s), s]; }));
+    for (var r = 0; r < x.rowsCount; r++) {
+      grid.append(make('div', 'Hàng ' + (r + 1), 'align-self:center;text-align:center;font-size:12px;font-weight:800;color:#52627a;'));
+      for (var col = 0; col < x.colsGroup; col++) {
+        (function (pos) {
+          var id = x.mrvySeatMap[pos], s = id ? studentsById.get(id) : null;
+          var seat = make('div', null, 'min-height:83px;background:' + (s ? '#e2f7ef' : '#fff') + ';border:' + (s ? '2px solid #00b894' : '1.5px dashed #cbd5e1') + ';border-radius:10px;padding:9px 5px;text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px;cursor:pointer;overflow-wrap:anywhere;');
+          if (s) {
+            seat.append(make('div', s.name, 'font-size:14px;font-weight:800;color:#10233f;line-height:1.22;'));
+            seat.append(make('div', 'Mã HS: ' + studentCode(s), 'font-size:12px;font-weight:600;color:#52627a;'));
+            seat.draggable = true;
+            seat.addEventListener('dragstart', function (event) { event.dataTransfer.setData('text/plain', 'seat:' + pos); event.dataTransfer.effectAllowed = 'move'; });
+          } else seat.append(make('div', 'Trống', 'font-size:12px;color:#91a1b8;'));
+          if (x.mrvyGridPicked && x.mrvyGridPicked.type === 'seat' && x.mrvyGridPicked.index === pos) seat.style.outline = '3px solid #6366f1';
+          seat.addEventListener('dragover', function (event) { event.preventDefault(); });
+          seat.addEventListener('drop', function (event) {
+            event.preventDefault();
+            var raw = event.dataTransfer.getData('text/plain');
+            if (raw.startsWith('seat:')) useSource({ type: 'seat', index: Number(raw.slice(5)) }, pos);
+            else if (raw.startsWith('student:')) useSource({ type: 'student', id: raw.slice(8) }, pos);
+          });
+          seat.addEventListener('click', function () {
+            if (x.mrvyGridPicked) {
+              if (x.mrvyGridPicked.type === 'seat' && x.mrvyGridPicked.index === pos) x.mrvyGridPicked = null;
+              else { useSource(x.mrvyGridPicked, pos); return; }
+            } else if (s) x.mrvyGridPicked = { type: 'seat', index: pos };
+            window.renderSeatingBoard();
+          });
+          grid.append(seat);
+        })(col * x.rowsCount + r);
+      }
+    }
+    scroll.append(grid);
+    board.append(scroll);
+    var banner = document.getElementById('seatingStatusBanner');
+    var count = x.mrvySeatMap.filter(Boolean).length;
+    if (banner) {
+      banner.style.color = '#047857';
+      banner.textContent = 'Đã xếp ' + count + '/' + x.students.length + ' học sinh. Kéo thả để đổi chỗ hoặc để trống tùy ý. Chạm tên rồi chạm ghế đích nếu dùng điện thoại.';
+    }
+    var capture = document.getElementById('seatingCaptureArea');
+    if (!capture) return;
+    var other = document.getElementById('mrvyUnassignedPanel');
+    if (!other) {
+      other = make('div', null, 'background:white;border:1px solid #cbd5e1;border-radius:14px;padding:12px;margin-top:12px;');
+      other.id = 'mrvyUnassignedPanel';
+      capture.insertAdjacentElement('afterend', other);
+    }
+    other.replaceChildren();
+    var unassigned = (x.students || []).filter(function (s) { return !x.mrvySeatMap.includes(idOf(s)); });
+    other.append(make('div', 'Chưa xếp: ' + unassigned.length + ' học sinh', 'font-size:13px;font-weight:900;color:#334155;margin-bottom:9px;'));
+    var clear = make('button', 'Bỏ trống ghế đang chọn', 'padding:8px 12px;border-radius:9px;border:1px solid #cbd5e1;background:#f1f5f9;font-size:12px;font-weight:700;margin-bottom:8px;cursor:pointer;');
+    clear.type = 'button';
+    clear.disabled = !x.mrvyGridPicked || x.mrvyGridPicked.type !== 'seat';
+    clear.addEventListener('click', function () { removeSource(x.mrvyGridPicked); });
+    other.append(clear);
+    var chips = make('div', null, 'display:flex;flex-wrap:wrap;gap:7px;min-height:24px;');
+    unassigned.forEach(function (s) {
+      var chip = make('button', s.name + ' · ' + studentCode(s), 'border:1px solid #a5b4fc;border-radius:9px;background:#eef2ff;padding:8px 10px;color:#1e3a8a;font-size:12px;font-weight:700;cursor:grab;');
+      chip.type = 'button'; chip.draggable = true;
+      if (x.mrvyGridPicked && x.mrvyGridPicked.type === 'student' && x.mrvyGridPicked.id === idOf(s)) chip.style.outline = '3px solid #6366f1';
+      chip.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', 'student:' + idOf(s)); e.dataTransfer.effectAllowed = 'move'; });
+      chip.addEventListener('click', function () { x.mrvyGridPicked = { type: 'student', id: idOf(s) }; window.renderSeatingBoard(); });
+      chips.append(chip);
+    });
+    other.append(chips);
+    other.ondragover = function (e) { e.preventDefault(); };
+    other.ondrop = function (e) {
+      e.preventDefault();
+      var raw = e.dataTransfer.getData('text/plain');
+      if (raw.startsWith('seat:')) removeSource({ type: 'seat', index: Number(raw.slice(5)) });
+    };
+  };
+
+  window.updateSeatingConfig = function () {
+    var x = state();
+    var colsEl = document.getElementById('seatColsInput');
+    var rowsEl = document.getElementById('seatRowsInput');
+    if (!x) return;
+    var cols = colsEl ? number(colsEl.value, x.colsGroup, 40) : x.colsGroup;
+    var rows = rowsEl ? number(rowsEl.value, x.rowsCount, 50) : x.rowsCount;
+    if (cols !== x.colsGroup || rows !== x.rowsCount) remember();
+    x.colsGroup = cols; x.rowsCount = rows; x.seatsPerRow = 1; x.mode = 'full';
+    x.mrvyGridPicked = null;
+    window.renderSeatingBoard();
+  };
+  window.shuffleSeatingAction = function () {
+    var x = state(); if (!x) return;
+    normalize(); remember();
+    var ids = (x.students || []).map(idOf);
+    for (var i = ids.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var temp = ids[i]; ids[i] = ids[j]; ids[j] = temp; }
+    x.mrvySeatMap = Array(x.colsGroup * x.rowsCount).fill(null);
+    ids.slice(0, x.mrvySeatMap.length).forEach(function (id, k) { x.mrvySeatMap[k] = id; });
+    x.mrvyGridPicked = null; x.cleared = false;
+    window.renderSeatingBoard();
+  };
+  window.clearSeatingAction = function () {
+    var x = state(); if (!x) return;
+    normalize(); remember();
+    x.mrvySeatMap = Array(x.colsGroup * x.rowsCount).fill(null);
+    x.mrvyGridPicked = null; x.cleared = false;
+    window.renderSeatingBoard();
+  };
+  window.undoSeatingAction = function () {
+    var x = state(); if (!x || !x.mrvyGridHistory || !x.mrvyGridHistory.length) return;
+    var last = x.mrvyGridHistory.pop();
+    x.rowsCount = last.rows; x.colsGroup = last.cols; x.seatsPerRow = 1; x.mode = 'full';
+    x.mrvySeatMap = last.map.slice();
+    x.mrvyGridRows = last.rows; x.mrvyGridCols = last.cols;
+    x.mrvyGridPicked = null; x.cleared = false;
+    patchInputs(); window.renderSeatingBoard();
+  };
+
+  var oldOpen = window.openSeatingArrangementModal;
+  window.openSeatingArrangementModal = window.openSeatingModalForDate = function () {
+    var x = state();
+    if (x) {
+      x.mrvyGridReady = false;
+      x.mrvyGridRows = null;
+      x.mrvyGridCols = null;
+      x.mrvySeatMap = null;
+      x.mrvyGridPicked = null;
+      x.mrvyGridHistory = [];
+    }
+    var result = oldOpen.apply(this, arguments);
+    if (document.getElementById('seatingExamModal')) {
+      patchInputs();
+      window.renderSeatingBoard();
+    }
+    return result;
+  };
+
+  window.mrvyRestoreSeating = function () {
+    var x = state();
+    if (!x) return;
+    var data = (((window.appData || {}).scheduleNote || {}).seatingLayouts || {})[x.className];
+    if (!data) { if (typeof window.showToast === 'function') window.showToast('Lớp này chưa có sơ đồ đã lưu!', true); return; }
+    var oldCols = number(data.colsGroup, 5, 40);
+    var oldRows = number(data.rowsCount, 6, 50);
+    var per = number(data.seatsPerRow, 1, 10);
+    var cols = Math.min(40, oldCols * per);
+    var map = Array(cols * oldRows).fill(null);
+    var valid = new Set((x.students || []).map(idOf));
+    if (Array.isArray(data.seatSlots)) {
+      for (var group = 0; group < oldCols; group++) {
+        for (var row = 0; row < oldRows; row++) {
+          for (var seat = 0; seat < per; seat++) {
+            var oldIndex = (group * oldRows + row) * per + seat;
+            var newColumn = group * per + seat;
+            var id = data.seatSlots[oldIndex];
+            if (newColumn < cols && id != null && valid.has(String(id))) map[newColumn * oldRows + row] = String(id);
+          }
+        }
+      }
+    } else {
+      (data.studentIds || []).forEach(function (id, i) { if (i < map.length && valid.has(String(id))) map[i] = String(id); });
+    }
+    x.colsGroup = cols; x.rowsCount = oldRows; x.seatsPerRow = 1; x.mode = 'full';
+    x.mrvySeatMap = map; x.mrvyGridRows = oldRows; x.mrvyGridCols = cols; x.mrvyGridReady = true;
+    x.mrvyGridPicked = null; x.mrvyGridHistory = []; x.cleared = false;
+    patchInputs(); window.renderSeatingBoard();
+    if (typeof window.showToast === 'function') window.showToast('Đã tải sơ đồ lớp ' + x.className);
+  };
+
+  var save = window.mrvySaveSeating;
+  if (typeof save === 'function') window.mrvySaveSeating = function () {
+    var x = state();
+    if (x) { normalize(); x.cleared = false; }
+    return save.apply(this, arguments);
+  };
+})();
+</script>
+
+
   
 </body>
 </html>
